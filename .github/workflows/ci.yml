@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install ruff pytest jsonschema
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Validate ground truth against schema
+        run: |
+          python - <<'EOF'
+          import json, sys
+          from pathlib import Path
+
+          schema_path = Path("schema/ground_truth.schema.json")
+          gt_dir = Path("data/ground_truth")
+
+          if not schema_path.exists():
+              print("schema not present yet — skipping ground-truth validation")
+              sys.exit(0)
+
+          from jsonschema import Draft202012Validator
+          schema = json.loads(schema_path.read_text())
+          validator = Draft202012Validator(schema)
+
+          gt_files = sorted(gt_dir.glob("*.json")) if gt_dir.exists() else []
+          if not gt_files:
+              print("no ground-truth files yet — skipping")
+              sys.exit(0)
+
+          failed = False
+          for f in gt_files:
+              errors = list(validator.iter_errors(json.loads(f.read_text())))
+              if errors:
+                  failed = True
+                  print(f"FAIL {f}")
+                  for e in errors:
+                      print(f"  - {'/'.join(map(str, e.path)) or '<root>'}: {e.message}")
+              else:
+                  print(f"OK   {f}")
+          sys.exit(1 if failed else 0)
+          EOF
+
+      - name: Tests
+        run: |
+          # exit code 5 = no tests collected; acceptable only before Phase 0 merges
+          pytest || [ $? -eq 5 ]
