@@ -1,0 +1,567 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blotquant/schema/ground_truth.schema.json",
+  "title": "blotquant synthetic ground truth",
+  "description": "One file per generated image, written only by `python -m synth`. Never hand-edited. All intensities are in DN of the image's own bit depth.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "synth_version",
+    "image_id",
+    "split",
+    "image_path",
+    "image_format",
+    "lossy_format",
+    "bit_depth",
+    "max_value",
+    "width_px",
+    "height_px",
+    "pixel_sha256",
+    "generation",
+    "background_truth",
+    "defects",
+    "lanes",
+    "bands",
+    "normalization",
+    "image_qc_flags",
+    "image_stats"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0",
+      "description": "Version of this schema that the file conforms to. Declared as a const so that the schema file and synth.GROUND_TRUTH_SCHEMA_VERSION cannot drift apart; a test asserts they match."
+    },
+    "synth_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "SYNTH_VERSION freeze marker of the generator that wrote the file."
+    },
+    "image_id": { "type": "string", "minLength": 1 },
+    "split": {
+      "enum": ["dev", "test"],
+      "description": "Assigned at generation time. Parameter iteration happens on dev only."
+    },
+    "image_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path to the image, relative to the dataset root that holds ground_truth/."
+    },
+    "image_format": { "enum": ["tiff", "png", "jpeg"] },
+    "lossy_format": { "type": "boolean" },
+    "bit_depth": { "enum": [8, 16] },
+    "max_value": { "enum": [255, 65535] },
+    "width_px": { "type": "integer", "minimum": 1 },
+    "height_px": { "type": "integer", "minimum": 1 },
+    "pixel_sha256": {
+      "$ref": "#/$defs/sha256",
+      "description": "Digest of the canonical quantized pixel array (not of the encoded file, whose bytes depend on the zlib/libjpeg build)."
+    },
+    "generation": { "$ref": "#/$defs/generation" },
+    "background_truth": { "$ref": "#/$defs/background_truth" },
+    "defects": { "type": "array", "items": { "$ref": "#/$defs/defect" } },
+    "lanes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/lane" } },
+    "bands": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/band" } },
+    "normalization": { "$ref": "#/$defs/normalization" },
+    "image_qc_flags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/image_qc_flag" }
+    },
+    "image_stats": { "$ref": "#/$defs/image_stats" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "roi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "description": "Integer pixel ROI covering columns x..x+width-1 and rows y..y+height-1.",
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "band_qc_flag": {
+      "enum": ["saturated", "overlapping"],
+      "description": "saturated: pixels at full scale inside the ROI. overlapping: ROI IoU with another band at or above the configured threshold."
+    },
+    "image_qc_flag": {
+      "enum": ["saturated", "lossy_format", "low_dynamic_range"]
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["master_seed", "config_digest", "stream_seeds", "difficulty", "parameters"],
+      "properties": {
+        "master_seed": { "type": "integer", "minimum": 0 },
+        "config_digest": { "$ref": "#/$defs/sha256" },
+        "stream_seeds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["background", "bands", "defects", "noise"],
+          "description": "Per-component seeds derived from (master_seed, image_id, stream name).",
+          "properties": {
+            "background": { "type": "integer", "minimum": 0 },
+            "bands": { "type": "integer", "minimum": 0 },
+            "defects": { "type": "integer", "minimum": 0 },
+            "noise": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "difficulty": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "format_depth",
+            "background",
+            "noise",
+            "band_shape",
+            "lane_geometry",
+            "defect",
+            "exposure",
+            "lane_count"
+          ],
+          "properties": {
+            "format_depth": { "enum": ["tiff8", "tiff16", "png8", "png16", "jpeg8"] },
+            "background": { "enum": ["flat", "gradient", "speckle"] },
+            "noise": { "enum": ["low", "high"] },
+            "band_shape": { "enum": ["sharp", "smeared", "doublet"] },
+            "lane_geometry": { "enum": ["straight", "tilted", "smile"] },
+            "defect": { "enum": ["none", "dust", "scratch"] },
+            "exposure": { "enum": ["normal", "low", "saturating"] },
+            "lane_count": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "parameters": { "$ref": "#/$defs/parameters" }
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Every generation parameter in effect for this image. No parameter used by the renderer is absent here.",
+      "required": [
+        "canvas",
+        "band_layout",
+        "lane_layout",
+        "background",
+        "noise",
+        "band_shape",
+        "lane_geometry",
+        "defect",
+        "exposure",
+        "encoding",
+        "qc",
+        "derived"
+      ],
+      "properties": {
+        "canvas": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width_px", "height_px", "margin_x_px", "row_y_fractions", "row_roles"],
+          "properties": {
+            "width_px": { "type": "integer", "minimum": 1 },
+            "height_px": { "type": "integer", "minimum": 1 },
+            "margin_x_px": { "type": "integer", "minimum": 0 },
+            "row_y_fractions": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1 }
+            },
+            "row_roles": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+          }
+        },
+        "band_layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sigma_x_fraction_of_pitch",
+            "min_aspect_ratio",
+            "bbox_relative_threshold",
+            "target_relative_levels",
+            "housekeeping_relative_level",
+            "housekeeping_jitter_fraction"
+          ],
+          "properties": {
+            "sigma_x_fraction_of_pitch": { "type": "number", "exclusiveMinimum": 0 },
+            "min_aspect_ratio": {
+              "type": "number",
+              "minimum": 1,
+              "description": "Floor on sigma_x / sigma_y for every band_shape level; see synth/MODELS.md section 4."
+            },
+            "bbox_relative_threshold": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            },
+            "target_relative_levels": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "number", "exclusiveMinimum": 0 }
+            },
+            "housekeeping_relative_level": { "type": "number", "exclusiveMinimum": 0 },
+            "housekeeping_jitter_fraction": { "type": "number", "minimum": 0 }
+          }
+        },
+        "lane_layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "How lanes[].roi is constructed; see synth/MODELS.md section 4a.",
+          "required": [
+            "roi_width_fraction_of_pitch",
+            "roi_tilt_excursion_fraction_of_height"
+          ],
+          "properties": {
+            "roi_width_fraction_of_pitch": { "type": "number", "exclusiveMinimum": 0 },
+            "roi_tilt_excursion_fraction_of_height": { "type": "number", "minimum": 0 }
+          }
+        },
+        "background": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "base_fraction",
+            "gradient_x_fraction",
+            "gradient_y_fraction",
+            "blob_count",
+            "blob_sigma_px_min",
+            "blob_sigma_px_max",
+            "blob_amplitude_fraction_min",
+            "blob_amplitude_fraction_max",
+            "blob_bright_probability"
+          ],
+          "properties": {
+            "base_fraction": { "type": "number", "minimum": 0 },
+            "gradient_x_fraction": { "type": "number" },
+            "gradient_y_fraction": { "type": "number" },
+            "blob_count": { "type": "integer", "minimum": 0 },
+            "blob_sigma_px_min": { "type": "number", "minimum": 0 },
+            "blob_sigma_px_max": { "type": "number", "minimum": 0 },
+            "blob_amplitude_fraction_min": { "type": "number", "minimum": 0 },
+            "blob_amplitude_fraction_max": { "type": "number", "minimum": 0 },
+            "blob_bright_probability": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "noise": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["shot_noise_enabled", "photon_full_well", "read_noise_fraction"],
+          "properties": {
+            "shot_noise_enabled": { "type": "boolean" },
+            "photon_full_well": { "type": "number", "exclusiveMinimum": 0 },
+            "read_noise_fraction": { "type": "number", "minimum": 0 }
+          }
+        },
+        "band_shape": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "aspect_ratio",
+            "flat_top_exponent",
+            "doublet",
+            "doublet_offset_sigma",
+            "doublet_amplitude_ratio"
+          ],
+          "properties": {
+            "aspect_ratio": {
+              "type": "number",
+              "minimum": 1,
+              "description": "sigma_x / sigma_y for this level; sigma_y is derived from it."
+            },
+            "flat_top_exponent": { "type": "number", "minimum": 2 },
+            "doublet": { "type": "boolean" },
+            "doublet_offset_sigma": { "type": "number", "minimum": 0 },
+            "doublet_amplitude_ratio": { "type": "number", "minimum": 0 }
+          }
+        },
+        "lane_geometry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tilt_deg", "smile_amplitude_px"],
+          "properties": {
+            "tilt_deg": { "type": "number" },
+            "smile_amplitude_px": { "type": "number" }
+          }
+        },
+        "defect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dust_count",
+            "dust_radius_px_min",
+            "dust_radius_px_max",
+            "dust_transmittance",
+            "scratch_count",
+            "scratch_sigma_px",
+            "scratch_amplitude_fraction",
+            "scratch_length_px_min",
+            "scratch_length_px_max"
+          ],
+          "properties": {
+            "dust_count": { "type": "integer", "minimum": 0 },
+            "dust_radius_px_min": { "type": "number", "minimum": 0 },
+            "dust_radius_px_max": { "type": "number", "minimum": 0 },
+            "dust_transmittance": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+            "scratch_count": { "type": "integer", "minimum": 0 },
+            "scratch_sigma_px": { "type": "number", "minimum": 0 },
+            "scratch_amplitude_fraction": { "type": "number", "minimum": 0 },
+            "scratch_length_px_min": { "type": "number", "minimum": 0 },
+            "scratch_length_px_max": { "type": "number", "minimum": 0 }
+          }
+        },
+        "exposure": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reference_peak_fraction"],
+          "properties": {
+            "reference_peak_fraction": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "encoding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["jpeg_quality", "png_compression_level", "tiff_compression"],
+          "properties": {
+            "jpeg_quality": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "png_compression_level": { "type": "integer", "minimum": 0, "maximum": 9 },
+            "tiff_compression": { "type": "string", "minLength": 1 }
+          }
+        },
+        "qc": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "saturated_min_clipped_pixels",
+            "overlap_iou_threshold",
+            "low_dynamic_range_peak_fraction"
+          ],
+          "properties": {
+            "saturated_min_clipped_pixels": { "type": "integer", "minimum": 1 },
+            "overlap_iou_threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+            "low_dynamic_range_peak_fraction": { "type": "number", "minimum": 0 }
+          }
+        },
+        "derived": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lane_pitch_px",
+            "lane_center_x_px",
+            "band_sigma_x_px",
+            "band_sigma_y_px",
+            "row_center_y_px",
+            "reference_peak_dn",
+            "max_value",
+            "tilt_slope"
+          ],
+          "properties": {
+            "lane_pitch_px": { "type": "number", "exclusiveMinimum": 0 },
+            "lane_center_x_px": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "number" }
+            },
+            "band_sigma_x_px": { "type": "number", "exclusiveMinimum": 0 },
+            "band_sigma_y_px": { "type": "number", "exclusiveMinimum": 0 },
+            "row_center_y_px": { "type": "array", "minItems": 1, "items": { "type": "number" } },
+            "reference_peak_dn": { "type": "number", "exclusiveMinimum": 0 },
+            "max_value": { "enum": [255, 65535] },
+            "tilt_slope": { "type": "number" }
+          }
+        }
+      }
+    },
+    "background_truth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "min_dn", "max_dn", "mean_dn", "speckle_blobs"],
+      "description": "The noise-free background layer that band intensities are already free of.",
+      "properties": {
+        "model": { "enum": ["flat", "gradient", "speckle"] },
+        "min_dn": { "type": "number", "minimum": 0 },
+        "max_dn": { "type": "number", "minimum": 0 },
+        "mean_dn": { "type": "number", "minimum": 0 },
+        "speckle_blobs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["center_x", "center_y", "sigma_px", "amplitude_dn"],
+            "properties": {
+              "center_x": { "type": "number" },
+              "center_y": { "type": "number" },
+              "sigma_px": { "type": "number", "exclusiveMinimum": 0 },
+              "amplitude_dn": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "defect": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "center_x", "center_y", "radius_px", "transmittance"],
+          "properties": {
+            "kind": { "const": "dust" },
+            "center_x": { "type": "number" },
+            "center_y": { "type": "number" },
+            "radius_px": { "type": "number", "exclusiveMinimum": 0 },
+            "transmittance": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "x0", "y0", "x1", "y1", "sigma_px", "amplitude_dn"],
+          "properties": {
+            "kind": { "const": "scratch" },
+            "x0": { "type": "number" },
+            "y0": { "type": "number" },
+            "x1": { "type": "number" },
+            "y1": { "type": "number" },
+            "sigma_px": { "type": "number", "exclusiveMinimum": 0 },
+            "amplitude_dn": { "type": "number" }
+          }
+        }
+      ]
+    },
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lane_id", "lane_index", "nominal_center_x_px", "roi"],
+      "properties": {
+        "lane_id": { "type": "string", "minLength": 1 },
+        "lane_index": { "type": "integer", "minimum": 0 },
+        "nominal_center_x_px": { "type": "number" },
+        "roi": { "$ref": "#/$defs/roi" }
+      }
+    },
+    "band": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "band_id",
+        "lane_id",
+        "lane_index",
+        "row_index",
+        "role",
+        "nominal_center_x_px",
+        "nominal_center_y_px",
+        "sigma_x_px",
+        "sigma_y_px",
+        "amplitude_dn",
+        "roi",
+        "true_integrated_intensity_dn",
+        "true_total_intensity_dn",
+        "roi_mass_fraction",
+        "observed_peak_dn",
+        "clipped_pixel_count",
+        "overlapping_band_ids",
+        "qc_flags"
+      ],
+      "properties": {
+        "band_id": { "type": "string", "minLength": 1 },
+        "lane_id": { "type": "string", "minLength": 1 },
+        "lane_index": { "type": "integer", "minimum": 0 },
+        "row_index": { "type": "integer", "minimum": 0 },
+        "role": { "enum": ["target", "target_secondary", "housekeeping"] },
+        "nominal_center_x_px": { "type": "number" },
+        "nominal_center_y_px": { "type": "number" },
+        "sigma_x_px": { "type": "number", "exclusiveMinimum": 0 },
+        "sigma_y_px": { "type": "number", "exclusiveMinimum": 0 },
+        "amplitude_dn": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Peak signal in DN before clipping; may exceed max_value in saturating cells."
+        },
+        "roi": { "$ref": "#/$defs/roi" },
+        "true_integrated_intensity_dn": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Sum of this band's own noise-free, dust-attenuated signal inside its ROI, before clipping. Background-free by construction; excludes the additive scratch contaminant."
+        },
+        "true_total_intensity_dn": { "type": "number", "exclusiveMinimum": 0 },
+        "roi_mass_fraction": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "Fraction of the band's total signal that falls inside its ROI."
+        },
+        "observed_peak_dn": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Brightest quantized pixel inside the ROI in the final image: this band's signal plus background, noise, any overlapping band and any scratch. Not the band's own peak (that is amplitude_dn)."
+        },
+        "clipped_pixel_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Pixels at full scale inside the ROI, counted on the canonical pre-encoding array. JPEG re-encoding lowers this count; see synth/MODELS.md section 7."
+        },
+        "overlapping_band_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "qc_flags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/band_qc_flag" }
+        }
+      }
+    },
+    "normalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference_role", "ratios"],
+      "properties": {
+        "reference_role": { "const": "housekeeping" },
+        "ratios": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "lane_id",
+              "numerator_band_id",
+              "denominator_band_id",
+              "true_ratio",
+              "numerator_qc_flags",
+              "denominator_qc_flags"
+            ],
+            "properties": {
+              "lane_id": { "type": "string", "minLength": 1 },
+              "numerator_band_id": { "type": "string", "minLength": 1 },
+              "denominator_band_id": { "type": "string", "minLength": 1 },
+              "true_ratio": { "type": "number", "exclusiveMinimum": 0 },
+              "numerator_qc_flags": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "$ref": "#/$defs/band_qc_flag" }
+              },
+              "denominator_qc_flags": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "$ref": "#/$defs/band_qc_flag" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "image_stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_dn", "max_dn", "mean_dn", "clipped_pixel_count"],
+      "properties": {
+        "min_dn": { "type": "integer", "minimum": 0 },
+        "max_dn": { "type": "integer", "minimum": 0 },
+        "mean_dn": { "type": "number", "minimum": 0 },
+        "clipped_pixel_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
