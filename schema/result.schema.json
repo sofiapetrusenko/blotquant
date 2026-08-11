@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blotquant/schema/result.schema.json",
+  "title": "blotquant analysis result",
+  "description": "One file per analysed image, written by the pipeline (Phase 1-2). This schema is the source of truth for the result contract; Phase 0 defines it, no code produces it yet. Every reported number is traceable to an ROI, a parameter set and a software version, and every value carries its QC flags rather than being dropped.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result_id",
+    "source",
+    "provenance",
+    "lanes",
+    "bands",
+    "normalization",
+    "image_qc_flags"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "result_id": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "image_format", "bit_depth", "width_px", "height_px", "lossy_format"],
+      "description": "The input as loaded. bit_depth is what the file declared; unsupported depths raise instead of being squashed.",
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "image_format": { "enum": ["tiff", "png", "jpeg"] },
+        "bit_depth": { "enum": [8, 16] },
+        "max_value": { "enum": [255, 65535] },
+        "width_px": { "type": "integer", "minimum": 1 },
+        "height_px": { "type": "integer", "minimum": 1 },
+        "lossy_format": { "type": "boolean" },
+        "ground_truth_image_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Set only when the input came from the synthetic gold set; used by evals to join results to ground truth."
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["software_version", "config_id", "config_digest", "parameters", "created_at"],
+      "description": "Everything needed to reproduce this result. `parameters` is the complete, explicit processing config; no parameter used by the pipeline may be absent from it.",
+      "properties": {
+        "software_version": { "type": "string", "minLength": 1 },
+        "config_id": { "type": "string", "minLength": 1 },
+        "config_digest": { "$ref": "#/$defs/sha256" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "parameters": {
+          "type": "object",
+          "required": ["background", "detection", "quantification", "normalization"],
+          "description": "Echo of the processing config. Sub-objects stay open because Phase 1 owns their exact keys, but the four stages must each be present and each must name its method explicitly.",
+          "properties": {
+            "background": {
+              "type": "object",
+              "required": ["method"],
+              "properties": {
+                "method": {
+                  "enum": ["rolling_ball", "local_median"],
+                  "description": "Required and explicit; there is no default background method."
+                }
+              }
+            },
+            "detection": { "type": "object", "required": ["method"] },
+            "quantification": { "type": "object", "required": ["method"] },
+            "normalization": {
+              "type": "object",
+              "required": ["mode", "exclude_qc_flagged"],
+              "properties": {
+                "mode": { "$ref": "#/$defs/normalization_mode" },
+                "exclude_qc_flagged": {
+                  "type": "boolean",
+                  "description": "True by default; setting it false is an explicit, recorded override."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "lanes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["lane_id", "roi"],
+        "properties": {
+          "lane_id": { "type": "string", "minLength": 1 },
+          "lane_index": { "type": "integer", "minimum": 0 },
+          "roi": { "$ref": "#/$defs/roi" },
+          "total_protein_signal": {
+            "type": "number",
+            "description": "Lane-profile integral, present when total_protein normalization is used."
+          },
+          "qc_flags": { "$ref": "#/$defs/band_qc_flags" }
+        }
+      }
+    },
+    "bands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "band_id",
+          "lane_id",
+          "roi",
+          "integrated_intensity",
+          "background_estimate",
+          "qc_flags",
+          "excluded_from_normalization"
+        ],
+        "properties": {
+          "band_id": { "type": "string", "minLength": 1 },
+          "lane_id": { "type": "string", "minLength": 1 },
+          "roi": { "$ref": "#/$defs/roi" },
+          "integrated_intensity": {
+            "type": "number",
+            "description": "Background-corrected integrated intensity over the ROI, in DN of the source bit depth."
+          },
+          "background_estimate": { "type": "number" },
+          "peak_value": { "type": "number" },
+          "clipped_pixel_count": { "type": "integer", "minimum": 0 },
+          "qc_flags": { "$ref": "#/$defs/band_qc_flags" },
+          "excluded_from_normalization": {
+            "type": "boolean",
+            "description": "QC annotates, never silently drops: a flagged band still reports its value here, and its exclusion is explicit."
+          },
+          "exclusion_reason": { "type": "string", "minLength": 1 }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "excluded_from_normalization": { "const": true } } },
+            "then": { "required": ["exclusion_reason"] }
+          }
+        ]
+      }
+    },
+    "normalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "exclude_qc_flagged", "warnings", "ratios"],
+      "properties": {
+        "mode": { "$ref": "#/$defs/normalization_mode" },
+        "exclude_qc_flagged": { "type": "boolean" },
+        "reference_band_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/normalization_warning" },
+          "description": "housekeeping_single always emits single_housekeeping_reference, per current journal guidance."
+        },
+        "ratios": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["lane_id", "numerator_band_id", "ratio", "excluded"],
+            "properties": {
+              "lane_id": { "type": "string", "minLength": 1 },
+              "numerator_band_id": { "type": "string", "minLength": 1 },
+              "denominator_band_id": { "type": "string", "minLength": 1 },
+              "ratio": { "type": "number" },
+              "excluded": { "type": "boolean" },
+              "exclusion_reason": { "type": "string", "minLength": 1 },
+              "qc_flags": { "$ref": "#/$defs/band_qc_flags" }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "excluded": { "const": true } } },
+                "then": { "required": ["exclusion_reason"] }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "image_qc_flags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/image_qc_flag" }
+    },
+    "methods_paragraph": {
+      "type": "string",
+      "description": "Generated from provenance (Phase 5)."
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "roi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "band_qc_flags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["saturated", "overlapping"] },
+      "description": "Same vocabulary as ground truth, so evals can score flags directly."
+    },
+    "image_qc_flag": { "enum": ["saturated", "lossy_format", "low_dynamic_range"] },
+    "normalization_mode": {
+      "enum": ["housekeeping_single", "housekeeping_multi", "total_protein"]
+    },
+    "normalization_warning": {
+      "enum": [
+        "single_housekeeping_reference",
+        "reference_band_qc_flagged",
+        "qc_flagged_bands_included_by_override"
+      ]
+    }
+  }
+}

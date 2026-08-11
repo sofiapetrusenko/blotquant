@@ -1,0 +1,13 @@
+# Runtime dependencies actually imported by this repository.
+#
+# numpy is pinned EXACTLY: the committed synthetic gold set under data/ is a frozen
+# artifact whose pixel values are defined by numpy's legacy RandomState stream and
+# float64 arithmetic. A numpy upgrade must be a deliberate, reviewed act (bump
+# SYNTH_VERSION, regenerate, add a break marker in evals/history.md).
+numpy==2.4.6
+
+# Lower-bounded: used only for lossless/lossy container encoding, not for defining
+# canonical pixel values.
+tifffile>=2024.1.30          # 8/16-bit TIFF writing and reading
+opencv-python-headless>=4.9  # PNG (8/16-bit) and JPEG q75 encoding/decoding
+jsonschema>=4.20             # Draft 2020-12 validation of ground truth in tests and CI

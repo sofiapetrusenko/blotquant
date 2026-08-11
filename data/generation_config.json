@@ -1,0 +1,248 @@
+{
+  "synth_version": "1.0.0",
+  "ground_truth_schema_version": "1.0.0",
+  "master_seed": 42,
+  "config_digest": "sha256:0252e0573db045850fa2a2ded94fc1c9ccb57f7aa38f248d3b1556d1f1a9a7ff",
+  "image_count": 40,
+  "split_counts": {
+    "dev": 30,
+    "test": 10
+  },
+  "config": {
+    "matrix": {
+      "format_depths": {
+        "tiff8": [
+          "tiff",
+          8
+        ],
+        "tiff16": [
+          "tiff",
+          16
+        ],
+        "png8": [
+          "png",
+          8
+        ],
+        "png16": [
+          "png",
+          16
+        ],
+        "jpeg8": [
+          "jpeg",
+          8
+        ]
+      },
+      "backgrounds": [
+        "flat",
+        "gradient",
+        "speckle"
+      ],
+      "noises": [
+        "low",
+        "high"
+      ],
+      "band_shapes": [
+        "sharp",
+        "smeared",
+        "doublet"
+      ],
+      "lane_geometries": [
+        "straight",
+        "tilted",
+        "smile"
+      ],
+      "defects": [
+        "none",
+        "dust",
+        "scratch"
+      ],
+      "exposures": [
+        "normal",
+        "low",
+        "saturating"
+      ],
+      "lane_counts": [
+        4,
+        5,
+        6
+      ]
+    },
+    "canvas": {
+      "width_px": 256,
+      "height_px": 192,
+      "margin_x_px": 14,
+      "row_y_fractions": [
+        0.32,
+        0.7
+      ],
+      "row_roles": [
+        "target",
+        "housekeeping"
+      ]
+    },
+    "band_layout": {
+      "sigma_x_fraction_of_pitch": 0.24,
+      "min_aspect_ratio": 2.5,
+      "bbox_relative_threshold": 0.05,
+      "target_relative_levels": [
+        1.0,
+        0.72,
+        0.48,
+        0.3,
+        0.62,
+        0.18
+      ],
+      "housekeeping_relative_level": 0.55,
+      "housekeeping_jitter_fraction": 0.06
+    },
+    "lane_layout": {
+      "roi_width_fraction_of_pitch": 1.0,
+      "roi_tilt_excursion_fraction_of_height": 0.5
+    },
+    "encoding": {
+      "jpeg_quality": 75,
+      "png_compression_level": 6,
+      "tiff_compression": "zlib"
+    },
+    "qc": {
+      "saturated_min_clipped_pixels": 3,
+      "overlap_iou_threshold": 0.15,
+      "low_dynamic_range_peak_fraction": 0.2
+    },
+    "split": {
+      "dev_count": 30,
+      "test_count": 10
+    },
+    "json_float_decimals": 6,
+    "backgrounds": {
+      "flat": {
+        "base_fraction": 0.08,
+        "gradient_x_fraction": 0.0,
+        "gradient_y_fraction": 0.0,
+        "blob_count": 0,
+        "blob_sigma_px_min": 0.0,
+        "blob_sigma_px_max": 0.0,
+        "blob_amplitude_fraction_min": 0.0,
+        "blob_amplitude_fraction_max": 0.0,
+        "blob_bright_probability": 0.0
+      },
+      "gradient": {
+        "base_fraction": 0.06,
+        "gradient_x_fraction": 0.1,
+        "gradient_y_fraction": 0.04,
+        "blob_count": 0,
+        "blob_sigma_px_min": 0.0,
+        "blob_sigma_px_max": 0.0,
+        "blob_amplitude_fraction_min": 0.0,
+        "blob_amplitude_fraction_max": 0.0,
+        "blob_bright_probability": 0.0
+      },
+      "speckle": {
+        "base_fraction": 0.09,
+        "gradient_x_fraction": 0.0,
+        "gradient_y_fraction": 0.0,
+        "blob_count": 14,
+        "blob_sigma_px_min": 4.0,
+        "blob_sigma_px_max": 18.0,
+        "blob_amplitude_fraction_min": 0.01,
+        "blob_amplitude_fraction_max": 0.045,
+        "blob_bright_probability": 0.6
+      }
+    },
+    "noises": {
+      "low": {
+        "shot_noise_enabled": true,
+        "photon_full_well": 4096.0,
+        "read_noise_fraction": 0.004
+      },
+      "high": {
+        "shot_noise_enabled": true,
+        "photon_full_well": 512.0,
+        "read_noise_fraction": 0.012
+      }
+    },
+    "band_shapes": {
+      "sharp": {
+        "aspect_ratio": 5.0,
+        "flat_top_exponent": 4.0,
+        "doublet": false,
+        "doublet_offset_sigma": 0.0,
+        "doublet_amplitude_ratio": 0.0
+      },
+      "smeared": {
+        "aspect_ratio": 2.6,
+        "flat_top_exponent": 4.0,
+        "doublet": false,
+        "doublet_offset_sigma": 0.0,
+        "doublet_amplitude_ratio": 0.0
+      },
+      "doublet": {
+        "aspect_ratio": 4.0,
+        "flat_top_exponent": 4.0,
+        "doublet": true,
+        "doublet_offset_sigma": 2.2,
+        "doublet_amplitude_ratio": 0.65
+      }
+    },
+    "lane_geometries": {
+      "straight": {
+        "tilt_deg": 0.0,
+        "smile_amplitude_px": 0.0
+      },
+      "tilted": {
+        "tilt_deg": 4.0,
+        "smile_amplitude_px": 0.0
+      },
+      "smile": {
+        "tilt_deg": 0.0,
+        "smile_amplitude_px": 9.0
+      }
+    },
+    "defects": {
+      "none": {
+        "dust_count": 0,
+        "dust_radius_px_min": 0.0,
+        "dust_radius_px_max": 0.0,
+        "dust_transmittance": 1.0,
+        "scratch_count": 0,
+        "scratch_sigma_px": 0.0,
+        "scratch_amplitude_fraction": 0.0,
+        "scratch_length_px_min": 0.0,
+        "scratch_length_px_max": 0.0
+      },
+      "dust": {
+        "dust_count": 6,
+        "dust_radius_px_min": 1.5,
+        "dust_radius_px_max": 3.5,
+        "dust_transmittance": 0.35,
+        "scratch_count": 0,
+        "scratch_sigma_px": 0.0,
+        "scratch_amplitude_fraction": 0.0,
+        "scratch_length_px_min": 0.0,
+        "scratch_length_px_max": 0.0
+      },
+      "scratch": {
+        "dust_count": 0,
+        "dust_radius_px_min": 0.0,
+        "dust_radius_px_max": 0.0,
+        "dust_transmittance": 1.0,
+        "scratch_count": 1,
+        "scratch_sigma_px": 1.2,
+        "scratch_amplitude_fraction": 0.25,
+        "scratch_length_px_min": 60.0,
+        "scratch_length_px_max": 140.0
+      }
+    },
+    "exposures": {
+      "normal": {
+        "reference_peak_fraction": 0.55
+      },
+      "low": {
+        "reference_peak_fraction": 0.12
+      },
+      "saturating": {
+        "reference_peak_fraction": 1.35
+      }
+    }
+  }
+}

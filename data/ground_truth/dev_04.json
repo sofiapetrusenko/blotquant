@@ -1,0 +1,480 @@
+{
+  "background_truth": {
+    "max_dn": 51.0,
+    "mean_dn": 33.15,
+    "min_dn": 15.3,
+    "model": "gradient",
+    "speckle_blobs": []
+  },
+  "bands": [
+    {
+      "amplitude_dn": 140.25,
+      "band_id": "dev_04_L0_target",
+      "clipped_pixel_count": 0,
+      "lane_id": "dev_04_L0",
+      "lane_index": 0,
+      "nominal_center_x_px": 42.5,
+      "nominal_center_y_px": 61.44,
+      "observed_peak_dn": 191,
+      "overlapping_band_ids": [],
+      "qc_flags": [],
+      "roi": {
+        "height": 14,
+        "width": 42,
+        "x": 22,
+        "y": 55
+      },
+      "roi_mass_fraction": 0.983486,
+      "role": "target",
+      "row_index": 0,
+      "sigma_x_px": 13.68,
+      "sigma_y_px": 2.736,
+      "true_integrated_intensity_dn": 27897.927477,
+      "true_total_intensity_dn": 28366.357555
+    },
+    {
+      "amplitude_dn": 72.764672,
+      "band_id": "dev_04_L0_housekeeping",
+      "clipped_pixel_count": 0,
+      "lane_id": "dev_04_L0",
+      "lane_index": 0,
+      "nominal_center_x_px": 42.5,
+      "nominal_center_y_px": 134.4,
+      "observed_peak_dn": 113,
+      "overlapping_band_ids": [],
+      "qc_flags": [],
+      "roi": {
+        "height": 14,
+        "width": 42,
+        "x": 22,
+        "y": 128
+      },
+      "roi_mass_fraction": 0.983454,
+      "role": "housekeeping",
+      "row_index": 1,
+      "sigma_x_px": 13.68,
+      "sigma_y_px": 2.736,
+      "true_integrated_intensity_dn": 14473.561684,
+      "true_total_intensity_dn": 14717.067317
+    },
+    {
+      "amplitude_dn": 100.98,
+      "band_id": "dev_04_L1_target",
+      "clipped_pixel_count": 0,
+      "lane_id": "dev_04_L1",
+      "lane_index": 1,
+      "nominal_center_x_px": 99.5,
+      "nominal_center_y_px": 61.44,
+      "observed_peak_dn": 136,
+      "overlapping_band_ids": [],
+      "qc_flags": [],
+      "roi": {
+        "height": 14,
+        "width": 42,
+        "x": 79,
+        "y": 55
+      },
+      "roi_mass_fraction": 0.983486,
+      "role": "target",
+      "row_index": 0,
+      "sigma_x_px": 13.68,
+      "sigma_y_px": 2.736,
+      "true_integrated_intensity_dn": 20086.507783,
+      "true_total_intensity_dn": 20423.77744
+    },
+    {
+      "amplitude_dn": 78.253321,
+      "band_id": "dev_04_L1_housekeeping",
+      "clipped_pixel_count": 0,
+      "lane_id": "dev_04_L1",
+      "lane_index": 1,
+      "nominal_center_x_px": 99.5,
+      "nominal_center_y_px": 134.4,
+      "observed_peak_dn": 137,
+      "overlapping_band_ids": [],
+      "qc_flags": [],
+      "roi": {
+        "height": 14,
+        "width": 42,
+        "x": 79,
+        "y": 128
+      },
+      "roi_mass_fraction": 0.983454,
+      "role": "housekeeping",
+      "row_index": 1,
+      "sigma_x_px": 13.68,
+      "sigma_y_px": 2.736,
+      "true_integrated_intensity_dn": 15565.304459,
+      "true_total_intensity_dn": 15827.177756
+    },
+    {
+      "amplitude_dn": 67.32,
+      "band_id": "dev_04_L2_target",
+      "clipped_pixel_count": 0,
+      "lane_id": "dev_04_L2",
+      "lane_index": 2,
+      "nominal_center_x_px": 156.5,
+      "nominal_center_y_px": 61.44,
+      "observed_peak_dn": 117,
+      "overlapping_band_ids": [],
+      "qc_flags": [],
+      "roi": {
+        "height": 14,
+        "width": 42,
+        "x": 136,
+        "y": 55
+      },
+      "roi_mass_fraction": 0.983486,
+      "role": "target",
+      "row_index": 0,
+      "sigma_x_px": 13.68,
+      "sigma_y_px": 2.736,
+      "true_integrated_intensity_dn": 13391.005189,
+      "true_total_intensity_dn": 13615.851627
+    },
+    {
+      "amplitude_dn": 74.906898,
+      "band_id": "dev_04_L2_housekeeping",
+      "clipped_pixel_count": 0,
+      "lane_id": "dev_04_L2",
+      "lane_index": 2,
+      "nominal_center_x_px": 156.5,
+      "nominal_center_y_px": 134.4,
+      "observed_peak_dn": 135,
+      "overlapping_band_ids": [],
+      "qc_flags": [],
+      "roi": {
+        "height": 14,
+        "width": 42,
+        "x": 136,
+        "y": 128
+      },
+      "roi_mass_fraction": 0.983454,
+      "role": "housekeeping",
+      "row_index": 1,
+      "sigma_x_px": 13.68,
+      "sigma_y_px": 2.736,
+      "true_integrated_intensity_dn": 14899.670224,
+      "true_total_intensity_dn": 15150.344779
+    },
+    {
+      "amplitude_dn": 42.075,
+      "band_id": "dev_04_L3_target",
+      "clipped_pixel_count": 0,
+      "lane_id": "dev_04_L3",
+      "lane_index": 3,
+      "nominal_center_x_px": 213.5,
+      "nominal_center_y_px": 61.44,
+      "observed_peak_dn": 98,
+      "overlapping_band_ids": [],
+      "qc_flags": [],
+      "roi": {
+        "height": 14,
+        "width": 42,
+        "x": 193,
+        "y": 55
+      },
+      "roi_mass_fraction": 0.983486,
+      "role": "target",
+      "row_index": 0,
+      "sigma_x_px": 13.68,
+      "sigma_y_px": 2.736,
+      "true_integrated_intensity_dn": 8369.378243,
+      "true_total_intensity_dn": 8509.907267
+    },
+    {
+      "amplitude_dn": 73.956461,
+      "band_id": "dev_04_L3_housekeeping",
+      "clipped_pixel_count": 0,
+      "lane_id": "dev_04_L3",
+      "lane_index": 3,
+      "nominal_center_x_px": 213.5,
+      "nominal_center_y_px": 134.4,
+      "observed_peak_dn": 131,
+      "overlapping_band_ids": [],
+      "qc_flags": [],
+      "roi": {
+        "height": 14,
+        "width": 42,
+        "x": 193,
+        "y": 128
+      },
+      "roi_mass_fraction": 0.983454,
+      "role": "housekeeping",
+      "row_index": 1,
+      "sigma_x_px": 13.68,
+      "sigma_y_px": 2.736,
+      "true_integrated_intensity_dn": 14710.619526,
+      "true_total_intensity_dn": 14958.113457
+    }
+  ],
+  "bit_depth": 8,
+  "defects": [
+    {
+      "center_x": 220.703767,
+      "center_y": 109.106862,
+      "kind": "dust",
+      "radius_px": 2.88177,
+      "transmittance": 0.35
+    },
+    {
+      "center_x": 254.497586,
+      "center_y": 1.648731,
+      "kind": "dust",
+      "radius_px": 1.930699,
+      "transmittance": 0.35
+    },
+    {
+      "center_x": 126.471348,
+      "center_y": 190.44453,
+      "kind": "dust",
+      "radius_px": 3.398245,
+      "transmittance": 0.35
+    },
+    {
+      "center_x": 155.734548,
+      "center_y": 187.421148,
+      "kind": "dust",
+      "radius_px": 2.873432,
+      "transmittance": 0.35
+    },
+    {
+      "center_x": 87.598335,
+      "center_y": 88.302779,
+      "kind": "dust",
+      "radius_px": 2.658624,
+      "transmittance": 0.35
+    },
+    {
+      "center_x": 191.740041,
+      "center_y": 35.294051,
+      "kind": "dust",
+      "radius_px": 2.09365,
+      "transmittance": 0.35
+    }
+  ],
+  "generation": {
+    "config_digest": "sha256:0252e0573db045850fa2a2ded94fc1c9ccb57f7aa38f248d3b1556d1f1a9a7ff",
+    "difficulty": {
+      "background": "gradient",
+      "band_shape": "sharp",
+      "defect": "dust",
+      "exposure": "normal",
+      "format_depth": "tiff8",
+      "lane_count": 4,
+      "lane_geometry": "straight",
+      "noise": "high"
+    },
+    "master_seed": 42,
+    "parameters": {
+      "background": {
+        "base_fraction": 0.06,
+        "blob_amplitude_fraction_max": 0.0,
+        "blob_amplitude_fraction_min": 0.0,
+        "blob_bright_probability": 0.0,
+        "blob_count": 0,
+        "blob_sigma_px_max": 0.0,
+        "blob_sigma_px_min": 0.0,
+        "gradient_x_fraction": 0.1,
+        "gradient_y_fraction": 0.04
+      },
+      "band_layout": {
+        "bbox_relative_threshold": 0.05,
+        "housekeeping_jitter_fraction": 0.06,
+        "housekeeping_relative_level": 0.55,
+        "min_aspect_ratio": 2.5,
+        "sigma_x_fraction_of_pitch": 0.24,
+        "target_relative_levels": [
+          1.0,
+          0.72,
+          0.48,
+          0.3,
+          0.62,
+          0.18
+        ]
+      },
+      "band_shape": {
+        "aspect_ratio": 5.0,
+        "doublet": false,
+        "doublet_amplitude_ratio": 0.0,
+        "doublet_offset_sigma": 0.0,
+        "flat_top_exponent": 4.0
+      },
+      "canvas": {
+        "height_px": 192,
+        "margin_x_px": 14,
+        "row_roles": [
+          "target",
+          "housekeeping"
+        ],
+        "row_y_fractions": [
+          0.32,
+          0.7
+        ],
+        "width_px": 256
+      },
+      "defect": {
+        "dust_count": 6,
+        "dust_radius_px_max": 3.5,
+        "dust_radius_px_min": 1.5,
+        "dust_transmittance": 0.35,
+        "scratch_amplitude_fraction": 0.0,
+        "scratch_count": 0,
+        "scratch_length_px_max": 0.0,
+        "scratch_length_px_min": 0.0,
+        "scratch_sigma_px": 0.0
+      },
+      "derived": {
+        "band_sigma_x_px": 13.68,
+        "band_sigma_y_px": 2.736,
+        "lane_center_x_px": [
+          42.5,
+          99.5,
+          156.5,
+          213.5
+        ],
+        "lane_pitch_px": 57.0,
+        "max_value": 255,
+        "reference_peak_dn": 140.25,
+        "row_center_y_px": [
+          61.44,
+          134.4
+        ],
+        "tilt_slope": 0.0
+      },
+      "encoding": {
+        "jpeg_quality": 75,
+        "png_compression_level": 6,
+        "tiff_compression": "zlib"
+      },
+      "exposure": {
+        "reference_peak_fraction": 0.55
+      },
+      "lane_geometry": {
+        "smile_amplitude_px": 0.0,
+        "tilt_deg": 0.0
+      },
+      "lane_layout": {
+        "roi_tilt_excursion_fraction_of_height": 0.5,
+        "roi_width_fraction_of_pitch": 1.0
+      },
+      "noise": {
+        "photon_full_well": 512.0,
+        "read_noise_fraction": 0.012,
+        "shot_noise_enabled": true
+      },
+      "qc": {
+        "low_dynamic_range_peak_fraction": 0.2,
+        "overlap_iou_threshold": 0.15,
+        "saturated_min_clipped_pixels": 3
+      }
+    },
+    "stream_seeds": {
+      "background": 3911790426,
+      "bands": 4086806307,
+      "defects": 211566266,
+      "noise": 722656725
+    }
+  },
+  "height_px": 192,
+  "image_format": "tiff",
+  "image_id": "dev_04",
+  "image_path": "images/dev_04.tiff",
+  "image_qc_flags": [],
+  "image_stats": {
+    "clipped_pixel_count": 0,
+    "max_dn": 191,
+    "mean_dn": 35.735107,
+    "min_dn": 4
+  },
+  "lanes": [
+    {
+      "lane_id": "dev_04_L0",
+      "lane_index": 0,
+      "nominal_center_x_px": 42.5,
+      "roi": {
+        "height": 192,
+        "width": 58,
+        "x": 14,
+        "y": 0
+      }
+    },
+    {
+      "lane_id": "dev_04_L1",
+      "lane_index": 1,
+      "nominal_center_x_px": 99.5,
+      "roi": {
+        "height": 192,
+        "width": 58,
+        "x": 71,
+        "y": 0
+      }
+    },
+    {
+      "lane_id": "dev_04_L2",
+      "lane_index": 2,
+      "nominal_center_x_px": 156.5,
+      "roi": {
+        "height": 192,
+        "width": 58,
+        "x": 128,
+        "y": 0
+      }
+    },
+    {
+      "lane_id": "dev_04_L3",
+      "lane_index": 3,
+      "nominal_center_x_px": 213.5,
+      "roi": {
+        "height": 192,
+        "width": 58,
+        "x": 185,
+        "y": 0
+      }
+    }
+  ],
+  "lossy_format": false,
+  "max_value": 255,
+  "normalization": {
+    "ratios": [
+      {
+        "denominator_band_id": "dev_04_L0_housekeeping",
+        "denominator_qc_flags": [],
+        "lane_id": "dev_04_L0",
+        "numerator_band_id": "dev_04_L0_target",
+        "numerator_qc_flags": [],
+        "true_ratio": 1.927509
+      },
+      {
+        "denominator_band_id": "dev_04_L1_housekeeping",
+        "denominator_qc_flags": [],
+        "lane_id": "dev_04_L1",
+        "numerator_band_id": "dev_04_L1_target",
+        "numerator_qc_flags": [],
+        "true_ratio": 1.290467
+      },
+      {
+        "denominator_band_id": "dev_04_L2_housekeeping",
+        "denominator_qc_flags": [],
+        "lane_id": "dev_04_L2",
+        "numerator_band_id": "dev_04_L2_target",
+        "numerator_qc_flags": [],
+        "true_ratio": 0.898745
+      },
+      {
+        "denominator_band_id": "dev_04_L3_housekeeping",
+        "denominator_qc_flags": [],
+        "lane_id": "dev_04_L3",
+        "numerator_band_id": "dev_04_L3_target",
+        "numerator_qc_flags": [],
+        "true_ratio": 0.568934
+      }
+    ],
+    "reference_role": "housekeeping"
+  },
+  "pixel_sha256": "sha256:4e261d2d5b3239d69bc51bda0f664febe18e5574ae84a35fcfbb74f2d790d366",
+  "schema_version": "1.0.0",
+  "split": "dev",
+  "synth_version": "1.0.0",
+  "width_px": 256
+}

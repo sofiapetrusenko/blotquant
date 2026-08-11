@@ -32,9 +32,10 @@ jobs:
           schema_path = Path("schema/ground_truth.schema.json")
           gt_dir = Path("data/ground_truth")
 
+          # Phase 0 is merged: the schema and the gold set must both be present.
+          # A missing schema or an empty gold set is a failure, not a skip.
           if not schema_path.exists():
-              print("schema not present yet — skipping ground-truth validation")
-              sys.exit(0)
+              sys.exit(f"FAIL: {schema_path} is missing")
 
           from jsonschema import Draft202012Validator
           schema = json.loads(schema_path.read_text())
@@ -42,8 +43,8 @@ jobs:
 
           gt_files = sorted(gt_dir.glob("*.json")) if gt_dir.exists() else []
           if not gt_files:
-              print("no ground-truth files yet — skipping")
-              sys.exit(0)
+              sys.exit(f"FAIL: no ground-truth files in {gt_dir}; "
+                       f"regenerate with 'python -m synth --seed 42 --out data/'")
 
           failed = False
           for f in gt_files:
@@ -59,6 +60,4 @@ jobs:
           EOF
 
       - name: Tests
-        run: |
-          # exit code 5 = no tests collected; acceptable only before Phase 0 merges
-          pytest || [ $? -eq 5 ]
+        run: pytest
