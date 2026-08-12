@@ -372,9 +372,11 @@ exactly as strong as they are — no stronger.
 - **`python -m evals.sweep`** re-runs every sweep quoted in this section and in both
   configs, and writes `evals/dev_sweeps.json` plus a readable `evals/dev_sweeps.md`.
   `python -m evals.sweep --check` re-runs them and exits non-zero naming any figure that
-  has moved. CI runs `--check` on every push, so a parameter change that invalidates a
-  recorded surface fails the build. It takes about two minutes, which is why it is a CI
-  step rather than part of `pytest`.
+  has moved: exactly, for the record's structure, its header and the two shipped config
+  digests; within a per-class tolerance for the measured figures, for the reason the next
+  entry sets out and no wider than the drift measured there. CI runs `--check` on every
+  push, so a parameter change that invalidates a recorded surface fails the build. It takes
+  about two minutes, which is why it is a CI step rather than part of `pytest`.
 - **`tests/test_recorded_figures.py`** checks the transcription, which is the half a
   re-measuring tool cannot: every figure quoted in this section or in a config comment
   sits inside a block marked with the sweep it came from, and the test fails if a number
@@ -384,7 +386,10 @@ exactly as strong as they are — no stronger.
 
 So, precisely: **every figure inside a marked block in this section and in
 `configs/*.yaml` is mechanically tied to `evals/dev_sweeps.json`, and that record is
-mechanically re-measured from the committed gold set in CI.** No weaker and no stronger.
+mechanically re-measured from the committed gold set in CI.** The tie to the record is
+exact; the re-measurement is exact for the parameters the record was measured under and
+within a stated tolerance for the figures, as the next entry sets out. No weaker and no
+stronger.
 
 Numbers *outside* a marked block are not covered by the checker. Cycle 4 found that the
 previous version of this paragraph claimed a three-way exhaustive taxonomy that several
@@ -407,9 +412,26 @@ it used to omit have been moved *into* blocks (`doublet_cost`, `lane_roi_geometr
   second is load-bearing for the "not chosen to match the generator's own aperture"
   argument, so it is worth naming: both are the generator's own recorded numbers, checked
   against `data/ground_truth/` rather than against the sweep record, and both reproduce.
+- **The evidence behind the `--check` tolerance policy**, in the entry below. This kind was
+  added along with the policy itself, and it is four things, none of them a figure the
+  record holds: the pinned dependency versions; what the x86-64 CI runner measured, which
+  is a reading from a CI log on another machine; the one-off diagnostics that identified
+  the cause and sized the leverage, each stated in place with what it measured; and the
+  tolerance constants themselves, which live in `evals/sweep.py`. Two derived kinds come
+  with them. A difference between a CI reading and a record figure — "154.73 → 161.38, 4.3%
+  relative" — has one operand outside any block, so the first bullet does not cover it and
+  this one does. The *committed* side of every such pair is a record figure, and each one
+  is quoted inside a marked block, so those are covered normally; the three band-F1 effect
+  sizes quoted for calibration are differences between two block figures, so they fall
+  under the first bullet.
 
 Phase-0 sections of this file are outside all of this; the claim covers the Phase 1
-section and `configs/*.yaml` only.
+section and `configs/*.yaml` only. It does not extend to `evals/sweep.py`'s own docstrings,
+which are deliberately written to need no coverage: they quote drift magnitudes, leverage
+measurements and their own constants, and where a derivation depends on a record figure —
+that the band-F1 tolerance still separates real parameter effects, that the Monte-Carlo
+tolerance still separates border handling — the docstring states the property and
+`tests/test_sweep_check.py` asserts it from the record instead of transcribing a number.
 
 **Human ruling: this tooling stays, as a ratified deviation from PLAN.md's Phase 1 file
 list.** PLAN.md's Phase 1 deliverables name `pipeline/*`, the CLI and `evals/run.py` v0;
@@ -431,6 +453,181 @@ log iterations. It has no per-difficulty-cell breakdown and no history log, both
 are explicitly Phase 3, and it reads `evals.run.EVALUATED_SPLIT` with no flag that could
 point it at the test split. If Phase 3 wants an iteration harness it can build on this,
 but nothing here anticipates it.
+
+### Why `--check` compares some figures within a tolerance
+
+`python -m evals.sweep --check` passed on the arm64 development machine and failed on the
+x86-64 CI runner, on the same commit with identical pinned dependency versions (numpy
+2.4.6, scipy 1.17.1, scikit-image 0.26.0, opencv 5.0.0). Sixteen figures moved, all of them
+inside the `background.local_median.window_px` sweep at 61 and 81. The chain was measured
+link by link before anything was loosened, and each link below is a measurement:
+
+1. **Not the dependencies.** The versions match, so the difference is architectural.
+2. **Not the median filter.** The `local_median` background is exactly integer-valued on
+   this data (`bg == np.round(bg)` everywhere, and so is the corrected image), and a median
+   is a selection among exact integers, so it is bit-identical on both machines.
+3. **Not a band sitting on its threshold.** The smallest relative margin between any band
+   peak's prominence and its threshold is 2.1e-4 — twelve orders of magnitude above
+   float64 last-bit noise.
+4. **The float non-determinism enters at the profile means**, `corrected[:, a:b].mean(axis=1)`,
+   where summation order and SIMD blocking differ between NEON and AVX.
+5. **Ties are common**, because the corrected image is integer-valued: about 2% of adjacent
+   profile samples are exactly equal (598 of 28459 at window 51), so plateaus abound.
+6. **A last bit becomes a whole pixel.** `find_peaks` resolves plateaus and ties by
+   position, and ROI edges are integers. Perturbing one lane slice by 1 ULP moved 2 of 303
+   band ROIs at window 61.
+7. **A whole pixel becomes a changed matched set.** A one-pixel shift can cross the IoU ≥
+   0.5 matching boundary, so tp/fp/fn flip and the *matched set* the error statistics are
+   aggregated over changes with them.
+
+Link 7 is the binding constraint, and it is why the drifting quantities are not all small.
+Five of the figures the 81 row records:
+
+<!-- sweep: background.local_median.window_px -->
+| window | band F1 | precision | false positives | mean \|e\|% | max \|e\|% |
+|---|---|---|---|---|---|
+| 81 | 0.7938 | 0.8658 | 40 | 18.31 | 154.73 |
+<!-- end sweep -->
+
+On x86-64 the same code, on the same committed pixels, measured 0.7994, 0.875, 37, 18.87
+and 161.38 for those five. The last is a 6.65-point move, 4.3% of the recorded value: one
+band with a large error entered the matched set, and an extreme carries that band wholesale.
+So a single blanket epsilon is not available either — the same 1-ULP cause moves a count by
+3 and an extreme by 4.3%.
+
+**Integer detection counts can legitimately differ by one or a few between platforms.**
+That reads wrong — a count of detections is the last thing that looks like it should be
+architecture-dependent — so it is worth stating plainly rather than leaving a reader to
+rediscover it: the count is downstream of a whole-pixel ROI shift, which is downstream of a
+tie, which is downstream of the last bit of a mean. The false-positive count in the table
+above measured 37 on the other machine.
+
+So `--check` splits the record in two. Compared **exactly, and in both directions** (a
+sweep, value or field that only the committed record has fails as loudly as one only the
+measurement has):
+
+- the structure: the set of sweep names, of value labels within a sweep, and of fields
+  within a value;
+- each sweep's `parameter` and `note` — see the prose rule below;
+- the header: `split`, `iou_threshold`, `images`, `truth_lanes`, `truth_bands`;
+- **`shipped`, the two config digests** — see the guarantee below;
+- `evals/dev_sweeps.md`, against what the **committed** JSON renders. It used to be
+  compared against what the fresh measurement renders, which quietly made every figure in
+  the report exact again and is why the report appeared in the CI failure at all. Rendering
+  the committed record makes it a transcription check between two committed files: exact,
+  and the same on every machine.
+
+Compared **within a class tolerance**, each constant named in `evals/sweep.py` with its
+derivation beside it:
+
+| class | figures | bound | evidence |
+|---|---|---|---|
+| platform-independent | `samples_in_window`, `target_secondary_bands_in_split`, the `lane_roi_geometry` figures, and the whole `truth` row of `band_roi_sizes` | exact | no measurement reaches them |
+| detection count | every lane and band tp, fp, fn, plus `matched`, `clean_count`, `bands` and the `doublet_cost` and `flag_counts` tallies | ±4 counts | CI moved one by 3 |
+| detection rate | `lane_f1`, `band_f1`, `band_precision`, `band_recall` | ±0.02 | CI moved one by 0.0092 |
+| percentage-point error | `mean`/`median_absolute_percent` and the sweeps' `clean_*` columns | ±1.0 pp | CI moved one by 0.56; one matched band is worth 0.54 pp of the aggregate mean |
+| flagged-subset error | the `overlapping_*` signed mean and median errors | ±4.0 pp | no drift; one band of that fifty-band subset is worth 1.81 pp |
+| count share | `overlapping_share_percent` | ±2.0 pp | no drift; four matched bands are 1.4 pp of it |
+| paired bootstrap | the aperture bootstrap's standard error, difference and interval | ±0.3 pp | no drift; one band is worth 0.058 pp of a paired difference |
+| median ROI pixel size | the detected median ROI width and height | ±2 px | no drift; a tie flip moves one ROI edge by one pixel |
+| extreme value | `max_absolute_percent` and the detected extreme ROI dimensions | ±10% of the figure | CI moved one by 4.3% |
+| ROI area share | the detected window-coverage percentages | ±25% of the figure | no drift; an area whose sides are already allowed ±10%, or a median ROI's area under a 2 px step per side |
+| Monte-Carlo variance ratio | the two `presmooth_variance` ratios | ±0.01% of the figure | no drift; only float64 accumulation noise, ~1e-12 relative, can reach them |
+
+Two kinds of evidence set those bounds, and each constant says which it used. Where a class
+**drifted in CI**, the bound is that drift rounded up to a round figure — 1.3× it for the
+integer counts, which move in whole units, and 1.8× to 2.3× for the continuous statistics.
+The multipliers are stated rather than averaged because each is checkable against the drift
+beside it. Where a class **did not** drift, the bound is the measured *leverage* — how far
+one band entering or leaving a subset moves
+the statistic, measured over the dev split as a one-off diagnostic (the largest change from
+dropping any single band; not committed) — times the number of bands a tie flip is observed
+to move, or times the count bound where the figure is computed from those counts.
+
+Neither is a worst case, and the policy does not pretend to be one. A class seen to drift
+beyond its bound is a bound to re-derive from that observation, not a bound to widen
+pre-emptively. The one thing a bound may never be is **tighter than a figure it is computed
+from**: that guarantees a false failure on a movement the record already permits, which is
+why the coverage percentages are not held tighter than the ROI dimensions they multiply, and
+why a share of two counts is not held tighter than those counts.
+
+The "do not widen pre-emptively" half was tested on this table rather than merely written
+into it. The percentage-point bound stood at 1.5 pp for a draft, taken from leverage alone
+while nothing had ever been observed to move one of those figures past 0.56. At 1.5 pp the
+record's own measurement of a background window one notch from the shipped one — four
+matched bands lost, band F1 down by more than the rate bound, clean mean |error| moved by
+over a point — passes as a measurement of the shipped row. It is 1.0 pp, and
+`tests/test_sweep_check.py` pins that case so the bound cannot drift back up quietly.
+
+A tighter bound for the `clean_*` columns points the other way and is refused for the
+mirror-image reason: it is justified on the aperture sweep, whose shared subset is large and
+whose errors are small, and not on the smallest sweep in the record, so a bound that held on
+one sweep would fail on another.
+
+**A figure's class is a property of the quantity, not of its name.** `band_roi_sizes`
+records the same nine figures twice — once over the detected ROIs, which move with the
+detection, and once over the truth ROIs, which are read out of `data/ground_truth/` and
+divided by a config parameter. Keyed by name alone, the truth row would inherit the
+detected row's tolerances: the truth band count tolerated ±4 while the identical number in
+the record header is compared exactly, and gold-set drift passing a check whose whole claim
+is that it re-measures from the committed gold set. So tolerances resolve by
+`(sweep, value label, field)` and fall back to the name, an override may only tighten, and
+`tests/test_sweep_check.py` asserts that against the committed record.
+
+**Nothing measured is interpolated into an exactly-compared note.** The aperture bootstrap's
+note used to state how many bands its shared subset held. That is a matched-set count —
+precisely the quantity a flipped tie moves — compared bit-exactly as prose while the
+identical count is tolerated ±4 as `clean_count` two sweeps over. It would have failed CI on
+the same mechanism this entry is about, in a field nobody would think to look at. The note
+now points at the field that records it, and `tests/test_sweep_check.py` holds the line
+generally: every number in a `note` or a `parameter` must be a value label of its own sweep
+or one of a listed set of constants.
+
+**The tolerances do not carry the "a parameter actually moved" guarantee, and are not
+justified as if they did.** That guarantee is the exact comparison of `shipped`, the two
+config digests: any change to any parameter in `configs/*.yaml` changes a digest, and a
+digest mismatch fails `--check` outright no matter how well the figures reproduce. Verified
+by editing the band `min_prominence_fraction` 0.30 → 0.31 and re-running: `--check` fails
+with exactly one message, the digest — at that step not one figure moved beyond its class,
+which is precisely why the guarantee cannot be asked of the figures.
+`tests/test_recorded_figures.py::test_the_record_matches_the_shipped_config_digests` holds
+the same line inside `pytest`, and `tests/test_sweep_check.py` pins the case that matters
+most: every figure within tolerance, digest changed, still a failure.
+
+**What `--check` still catches**, then:
+
+- any shipped parameter edit, through the digest, regardless of figures;
+- any algorithmic regression that moves band F1 by more than 0.02. For calibration, from
+  the committed record: `extent_min_sigma` 2.0 → 0.0 moves band F1 by 0.0305, `window_px`
+  51 → 81 by 0.0568, and `profile_smoothing_px` 5 → 9 by 0.0269 — all comfortably caught,
+  and `tests/test_sweep_check.py` asserts that from the record so this paragraph cannot go
+  quietly stale;
+- any stale or hand-edited figure that is out by more than its class allows;
+- any structural drift, and any change to a sweep's prose, exactly and in both directions;
+- any `evals/dev_sweeps.md` that is not the transcription of the committed JSON.
+
+What it no longer catches is a change smaller than a bound — including, honestly, a one-step
+move in the flattest sweeps (`extent_min_sigma` 2.0 → 2.5 is 0.0031 of band F1) and a
+sub-point move in an aggregate error. `--check` is a staleness and regression alarm, not a
+bit-exactness proof, and the transcription checker, not `--check`, is what ties the figures
+quoted in this file to the record.
+
+**One consequence is worth naming rather than leaving to be discovered: `--check` does not
+police the aperture ordering.** The paired bootstrap exists to resolve a difference several
+times smaller than the ±0.3 pp its fields carry, and reports intervals narrower still, so a
+re-measurement in which a looser aperture beat the shipped one — interval excluding zero, in
+the opposite direction — passes silently. The bound cannot be tightened out of that: it
+follows from the shared subset's own permitted movement, and a tighter one would fail on
+drift the record already allows; recording the *resolved sign* as a field instead would only
+move the fragility, since the narrowest interval sits closer to zero than four bands of
+leverage. So the transcription of that table is checked and its re-measurement is not, and
+that is an open item below rather than a claim retired quietly.
+
+**One thing not to read into this.** The shipped `window_px: 51` row did not drift while 61
+and 81 did. That is luck — whether any band in a particular configuration sits close enough
+to a tie for the last bit to matter — and not a property of the shipped value. The shipped
+row is one flipped tie away from drifting like its neighbours, which is the argument for a
+tolerance policy rather than for pinning the rows that happen to reproduce.
 
 ### The Phase 1 result is a strict subset of the result schema, and says so
 
@@ -904,6 +1101,7 @@ the way to the *tightest* aperture swept. (Direction, since it is easy to invert
 | clean mean error % | 7.20% | 7.12% | **7.12%** | 7.19% | 7.27% | 7.53% | 7.83% | 10.22% |
 | clean median error % | 4.89% | 4.62% | **4.61%** | 4.74% | 4.95% | 5.59% | 5.69% | 8.67% |
 | clean signed error % | -6.82% | -6.78% | **-6.80%** | -6.88% | -6.98% | -7.26% | -7.61% | -10.07% |
+| clean n | 206 | 206 | **206** | 206 | 206 | 206 | 206 | 206 |
 <!-- end sweep -->
 
 An F1 selector runs away to `h = 0.20`, an aperture holding ~90% of the band whose clean
@@ -1197,6 +1395,27 @@ screen.
 
 Unresolved questions carried out of a phase. Not decisions — each one names the phase
 that has to settle it.
+
+### The aperture ordering is transcription-checked but not re-measurement-checked — Phase 3 to settle
+
+`python -m evals.sweep --check` re-measures every recorded figure, but the tolerance the
+aperture bootstrap's paired differences carry is several times the difference the aperture
+selection turns on, and an order of magnitude above the intervals the bootstrap reports. So
+a code or platform change that *inverted* the ordering — a looser aperture measuring better
+than the shipped one, with an interval excluding zero — would not fail the check. The
+figures themselves cannot go stale unnoticed, because `tests/test_recorded_figures.py` ties
+every one quoted in the Phase 1 section to the record; what is unguarded is the record
+being re-measured into a different conclusion.
+
+Tightening the bound is not the fix: it is derived from how far the shared band subset is
+itself allowed to move between CPU architectures, so a tighter one would fail on drift that
+is already accepted everywhere else. Recording the resolved sign of each difference as its
+own exactly-compared field only relocates the problem, since the narrowest interval in the
+table sits closer to zero than a few bands of leverage. What would close it is a selection
+statistic whose resolution is not of the same order as the platform noise — more dev images,
+or a comparison that is not a difference of two means over one shared subset. That is a
+Phase 3 question about the selector, not a Phase 1 question about the checker, which is why
+it is recorded here rather than patched.
 
 ### The lane ROI's vertical extent is fixed, not detected — Phase 3 to settle
 

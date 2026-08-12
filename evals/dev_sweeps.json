@@ -2019,7 +2019,7 @@
     },
     "aperture_selector_uncertainty": {
       "parameter": "extent_relative_height",
-      "note": "Paired bootstrap, 2000 resamples of the 206 bands the whole sweep shares, seed 20260811. `difference_from_shipped_percent` is mean |error| minus the shipped 0.06 value's, on the same resample; its interval excludes 0 only where the ordering is resolved.",
+      "note": "Paired bootstrap, 2000 resamples of the unflagged bands every variant of the aperture sweep matches -- the subset the band.extent_relative_height sweep's `clean` columns use, whose size that sweep records as `clean_count` -- seed 20260811. `difference_from_shipped_percent` is mean |error| minus the shipped 0.06 value's, on the same resample; its interval excludes 0 only where the ordering is resolved.",
       "values": [
         {
           "label": "0.04",
