@@ -221,6 +221,53 @@ def detection_scores(
     )
 
 
+def micro_average_detection_scores(
+    scores: Sequence[DetectionScores],
+    iou_threshold: float,
+) -> DetectionScores:
+    """Pool per-image :class:`DetectionScores` into one score by summing their counts.
+
+    Matching is **not** redone: each element must already have been produced by
+    :func:`detection_scores` on one image, because a prediction from one image must never
+    be matched to truth from another. Only the confusion counts are summed, and
+    precision/recall/F1 are recomputed from the totals -- so this is a micro-average, not
+    a mean of per-image F1 scores.
+
+    ``matches`` is empty on the result: match indices are per-image and have no meaning
+    once pooled. ``iou_threshold`` is required, and every input must carry that same
+    threshold, otherwise the pooled number would mix two different questions.
+
+    Unlike :func:`detection_scores` this does not raise on an empty total: a pooled zero
+    here is reached only when every image legitimately reported zero, which
+    :func:`detection_scores` has already refused to produce for empty truth. An empty
+    ``scores`` sequence does raise, since there is nothing to average.
+    """
+    if not scores:
+        raise ValueError("cannot micro-average an empty sequence of detection scores")
+    mismatched = {score.iou_threshold for score in scores} - {iou_threshold}
+    if mismatched:
+        raise ValueError(
+            f"every score must have been computed at iou_threshold={iou_threshold}, "
+            f"found {sorted(mismatched)}"
+        )
+    true_positives = sum(score.true_positives for score in scores)
+    false_positives = sum(score.false_positives for score in scores)
+    false_negatives = sum(score.false_negatives for score in scores)
+    precision = _ratio(true_positives, true_positives + false_positives)
+    recall = _ratio(true_positives, true_positives + false_negatives)
+    f1 = (2 * precision * recall / (precision + recall)) if precision + recall else 0.0
+    return DetectionScores(
+        iou_threshold=iou_threshold,
+        true_positives=true_positives,
+        false_positives=false_positives,
+        false_negatives=false_negatives,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        matches=(),
+    )
+
+
 def _relative_error_scores(
     truth_values: Sequence[float],
     predicted_values: Sequence[float],

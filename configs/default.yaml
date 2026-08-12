@@ -1,0 +1,237 @@
+# blotquant default processing parameters.
+#
+# Every key here is read by the pipeline and echoed into result provenance; there are no
+# defaults in code, so a key removed from this file makes the run fail rather than fall
+# back. NOTES.md, "Phase 1 - core pipeline", carries the reasoning.
+#
+# Dev-split figures appear only inside blocks introduced by a "# sweep: <name>" marker, and
+# every figure in such a block is copied from evals/dev_sweeps.md. Two mechanisms keep them
+# honest: `python -m evals.sweep --check` re-measures the record from the committed gold
+# set, and tests/test_recorded_figures.py fails if a figure quoted here is not the record's
+# figure for the value it is quoted against.
+#
+# How the shipped values were chosen. Where a parameter changes what is *measured*, it is
+# chosen on `clean mean` - the mean |recovery error| over bands whose ground truth carries
+# no QC flag, on the fixed subset matched by every value of that sweep. Where it only
+# changes what is *found*, it is chosen on the relevant detection F1. NOTES.md explains why
+# band F1 cannot select an aperture. Four shipped values are exceptions, and each says so
+# where it is set. Two are deliberately not any selector's argmax:
+#   - band.min_separation_px is an a-priori floor, set to impose none;
+#   - background.local_median.window_px trades the two criteria against each other
+#     monotonically, so no value optimises both.
+# The other two are not selected at all, because no sweep can exercise them - the dev split
+# has no single-lane image:
+#   - lane.extent_relative_height and lane.extent_min_sigma are read only when exactly one
+#     lane is detected, and inherit the band extent rule's values.
+id: default
+
+background:
+  # Required and explicit: there is no default background method.
+  #
+  # local_median rather than rolling_ball because a rolling ball is a morphological opening
+  # and therefore rides the noise minimum, which biases the background low and integrated
+  # intensity high. configs/rolling_ball.yaml runs the other method with an identical
+  # detection block, and loses on every figure that matters:
+  # sweep: shipped_configs
+  #   default.yaml       lane F1 0.9967  band F1 0.8506  mean 17.39%  median 6.50%
+  #   rolling_ball.yaml  lane F1 0.9763  band F1 0.7847  mean 23.65%  median 6.43%
+  # end sweep
+  method: local_median
+  local_median:
+    # A median reports the background only while a band covers a *minority* of its window.
+    # Measured over the dev split, that holds for a typical band and degrades for the
+    # largest one, and this is a limitation rather than a guarantee. `window coverage` is
+    # the ROI area as a percentage of a 51 x 51 window; a coverage of f means the window
+    # reports the 0.5/(1-f) quantile of the background instead of its median:
+    # sweep: band_roi_sizes
+    #   truth      352 bands, median 34 x 12 px, widest 43 px, tallest 28 px
+    #   truth      window coverage median 16.34%, max 45.21%, largest ROI 42 x 28 px
+    #   detected   304 bands, median 34 x 18 px, widest 56 px, tallest 89 px
+    #   detected   window coverage median 21.68%, max 180.85%, largest ROI 56 x 84 px
+    # end sweep
+    #
+    # So at the median band the window reports about the 0.60 quantile, and at the largest
+    # truth band about the 0.91 quantile. tests/test_pipeline_background.py asserts the
+    # consequence numerically: on a noiseless flat background a median-sized band leaves the
+    # estimate exact, and a 42 x 28 px band biases it +1.9% of the band's amplitude - high, which
+    # under-reads the band by the same proportion. Detected ROIs can exceed the window, but those
+    # are the run-away ROIs on weak peaks that extent_min_sigma exists to limit.
+    #
+    # The window is the one parameter where the two criteria disagree monotonically across
+    # the whole swept range - a larger window is less contaminated by the band, so it
+    # measures better, while it follows the background less well, so it detects worse. No
+    # value optimises both, so there is no argmin to appeal to. 51 px is the argmin of
+    # aggregate mean |recovery error|, which is the figure PLAN.md commits the README to
+    # reporting, and it is one of the three windows at maximal lane F1:
+    # sweep: background.local_median.window_px
+    #   px   lane F1   band F1   aggregate mean   aggregate median   clean mean   clean signed
+    #   31   0.9801    0.8782    19.11%           13.81%             15.31%       -15.23%
+    #   41   0.9967    0.8693    17.64%           8.66%              9.23%        -8.95%
+    #   51   0.9967    0.8506    17.39%           6.50%              6.90%        -6.52%
+    #   61   0.9967    0.8397    17.72%           5.17%              5.74%        -5.18%
+    #   71   0.9764    0.8228    17.89%           4.72%              5.22%        -4.52%
+    #   81   0.9730    0.7938    18.31%           4.19%              4.90%        -4.12%
+    # end sweep
+    window_px: 51
+
+detection:
+  method: profile_projection
+  # Moving average applied to both 1D profiles, and the most consequential detection
+  # parameter here. 3 px is better on aggregate band F1 *and* on aggregate mean |recovery
+  # error|, and is still not shipped: it costs 3 lane false positives, and on the clean
+  # subset - where the profile's own smoothing is what is being measured - 5 px is the
+  # minimum. Both halves of that trade:
+  # sweep: profile_smoothing_px
+  #   px   lane F1   band F1   aggregate mean   clean mean   lane false positives
+  #    1   0.8805    0.7471    17.54%           7.51%        28
+  #    3   0.9868    0.8571    16.70%           6.56%        3
+  #    5   0.9967    0.8506    17.39%           6.49%        0
+  #    7   0.9967    0.8445    19.60%           6.67%        0
+  #    9   0.9967    0.8237    21.26%           7.07%        0
+  #   11   0.9967    0.7823    20.57%           7.53%        0
+  # end sweep
+  profile_smoothing_px: 5
+  lane:
+    # Two lane centres closer than this are one lane. 12 px is below the pitch of the most
+    # crowded gel we target and above the width of a scratch or dust speck. The dev split
+    # cannot distinguish it from any other value, so it is a floor for real gels rather than
+    # a fitted number:
+    # sweep: lane.min_separation_px
+    #   1 -> lane F1 0.9967, band F1 0.8506      4 -> 0.9967, 0.8506
+    #   8 -> 0.9967, 0.8506                      12 -> 0.9967, 0.8506
+    #   16 -> 0.9967, 0.8506                     20 -> 0.9967, 0.8506
+    #   24 -> 0.9967, 0.8506
+    # end sweep
+    min_separation_px: 12
+    # A lane peak must rise this fraction of the column profile's robust range above its
+    # surrounding valleys. Lane F1 climbs to 0.35, is flat over 0.35-0.45, then falls off a
+    # cliff as real lanes start being rejected. 0.40 is the middle of the flat region, so
+    # neither the climb below nor the cliff above is one step away:
+    # sweep: lane.min_prominence_fraction
+    #   0.1 -> lane F1 0.9236    0.15 -> 0.9577   0.2 -> 0.9737    0.25 -> 0.9900
+    #   0.3 -> 0.9933            0.35 -> 0.9967   0.4 -> 0.9967    0.45 -> 0.9967
+    #   0.5 -> 0.9589
+    # end sweep
+    min_prominence_fraction: 0.40
+    # The scale that fraction is taken against is the spread between this percentile and its
+    # complement, not max-minus-min: one near-vertical scratch is brighter than any lane and
+    # would otherwise set the scale for the whole image. 0.0 *is* max-minus-min, and it
+    # costs 20 of the 150 dev lanes:
+    # sweep: lane.robust_range_percentile
+    #   0.0 -> lane F1 0.9123, lanes 130/5/20    2.0 -> 0.9338, 134/3/16
+    #   5.0 -> 0.9695, 143/2/7                   10.0 -> 0.9967, 149/0/1
+    #   20.0 -> 0.9933, 149/1/1                  30.0 -> 0.9868, 149/3/1
+    # end sweep
+    robust_range_percentile: 10.0
+    # The band extent rule's pair, applied to the column profile, and read only when
+    # exactly one lane is detected: with a single centre there is no spacing to take a
+    # median of, so the lone lane's width is measured from its own extent instead of being
+    # declared. Same rule and same code as the band extent (pipeline/detect.py,
+    # _extent_threshold), so the two cannot drift apart.
+    #
+    # These two are the only shipped parameters with no dev-split surface behind them: the
+    # committed gold set has 4, 5 and 6 lanes and never one, so no sweep can exercise this
+    # path. They inherit the band values rather than being fitted, and the single-lane
+    # behaviour is pinned by tests/test_pipeline_detect.py instead.
+    extent_relative_height: 0.06
+    extent_min_sigma: 2.0
+  band:
+    # No floor on band spacing: two maxima are two bands. What limits how close two bands
+    # can be and still be resolved is profile_smoothing_px, and what rejects spurious maxima
+    # is the prominence pair below - so this is deliberately 1, the smallest the peak finder
+    # accepts, rather than a value that would quietly decide how close a doublet has to be
+    # before it is reported as one band. That question is answered explicitly in NOTES.md,
+    # "Doublet resolution", and must not be answered a second time here by accident. Per
+    # synth/MODELS.md §4 the doublet partner sits at 2.2 * sigma_y, which is 5.02 px at six
+    # lanes, so a floor anywhere near that would suppress the partner by arithmetic.
+    #
+    # This is therefore an a-priori floor and NOT the band-F1 argmax: 17 px and above score
+    # marginally higher by merging one false positive, and that is not a reason to answer
+    # the doublet question here:
+    # sweep: band.min_separation_px
+    #   1 -> band F1 0.8506, 25 false positives     4 -> 0.8506, 25
+    #   8 -> 0.8506, 25                             12 -> 0.8506, 25
+    #   16 -> 0.8506, 25                            17 -> 0.8519, 24
+    #   20 -> 0.8519, 24                            24 -> 0.8519, 24
+    # end sweep
+    min_separation_px: 1
+    # A band peak must clear both of the next two thresholds, which reject different things.
+    # This one is a fraction of the lane's own signal range and rejects gel structure -
+    # speckle, dust, a scratch crossing the lane - which is real signal and therefore clears
+    # any noise threshold. True positives hold at 279 of the 352 dev bands up to and
+    # including 0.30 and fall away above it, so 0.30 is the largest value that costs no real
+    # band. It does not affect what is measured: the clean mean column is constant across
+    # this whole sweep in evals/dev_sweeps.md, because this threshold decides which peaks
+    # become bands and not where a band's edges fall.
+    # sweep: band.min_prominence_fraction
+    #   0.001 -> band F1 0.6984, 279 true positives     0.05 -> 0.7707, 279
+    #   0.1 -> 0.8122, 279                              0.2 -> 0.8353, 279
+    #   0.25 -> 0.8442, 279                             0.3 -> 0.8506, 279
+    #   0.35 -> 0.8444, 274                             0.4 -> 0.8444, 274
+    #   0.5 -> 0.8326, 266
+    # end sweep
+    min_prominence_fraction: 0.30
+    # ... and this one rejects noise excursions, at the conventional 5-sigma detection level,
+    # measured against the lane profile's own noise. It is nearly redundant with the fraction
+    # here - three false positives - and is kept because it is the only one of the two whose
+    # scale does not follow the brightest feature in the lane. Like the fraction it leaves
+    # the measurement alone, with a constant clean mean across the sweep. Setting it to 0.0
+    # switches it off, which the validator accepts; the fraction cannot be switched off,
+    # because the validator requires it to be positive.
+    # sweep: band.min_prominence_sigma
+    #   0.0 -> band F1 0.8467, 28 false positives      2.0 -> 0.8467, 28
+    #   5.0 -> 0.8506, 25                              8.0 -> 0.8484, 24
+    #   12.0 -> 0.8462, 23
+    # end sweep
+    min_prominence_sigma: 5.0
+    # Robust zero for one lane's row profile: the level below which the lane is taken to
+    # carry no band signal. 20.0 is two F1 points better and is not shipped, because it is
+    # worse on the selector - a higher baseline lifts the ROI edge threshold with it, which
+    # trims real signal off every band:
+    # sweep: band.baseline_percentile
+    #   2.0 -> band F1 0.7328, clean mean 6.54%      5.0 -> 0.8153, 6.25%
+    #   10.0 -> 0.8506, 6.08%                        20.0 -> 0.8720, 6.31%
+    #   30.0 -> 0.8615, 7.50%
+    # end sweep
+    baseline_percentile: 10.0
+    # An ROI edge is where the peak falls to this fraction of its height above the lane
+    # baseline, so a *larger* value gives a *smaller* ROI. The rule is applied once per axis
+    # - to the row profile and to the column profile - so the fraction of a band the
+    # rectangle encloses is the PRODUCT of the two 1D marginals: at 0.06 that is 96.5% of an
+    # ideal 2D Gaussian, or 97.6% for a Gaussian in y crossed with a flat-topped x profile.
+    #
+    # Chosen on the clean subset, where the aperture is what is being measured, and NOT on
+    # band F1: aggregate band F1 rises monotonically as the aperture shrinks, all the way to
+    # a box holding ~90% of the band, so it would select an aperture that measures worse
+    # (NOTES.md gives the mechanism). 0.05 measures the same as 0.06 and is refused only
+    # because it equals the generator's own bbox_relative_threshold.
+    # sweep: band.extent_relative_height
+    #   0.04 -> clean mean 7.20%, clean median 4.89%, band F1 0.8293
+    #   0.05 -> 7.12%, 4.62%, 0.8415
+    #   0.06 -> 7.12%, 4.61%, 0.8506
+    #   0.07 -> 7.19%, 4.74%, 0.8628
+    #   0.08 -> 7.27%, 4.95%, 0.8689
+    #   0.1 -> 7.53%, 5.59%, 0.8750
+    #   0.12 -> 7.83%, 5.69%, 0.8811
+    #   0.2 -> 10.22%, 8.67%, 0.8841
+    # end sweep
+    extent_relative_height: 0.06
+    # Floor on that edge threshold, in units of the profile's own noise. Without it a weak
+    # peak never falls to 6% of its height before the noise floor does, and its ROI grows
+    # until it reaches its neighbour. 2.5 is marginally better on F1 and worse on the
+    # selector and on aggregate error alike, so the round 2-sigma boundary stands:
+    # sweep: band.extent_min_sigma
+    #   0.0 -> band F1 0.8201, clean mean 7.09%, aggregate mean 17.98%
+    #   1.0 -> 0.8293, 7.08%, 18.07%
+    #   1.5 -> 0.8384, 6.98%, 17.47%
+    #   2.0 -> 0.8506, 6.89%, 17.39%
+    #   2.5 -> 0.8537, 6.91%, 17.45%
+    #   3.0 -> 0.8476, 7.01%, 18.03%
+    # end sweep
+    extent_min_sigma: 2.0
+
+quantification:
+  method: roi_sum
+  # Keep pixels below the background. Noise is symmetric about the background, so the ROI
+  # sum is unbiased only if both signs survive; clamping adds ~0.4 sigma per pixel.
+  clamp_negative_pixels: false

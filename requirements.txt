@@ -11,3 +11,8 @@ numpy==2.4.6
 tifffile>=2024.1.30          # 8/16-bit TIFF writing and reading
 opencv-python-headless>=4.9  # PNG (8/16-bit) and JPEG q75 encoding/decoding
 jsonschema>=4.20             # Draft 2020-12 validation of ground truth in tests and CI
+
+# Added in Phase 1, for pipeline/ and its config.
+PyYAML>=6.0                  # parses configs/*.yaml, the pipeline's only source of parameters
+scikit-image>=0.22           # rolling-ball background (skimage.restoration.rolling_ball)
+scipy>=1.11                  # local-median background and 1D peak finding for detection

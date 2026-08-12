@@ -15,6 +15,7 @@ from evals.metrics import (
     intensity_recovery_error,
     iou,
     match_boxes,
+    micro_average_detection_scores,
     normalization_ratio_error,
     qc_flag_accuracy,
 )
@@ -292,3 +293,40 @@ def test_qc_flag_accuracy_rejects_empty_inputs() -> None:
 def test_qc_flag_accuracy_rejects_duplicate_vocabulary() -> None:
     with pytest.raises(ValueError, match="duplicates"):
         qc_flag_accuracy({"a": []}, {"a": []}, ["saturated", "saturated"])
+
+def test_micro_average_pools_counts_and_recomputes_from_totals() -> None:
+    """The pooled score comes from summed confusion counts, not from averaged F1s.
+
+    Four boxes found on a busy image and one missed on a sparse one: pooling the counts
+    gives tp=4, fp=0, fn=1 -> P=1.0, R=0.8, F1=0.889, whereas averaging the two per-image
+    F1 scores (1.0 and 0.0) would give 0.5. The two differ, which is the point.
+    """
+    busy = [BoundingBox(20 * index, 0, 10, 10) for index in range(4)]
+    found_all = detection_scores(busy, busy, PLAN_IOU_THRESHOLD)
+    found_none = detection_scores([BoundingBox(0, 0, 10, 10)], [], PLAN_IOU_THRESHOLD)
+
+    pooled = micro_average_detection_scores([found_all, found_none], PLAN_IOU_THRESHOLD)
+
+    assert (pooled.true_positives, pooled.false_positives, pooled.false_negatives) == (4, 0, 1)
+    assert pooled.precision == pytest.approx(1.0)
+    assert pooled.recall == pytest.approx(0.8)
+    assert pooled.f1 == pytest.approx(2 * 1.0 * 0.8 / 1.8)
+    assert pooled.matches == ()
+    assert pooled.f1 != pytest.approx(0.5 * (found_all.f1 + found_none.f1))
+
+
+def test_micro_average_requires_a_single_threshold() -> None:
+    """Pooling scores taken at different thresholds would mix two questions."""
+    truth = [BoundingBox(0, 0, 10, 10)]
+    predicted = [BoundingBox(0, 0, 10, 10)]
+    strict = detection_scores(truth, predicted, 0.9)
+    loose = detection_scores(truth, predicted, 0.5)
+
+    with pytest.raises(ValueError, match="iou_threshold"):
+        micro_average_detection_scores([strict, loose], 0.5)
+
+
+def test_micro_average_of_nothing_raises() -> None:
+    """There is no pooled score over zero images."""
+    with pytest.raises(ValueError, match="empty sequence"):
+        micro_average_detection_scores([], PLAN_IOU_THRESHOLD)

@@ -61,3 +61,20 @@ jobs:
 
       - name: Tests
         run: pytest
+
+      # PLAN.md Phase 1's done-when includes "eval table prints". pytest already
+      # asserts that the whole dev split analyses without intervention; this step
+      # publishes the numbers into the build log so a score change is visible in the
+      # diff of a CI run, not only in a local terminal. A non-zero exit means at least
+      # one dev image failed to analyse.
+      - name: Dev-split eval
+        run: python -m evals.run --config configs/default.yaml
+
+      # Every dev-split figure quoted in NOTES.md and configs/*.yaml is transcribed from
+      # evals/dev_sweeps.json, and tests/test_recorded_figures.py checks the
+      # transcription on every pytest run. This step checks the other half: that the
+      # record itself still reproduces from the committed gold set. It re-runs all 13
+      # sweeps (~3 minutes), which is why it is a CI step and not part of pytest. Three
+      # review cycles were lost to figures that had silently stopped reproducing.
+      - name: Recorded dev-split figures still reproduce
+        run: python -m evals.sweep --check
