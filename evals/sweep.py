@@ -53,13 +53,33 @@ from evals.metrics import (
     ErrorScores,
     intensity_recovery_error,
     micro_average_detection_scores,
+    normalization_ratio_error,
 )
-from evals.run import EVALUATED_SPLIT, load_split, score_result
+from evals.run import (
+    EVALUATED_SPLIT,
+    SATURATED_FLAG,
+    QcEvaluation,
+    band_flag_scores,
+    evaluate_image,
+    image_flag_scores,
+    load_split,
+    score_result,
+    shoulder_coincidence,
+)
 from pipeline.analyze import require_writable_destination
 from pipeline.background import correct_background
-from pipeline.config import PipelineConfig, load_config
+from pipeline.config import HOUSEKEEPING_SINGLE, TOTAL_PROTEIN, PipelineConfig, load_config
 from pipeline.detect import detect
 from pipeline.load import load_image
+from pipeline.qc import (
+    IMAGE_QC_FLAGS,
+    LOW_DYNAMIC_RANGE,
+    OVERLAPPING,
+    is_low_dynamic_range,
+    is_overlapping,
+    is_saturated,
+    is_unresolved_shoulder,
+)
 from pipeline.quantify import quantify_bands
 
 CONFIG_DIR = Path("configs")
@@ -744,6 +764,449 @@ def _matched_band_subsets(
     }
 
 
+def _qc_flag_record(evaluations: Sequence[QcEvaluation]) -> dict[str, Any]:
+    """Return QC flag accuracy against ground truth, per flag and per scope.
+
+    Only the confusion **counts** are recorded. Precision, recall and F1 are arithmetic on
+    them, and each is ``None`` in a case the record cannot hold -- a flag absent from both
+    sides has no precision -- so recording a rate would turn an honestly undefined score into
+    a comparison failure. NOTES.md quotes the rates as arithmetic on these counts.
+
+    The shoulder row is not an accuracy: ``unresolved_shoulder`` has no ground-truth
+    counterpart, so it is recorded as a coincidence with truth's ``overlapping`` label
+    (:class:`evals.metrics.FlagCoincidence`) and is labelled as such.
+    """
+    image = image_flag_scores(evaluations)
+    band = band_flag_scores(evaluations)
+    shoulder = shoulder_coincidence(evaluations)
+    values: list[dict[str, Any]] = []
+    for scope, scores in (("image", image), ("band", band)):
+        for flag, item in scores.per_flag.items():
+            values.append(
+                {
+                    "label": f"{scope}.{flag}",
+                    "items": scores.item_count,
+                    "true_positives": item.true_positives,
+                    "false_positives": item.false_positives,
+                    "false_negatives": item.false_negatives,
+                    "true_negatives": item.true_negatives,
+                }
+            )
+    values.append(
+        {
+            "label": "band.unresolved_shoulder_coincidence",
+            "items": shoulder.items,
+            "reference_items": shoulder.reference_items,
+            "non_reference_items": shoulder.non_reference_items,
+            "fired_with_reference": shoulder.fired_with_reference,
+            "fired_without_reference": shoulder.fired_without_reference,
+        }
+    )
+    return {
+        "parameter": "qc thresholds, as shipped in configs/default.yaml",
+        "note": (
+            "QC flags against the ground-truth labels, scored on the images and on the "
+            "matched band pairs by evals.metrics.qc_flag_accuracy. Counts only: the rates are "
+            "arithmetic on them, and are undefined rather than zero in cases this record "
+            "cannot express. The last row is not an accuracy -- unresolved_shoulder has no "
+            "ground-truth counterpart, so it is recorded as a coincidence with truth's "
+            "overlapping label."
+        ),
+        "values": values,
+    }
+
+
+def _normalization_record(evaluations: Sequence[QcEvaluation]) -> dict[str, Any]:
+    """Return the normalized-ratio error per mode, against ground truth.
+
+    The ``housekeeping_single`` row rests on an **oracle** reference: it designates the
+    reference band from ground truth's role, which is an input a real blot does not supply
+    (:data:`evals.run.ORACLE_REFERENCE_ROLE`). ``housekeeping_multi`` is absent because the
+    gold set has one reference band per lane and that mode takes at least two; it is verified
+    against hand-computed fixtures in ``tests/test_pipeline_normalize.py`` instead.
+    """
+    values: list[dict[str, Any]] = []
+    for label, comparisons, used, skipped in (
+        (
+            HOUSEKEEPING_SINGLE,
+            [item for evaluation in evaluations for item in evaluation.housekeeping],
+            sum(item.used_housekeeping_lanes for item in evaluations),
+            sum(item.skipped_housekeeping_lanes for item in evaluations),
+        ),
+        (
+            TOTAL_PROTEIN,
+            [item for evaluation in evaluations for item in evaluation.total_protein],
+            sum(item.used_total_protein_lanes for item in evaluations),
+            sum(item.skipped_total_protein_lanes for item in evaluations),
+        ),
+    ):
+        if not comparisons:
+            raise RuntimeError(
+                f"the {label} mode produced no ratio to score on the "
+                f"{EVALUATED_SPLIT} split, so its row would have no figures; that is a change "
+                f"in what the pipeline or the join produces, not a record to write"
+            )
+        included = [item for item in comparisons if not item.excluded]
+        included_error = normalization_ratio_error(
+            {item.key: item.true_ratio for item in included},
+            {item.key: item.predicted_ratio for item in included},
+        )
+        every_error = normalization_ratio_error(
+            {item.key: item.true_ratio for item in comparisons},
+            {item.key: item.predicted_ratio for item in comparisons},
+        )
+        values.append(
+            {
+                "label": label,
+                "ratios": len(comparisons),
+                "included_ratios": len(included),
+                "excluded_ratios": len(comparisons) - len(included),
+                "reference_flagged_ratios": sum(
+                    1 for item in comparisons if item.reference_qc_flagged
+                ),
+                "used_lanes": used,
+                "skipped_lanes": skipped,
+                "included_mean_absolute_percent": _round(
+                    included_error.mean_absolute_percent_error, PERCENT_DECIMALS
+                ),
+                "included_median_absolute_percent": _round(
+                    included_error.median_absolute_percent_error, PERCENT_DECIMALS
+                ),
+                # Recorded so that NORMALIZATION_ERROR's derivation -- one ratio's leverage on
+                # the subset mean is bounded by max|e| / n -- is checkable from the record
+                # rather than from a figure only the runner prints.
+                "included_max_absolute_percent": _round(
+                    included_error.max_absolute_percent_error, PERCENT_DECIMALS
+                ),
+                "all_mean_absolute_percent": _round(
+                    every_error.mean_absolute_percent_error, PERCENT_DECIMALS
+                ),
+                "all_median_absolute_percent": _round(
+                    every_error.median_absolute_percent_error, PERCENT_DECIMALS
+                ),
+                "all_max_absolute_percent": _round(
+                    every_error.max_absolute_percent_error, PERCENT_DECIMALS
+                ),
+            }
+        )
+    return {
+        "parameter": "normalization mode",
+        "note": (
+            "Normalized ratios against ground truth, by mode, with configs/default.yaml's "
+            "other parameters shipped. `included` is the default policy -- QC-flagged bands "
+            "excluded from the ratios -- and `all` adds them back, since a flagged ratio is "
+            "reported rather than dropped. `skipped_lanes` counts lanes whose truth ratio "
+            "could not be joined to a predicted one. ORACLE: the housekeeping row takes its "
+            "reference band from ground truth's role, an input no real blot supplies, so its "
+            "figures are conditional on a correct reference. housekeeping_multi needs at "
+            "least two references per lane and the gold set has one, so it is verified "
+            "against hand-computed fixtures in the test suite instead of scored here."
+        ),
+        "values": values,
+    }
+
+
+SATURATION_THRESHOLDS: tuple[int, ...] = (1, 2, 3, 5, 10)
+"""Clipped-pixel counts the ``saturated`` flag's sensitivity is recorded over. The shipped
+value is the first; the generator's own label rule sits at the third."""
+
+Observation = tuple[frozenset[str], int, float | None, float]
+"""One matched band as the threshold surfaces see it: its truth flags, and the three
+observations the shipped criteria are applied to (clipped pixels, profile asymmetry, largest
+same-lane ROI overlap)."""
+
+DYNAMIC_RANGE_THRESHOLDS: tuple[float, ...] = (0.15, 0.2, 0.25, 0.3, 0.4)
+"""Peak fractions the ``low_dynamic_range`` flag's sensitivity is recorded over: the shipped
+value, the generator's own labelling fraction, two below it and the value that would score
+perfectly. That last row is the point of the surface -- it is the evidence that a better score
+was available on this gold set and was declined, because reaching it means matching the
+generator's scratch amplitude. A claim that load-bearing may not rest on prose."""
+
+OVERLAP_THRESHOLDS: tuple[float, ...] = (0.001, 0.05, 0.15, 0.3)
+"""ROI overlaps the geometric ``overlapping`` flag's sensitivity is recorded over: the smallest
+overlap the validator accepts, the shipped value, the generator's own labelling threshold, and
+one beyond it. This surface is the evidence for the human's Ruling 1 -- that a purely geometric
+flag has almost no recall once a doublet is one band -- so it is recorded rather than quoted."""
+
+SHOULDER_THRESHOLDS: tuple[float, ...] = (1.2, 1.3, 1.5, 1.75, 2.0, 2.5)
+"""Half-width ratios the shape test's sensitivity is recorded over, the shipped value among
+them, so the claim that it separates the two populations best is re-measured rather than
+transcribed."""
+
+
+def _matched_band_observations(
+    evaluations: Sequence[QcEvaluation],
+) -> tuple[tuple[frozenset[str], int, float | None, float], ...]:
+    """Return, per matched band of the dev split, the truth labels and the two observations.
+
+    Read straight off the :class:`evals.run.QcEvaluation` records the QC row is built from, so
+    the sensitivity surfaces below cost no extra pass over the images and -- more importantly --
+    apply the *shipped* criteria (:func:`pipeline.qc.is_saturated`,
+    :func:`pipeline.qc.is_unresolved_shoulder`) to the pipeline's own numbers rather than
+    restating either.
+    """
+    return tuple(
+        (frozenset(truth_flags), clipped, ratio, overlap)
+        for evaluation in evaluations
+        for truth_flags, clipped, ratio, overlap in zip(
+            evaluation.truth_band_flags,
+            evaluation.clipped_pixel_counts,
+            evaluation.row_half_width_ratios,
+            evaluation.max_same_lane_ious,
+            strict=True,
+        )
+    )
+
+
+def _saturation_sensitivity_record(
+    observations: Sequence[Observation], config: PipelineConfig
+) -> dict[str, Any]:
+    """Return the ``saturated`` flag's confusion counts over candidate clipped-pixel counts.
+
+    Each row re-applies :func:`pipeline.qc.is_saturated` with one field of the shipped QC
+    config replaced, so the row at the shipped value is the shipped flag by construction;
+    ``tests/test_sweep_check.py`` pins it against the ``qc_flag_accuracy`` row as well.
+
+    The shipped value is one clipped pixel, from a criterion stated without reference to the
+    generator; the generator's own label rule is three. Recording the whole surface is what
+    makes the cost of that choice a re-measured figure rather than a claim.
+    """
+    values = []
+    for threshold in SATURATION_THRESHOLDS:
+        variant = replace(config.qc, saturated_min_clipped_pixels=threshold)
+        counts = {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
+        for truth_flags, clipped, _, _overlap in observations:
+            in_truth = SATURATED_FLAG in truth_flags
+            fires = is_saturated(clipped, variant)
+            key = "tp" if in_truth and fires else "fp" if fires else "fn" if in_truth else "tn"
+            counts[key] += 1
+        values.append(
+            {
+                "label": str(threshold),
+                "items": len(observations),
+                "true_positives": counts["tp"],
+                "false_positives": counts["fp"],
+                "false_negatives": counts["fn"],
+                "true_negatives": counts["tn"],
+            }
+        )
+    return {
+        "parameter": "saturated_min_clipped_pixels",
+        "note": (
+            "The band `saturated` flag against ground truth's labels, over candidate "
+            "clipped-pixel thresholds, on the matched bands of the shipped config. Every row "
+            "applies pipeline.qc.is_saturated to the pipeline's own recorded clipped-pixel "
+            "counts with only that threshold replaced, so the row at the shipped value is the "
+            "shipped flag. Counts only, as in qc_flag_accuracy."
+        ),
+        "values": values,
+    }
+
+
+def _overlap_sensitivity_record(
+    observations: Sequence[Observation],
+    evaluations: Sequence[QcEvaluation],
+    truths: Sequence[dict[str, Any]],
+    config: PipelineConfig,
+) -> dict[str, Any]:
+    """Return the geometric ``overlapping`` flag's confusion counts over candidate IoU thresholds.
+
+    The evidence behind the human's Ruling 1, recorded rather than quoted: once a doublet is
+    reported as one band with one ROI (Phase 1's ruling), there is no second ROI for a geometric
+    flag to overlap with, so its recall against truth's ``overlapping`` label collapses whatever
+    the threshold. Each row re-applies :func:`pipeline.qc.is_overlapping` to the pipeline's own
+    largest same-lane overlap per band, with only that threshold replaced.
+
+    Two split-level counts are repeated on every row, because they are what the ruling was
+    argued from and they do not depend on the threshold: ``same_lane_band_pairs``, how many pairs
+    of detected bands share a lane at all, and ``truth_overlapping_bands``, how many bands
+    ground truth labels ``overlapping`` across the whole split -- read out of ground truth, so
+    exact.
+    """
+    truth_labelled = sum(
+        1 for truth in truths for band in truth["bands"] if OVERLAPPING in band["qc_flags"]
+    )
+    pair_ious = [
+        overlap for evaluation in evaluations for overlap in evaluation.same_lane_pair_ious
+    ]
+    detected_ious = [
+        overlap
+        for evaluation in evaluations
+        for overlap in evaluation.detected_max_same_lane_ious
+    ]
+    pairs = len(pair_ious)
+    values = []
+    for threshold in OVERLAP_THRESHOLDS:
+        variant = replace(config.qc, overlap_iou_threshold=threshold)
+        counts = {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
+        for truth_flags, _, _, overlap in observations:
+            in_truth = OVERLAPPING in truth_flags
+            fires = is_overlapping(overlap, variant)
+            key = "tp" if in_truth and fires else "fp" if fires else "fn" if in_truth else "tn"
+            counts[key] += 1
+        values.append(
+            {
+                "label": str(threshold),
+                "items": len(observations),
+                "true_positives": counts["tp"],
+                "false_positives": counts["fp"],
+                "false_negatives": counts["fn"],
+                "true_negatives": counts["tn"],
+                "same_lane_band_pairs": pairs,
+                "pairs_at_or_above_threshold": sum(
+                    1 for overlap in pair_ious if is_overlapping(overlap, variant)
+                ),
+                "detected_bands_flagged": sum(
+                    1 for overlap in detected_ious if is_overlapping(overlap, variant)
+                ),
+                "truth_overlapping_bands": truth_labelled,
+            }
+        )
+    return {
+        "parameter": "overlap_iou_threshold",
+        "note": (
+            "The band `overlapping` flag against ground truth's labels, over candidate ROI "
+            "overlap thresholds, on the matched bands of the shipped config. Every row applies "
+            "pipeline.qc.is_overlapping to the pipeline's own largest same-lane overlap per "
+            "band with only that threshold replaced. The two repeated counts are the "
+            "threshold-independent evidence for the human's first ruling in this phase: how "
+            "many "
+            "pairs of detected bands share a lane at all, and how many bands ground truth "
+            "labels overlapping across the split. `pairs_at_or_above_threshold` and "
+            "`detected_bands_flagged` count over every detected band, not only the matched ones."
+        ),
+        "values": values,
+    }
+
+
+def _dynamic_range_sensitivity_record(
+    evaluations: Sequence[QcEvaluation], config: PipelineConfig
+) -> dict[str, Any]:
+    """Return the ``low_dynamic_range`` flag's confusion counts over candidate peak fractions.
+
+    Image-scope, so the items are the 30 dev images rather than matched bands. Each row
+    re-applies :func:`pipeline.qc.is_low_dynamic_range` to the brightest band peak each result
+    document reports, with only that threshold replaced.
+
+    This surface exists because of what its last row says. A fraction of 0.4 scores perfectly on
+    this gold set and is **not** shipped, since a scratch adds exactly 0.25 of full scale
+    (``synth/MODELS.md`` §5) and reaching that score means matching the generator's scratch
+    amplitude. The claim "a better score was available and was declined" is the whole
+    anti-circularity argument for this threshold, so it is measured here rather than asserted in
+    NOTES.md. ``max_peak_fraction_among_truth_low`` is the threshold-independent reason the
+    shipped value misses what it misses: the brightest peak measured on any image ground truth
+    labels ``low_dynamic_range``.
+    """
+    truth_low = [
+        evaluation
+        for evaluation in evaluations
+        if LOW_DYNAMIC_RANGE in evaluation.truth_image_flags
+    ]
+    largest = max(
+        (
+            evaluation.brightest_peak_value / evaluation.max_value
+            for evaluation in truth_low
+        ),
+        default=0.0,
+    )
+    values = []
+    for threshold in DYNAMIC_RANGE_THRESHOLDS:
+        variant = replace(config.qc, dynamic_range_min_peak_fraction=threshold)
+        counts = {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
+        for evaluation in evaluations:
+            in_truth = LOW_DYNAMIC_RANGE in evaluation.truth_image_flags
+            fires = is_low_dynamic_range(
+                evaluation.brightest_peak_value, evaluation.max_value, variant
+            )
+            key = "tp" if in_truth and fires else "fp" if fires else "fn" if in_truth else "tn"
+            counts[key] += 1
+        values.append(
+            {
+                "label": str(threshold),
+                "items": len(evaluations),
+                "true_positives": counts["tp"],
+                "false_positives": counts["fp"],
+                "false_negatives": counts["fn"],
+                "true_negatives": counts["tn"],
+                "truth_low_dynamic_range_images": len(truth_low),
+                "max_peak_fraction_among_truth_low": _round(largest, F1_DECIMALS),
+            }
+        )
+    return {
+        "parameter": "dynamic_range_min_peak_fraction",
+        "note": (
+            "The image `low_dynamic_range` flag against ground truth's labels, over candidate "
+            "peak fractions. Every row applies pipeline.qc.is_low_dynamic_range to the brightest "
+            "band peak each result document reports, with only that threshold replaced, so the "
+            "row at the shipped value is the shipped flag. The last row is the one to read: it "
+            "scores perfectly and is refused, because reaching it means matching the amplitude "
+            "the generator gives a scratch. `max_peak_fraction_among_truth_low` is why the "
+            "shipped value misses what it misses -- a scratch crossing a lane raises the "
+            "brightest measured peak on a faint image."
+        ),
+        "values": values,
+    }
+
+
+def _shoulder_sensitivity_record(
+    observations: Sequence[Observation],
+    evaluations: Sequence[QcEvaluation],
+    config: PipelineConfig,
+) -> dict[str, Any]:
+    """Return the shape test's firing rates over candidate half-width ratios.
+
+    Not an accuracy: ``unresolved_shoulder`` has no ground-truth label, so each row is a
+    coincidence with truth's ``overlapping`` -- how often the flag fires on bands that carry
+    that label and on bands that do not. Recorded so a reader can see the whole surface the
+    shipped value sits on; **no test asserts that the shipped value is its optimum**, because
+    that would make maximal coincidence with a truth label a property CI enforces, and the
+    diagnostic is explicitly not a scoring target.
+    """
+    censored = sum(evaluation.censored_row_half_width_ratios for evaluation in evaluations)
+    values = []
+    for threshold in SHOULDER_THRESHOLDS:
+        variant = replace(config.qc, shoulder_half_width_ratio=threshold)
+        reference = 0
+        non_reference = 0
+        fired_with = 0
+        fired_without = 0
+        for truth_flags, _, ratio, _overlap in observations:
+            fires = is_unresolved_shoulder(ratio, variant)
+            if OVERLAPPING in truth_flags:
+                reference += 1
+                fired_with += int(fires)
+            else:
+                non_reference += 1
+                fired_without += int(fires)
+        values.append(
+            {
+                "label": str(threshold),
+                "items": len(observations),
+                "reference_items": reference,
+                "non_reference_items": non_reference,
+                "fired_with_reference": fired_with,
+                "fired_without_reference": fired_without,
+                "censored_asymmetry_bands": censored,
+            }
+        )
+    return {
+        "parameter": "shoulder_half_width_ratio",
+        "note": (
+            "The shape test's firing rate on matched bands whose ground truth carries "
+            "`overlapping` and on those it does not, over candidate half-width ratios, at the "
+            "shipped half-maximum level. Every row applies pipeline.qc.is_unresolved_shoulder "
+            "to the pipeline's own recorded asymmetry with only that threshold replaced. Not "
+            "an accuracy: the two flags ask different questions, so this is a coincidence, the "
+            "rates are arithmetic on these counts, and the surface is recorded to be read "
+            "rather than to be optimised. `censored_asymmetry_bands` counts the matched bands "
+            "whose asymmetry could not be measured at all, and so can never flag: it is "
+            "threshold-independent, and it is recorded because a blind spot that grew silently "
+            "would look like a flag that had simply stopped firing."
+        ),
+        "values": values,
+    }
+
+
 def run_sweeps() -> dict[str, Any]:
     """Run every sweep and return the complete record."""
     default = load_config(CONFIG_DIR / "default.yaml")
@@ -786,6 +1249,24 @@ def run_sweeps() -> dict[str, Any]:
     recorded["sweeps"]["doublet_cost"] = _doublet_cost_record(truths, default, cache)
     recorded["sweeps"]["lane_roi_geometry"] = _lane_geometry_record(truths)
     recorded["sweeps"]["presmooth_variance"] = _presmooth_variance_record()
+    qc_evaluations = [
+        evaluate_image(truth, DATA_DIR, default, PLAN_IOU_THRESHOLD)[1] for truth in truths
+    ]
+    recorded["sweeps"]["qc_flag_accuracy"] = _qc_flag_record(qc_evaluations)
+    recorded["sweeps"]["normalization_modes"] = _normalization_record(qc_evaluations)
+    observations = _matched_band_observations(qc_evaluations)
+    recorded["sweeps"]["qc.saturated_min_clipped_pixels"] = _saturation_sensitivity_record(
+        observations, default
+    )
+    recorded["sweeps"]["qc.overlap_iou_threshold"] = _overlap_sensitivity_record(
+        observations, qc_evaluations, truths, default
+    )
+    recorded["sweeps"]["qc.shoulder_half_width_ratio"] = _shoulder_sensitivity_record(
+        observations, qc_evaluations, default
+    )
+    recorded["sweeps"]["qc.dynamic_range_min_peak_fraction"] = _dynamic_range_sensitivity_record(
+        qc_evaluations, default
+    )
     recorded["sweeps"]["aperture_selector_uncertainty"] = _aperture_uncertainty_record(
         aperture[1], aperture[0]
     )
@@ -1038,12 +1519,12 @@ moves by at most an order-statistic step of that size; twice it. Medians only: a
 is a selection over a set whose membership moves, and is classified below."""
 
 EXTREME_RELATIVE = FigureTolerance("extreme value", bound=0.10, relative=True)
-"""+/-10% of the recorded value, for extreme order statistics -- the largest recovery error
-and the extreme ROI dimensions. Observed CI drift: 4.3%, on the largest recovery error at
-one background window. An extremum is one band's figure and moves wholesale when a
-different band becomes the extreme, which is exactly what the detection-count class permits
-to happen; a pixel-sized bound would be tighter than the mechanism rather than merely
-tight."""
+"""+/-10% of the recorded value, for extreme order statistics -- the largest recovery error,
+the largest normalized-ratio error and the extreme ROI dimensions. Observed CI drift: 4.3%, on
+the largest recovery error at one background window. An extremum is one band's figure and moves
+wholesale when a different band becomes the extreme, which is exactly what the detection-count
+class permits to happen; a pixel-sized bound would be tighter than the mechanism rather than
+merely tight."""
 
 ROI_AREA = FigureTolerance("ROI area share", bound=0.25, relative=True)
 """+/-25% of the recorded value, for an ROI area expressed as a share of the background
@@ -1054,6 +1535,45 @@ the median's size taking the 2 px step per side that the median dimensions allow
 a fifth of its area. 25% sits just above both, which is where it comes from. What
 the figures are quoted for -- that a band covers a minority of the median window, so the
 median still reports background rather than the band -- clears this by a wide margin."""
+
+QC_FLAG_COUNT = FigureTolerance("QC flag count", bound=4.0)
+"""+/-4 counts, for every count in the QC and normalization records -- confusion counts, the
+shoulder coincidence's tallies, ratio counts and skipped-lane counts. Observed CI drift: none;
+these records are new this phase and have never run on the other architecture.
+
+Derived, not measured, and derived from the counts these are computed *over*: every one of
+them is a tally over the matched band pairs, whose membership the detection-count class
+already allows to move by four. A bound tighter than that would fail on a movement the record
+permits two sweeps over. It is therefore a loose alarm on the image-scope rows in particular,
+where a whole image would have to change flags -- and it is worth saying plainly that this
+class catches staleness and gross regression, not a one-band change in a QC decision. The
+band-level *behaviour* is pinned tightly in ``tests/test_pipeline_qc.py`` against the gold
+set instead, which is where a one-band change does fail."""
+
+NORMALIZATION_ERROR = FigureTolerance("normalized-ratio error", bound=0.35, relative=True)
+"""+/-35% of the recorded value, for the mean and median error of the normalized ratios.
+Observed CI drift: none.
+
+**Derived for the two means, from figures the record itself holds.** One ratio entering or
+leaving a subset moves its mean by at most that subset's largest |error| divided by its size --
+which is why ``included_max_absolute_percent`` and ``all_max_absolute_percent`` are recorded --
+and the count class above allows four ratios to move. ``tests/test_sweep_check.py`` recomputes
+that for both means of every row and asserts this bound covers it. On the four rows the record
+holds today the leverage is 30.4%, 11.2%, 25.8% and 29.8% of the recorded mean -- a ratio error
+here can be several times the mean -- so three of the four clear the 35% bound by under 5
+percentage points (0.57, 2.91 and 1.77 pp; the fourth by 5.47). The bound is not generous
+relative to its own derivation, whatever it looks like as a percentage.
+
+**The two medians inherit the same bound, and that is not derived from a median's own
+leverage.** A median moves by an order-statistic step rather than by an extreme, so its leverage
+is smaller than the means' -- the bound is therefore wider than a median needs, which risks
+missing drift rather than failing on it, and the medians' real guard is the transcription check
+in ``tests/test_recorded_figures.py``. Measuring the step and giving the medians a tighter class
+is left as an open item rather than guessed at here.
+
+35% is wide, and the reason is structural rather than a choice: a ratio is a quotient of two
+measurements, so it carries both their errors, and its distribution has a long tail. It is
+recorded as an open item in NOTES.md rather than presented as a regression alarm."""
 
 MONTE_CARLO = FigureTolerance("Monte-Carlo variance ratio", bound=1e-4, relative=True)
 """+/-0.01% of the recorded value. Observed CI drift: none. These touch no gold set: they
@@ -1075,6 +1595,7 @@ _DEFAULT_TOLERANCE_GROUPS: tuple[tuple[FigureTolerance, tuple[str, ...]], ...] =
             "max_truth_roi_width_px",
             "median_lane_pitch_px",
             "width_over_pitch_iou_ceiling",
+            "truth_overlapping_bands",
         ),
     ),
     (
@@ -1138,6 +1659,9 @@ _DEFAULT_TOLERANCE_GROUPS: tuple[tuple[FigureTolerance, tuple[str, ...]], ...] =
         EXTREME_RELATIVE,
         (
             "max_absolute_percent",
+            "included_max_absolute_percent",
+            "all_max_absolute_percent",
+            "max_peak_fraction_among_truth_low",
             "max_width_px",
             "max_height_px",
             "max_area_width_px",
@@ -1146,14 +1670,84 @@ _DEFAULT_TOLERANCE_GROUPS: tuple[tuple[FigureTolerance, tuple[str, ...]], ...] =
     ),
     (ROI_AREA, ("median_window_coverage_percent", "max_window_coverage_percent")),
     (MONTE_CARLO, ("whole_image_variance_reduction", "interior_variance_reduction")),
+    (
+        QC_FLAG_COUNT,
+        (
+            "items",
+            "true_positives",
+            "false_positives",
+            "false_negatives",
+            "true_negatives",
+            "reference_items",
+            "non_reference_items",
+            "fired_with_reference",
+            "fired_without_reference",
+            "ratios",
+            "included_ratios",
+            "excluded_ratios",
+            "reference_flagged_ratios",
+            "used_lanes",
+            "skipped_lanes",
+            "same_lane_band_pairs",
+            "pairs_at_or_above_threshold",
+            "detected_bands_flagged",
+            "censored_asymmetry_bands",
+            "truth_low_dynamic_range_images",
+        ),
+    ),
+    (
+        NORMALIZATION_ERROR,
+        (
+            "included_mean_absolute_percent",
+            "included_median_absolute_percent",
+            "all_mean_absolute_percent",
+            "all_median_absolute_percent",
+        ),
+    ),
 )
 """The class each figure name takes by default, read as the most permissive of the meanings
 that name carries in the record. A name that means something tighter in one particular row
 is tightened there, in :data:`_CONTEXT_TOLERANCE_GROUPS`, not here."""
 
+IMAGE_FLAG_COUNT = FigureTolerance("QC image count", bound=2.0)
+"""+/-2 counts, for the image-scope rows of the QC record. Observed CI drift: none.
+
+Tighter than :data:`QC_FLAG_COUNT`, and derived rather than inherited: an image flag is one
+decision per image over a 30-image split, where four counts would be 13% of the population. The
+mechanism that can move one is a whole-pixel ROI shift changing a band's clipped-pixel count or
+its peak, and the CI drift that class comes from moved 2 of 303 band ROIs -- so at most two
+images can flip on the drift that has actually been observed. ``lossy_format`` cannot move at
+all, being read from the container bytes.
+
+An override may only tighten, which this does; ``tests/test_sweep_check.py`` asserts that
+against the committed record."""
+
 _CONTEXT_TOLERANCE_GROUPS: dict[
     tuple[str, str], tuple[tuple[FigureTolerance, tuple[str, ...]], ...]
 ] = {
+    **{
+        context: (
+            # `items` is the image count, which the record header compares exactly, so it takes
+            # the exact class rather than inheriting a tolerance meant for decisions.
+            (PLATFORM_INDEPENDENT, ("items",)),
+            (
+                IMAGE_FLAG_COUNT,
+                (
+                    "true_positives",
+                    "false_positives",
+                    "false_negatives",
+                    "true_negatives",
+                ),
+            ),
+        )
+        for context in (
+            *(("qc_flag_accuracy", f"image.{flag}") for flag in IMAGE_QC_FLAGS),
+            *(
+                ("qc.dynamic_range_min_peak_fraction", str(threshold))
+                for threshold in DYNAMIC_RANGE_THRESHOLDS
+            ),
+        )
+    },
     ("band_roi_sizes", "truth"): (
         (
             PLATFORM_INDEPENDENT,

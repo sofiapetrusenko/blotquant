@@ -10,6 +10,12 @@ positive. ``None`` is reserved for quantities with no reference at all -- per-fl
 precision when the flag was never predicted, recall when it never occurred, and F1
 only when the flag is absent from both (see :class:`FlagScores`).
 
+:func:`qc_flag_accuracy` scores a flag against *itself* in the truth. Where a predicted flag
+has no counterpart in the truth vocabulary at all -- ``unresolved_shoulder``, a test on a
+profile's shape, against a truth that only labels ROI geometry -- :func:`flag_coincidence`
+reports its firing rate on each side of a *different* truth label, and is deliberately not
+an accuracy: see :class:`FlagCoincidence`.
+
 Thresholds are always explicit parameters: no metric has a default threshold.
 :data:`PLAN_IOU_THRESHOLD` names the value PLAN.md specifies for reported detection
 scores, and callers must pass it.
@@ -341,6 +347,109 @@ def normalization_ratio_error(
         [true_ratios[key] for key in keys],
         [predicted_ratios[key] for key in keys],
         "normalization ratio",
+    )
+
+
+@dataclass(frozen=True)
+class FlagCoincidence:
+    """How often one flag fires on items that do and do not carry a *different* flag.
+
+    **Not an accuracy, and deliberately not shaped like one.** There is no precision,
+    recall or F1 here, because the two flags ask different questions: it is used where a
+    predicted flag has no counterpart in the truth vocabulary, so calling truth's nearest
+    label a "true positive" for it would be renaming one flag as another. What it reports is
+    a firing rate on each side of the reference label, which lets a reader see whether the
+    two track each other without asserting that they measure the same thing.
+    """
+
+    predicted_flag: str
+    reference_flag: str
+    items: int
+    reference_items: int
+    non_reference_items: int
+    fired_with_reference: int
+    fired_without_reference: int
+    rate_with_reference: float | None
+    rate_without_reference: float | None
+
+
+def _require_vocabulary(
+    flags: Mapping[str, Sequence[str]], vocabulary: Sequence[str], flag: str, side: str
+) -> None:
+    """Raise unless ``flag`` and every flag in ``flags`` belong to ``vocabulary``."""
+    if not vocabulary:
+        raise ValueError(f"the {side} vocabulary must name at least one flag")
+    known = set(vocabulary)
+    if flag not in known:
+        raise ValueError(
+            f"{flag!r} is not in the {side} vocabulary {sorted(known)}; a flag name that "
+            f"occurs nowhere would score a rate of 0.0 and read as a real measurement"
+        )
+    for item_id, item_flags in flags.items():
+        unknown = set(item_flags) - known
+        if unknown:
+            raise ValueError(
+                f"the {side} flags for item {item_id!r} include {sorted(unknown)}, which are "
+                f"not in the {side} vocabulary {sorted(known)}"
+            )
+
+
+def flag_coincidence(
+    reference_flags: Mapping[str, Sequence[str]],
+    predicted_flags: Mapping[str, Sequence[str]],
+    reference_flag: str,
+    predicted_flag: str,
+    reference_vocabulary: Sequence[str],
+    predicted_vocabulary: Sequence[str],
+) -> FlagCoincidence:
+    """Return how often ``predicted_flag`` fires with and without ``reference_flag``.
+
+    Reference (truth) side first, matching :func:`qc_flag_accuracy`, because both mappings
+    have the same type and a swapped pair would otherwise type-check and run.
+
+    ``reference_flags`` and ``predicted_flags`` map item ids to flag lists and must cover
+    exactly the same ids. The two sides have *different* vocabularies -- that is the whole
+    reason this function exists rather than :func:`qc_flag_accuracy`, which scores a flag
+    against itself in the truth and cannot express a predicted flag the truth has no label
+    for -- so each is declared and checked separately, including the two flag names
+    themselves. A typo would otherwise report an honest-looking 0.0.
+
+    ``rate_*`` is ``None`` where the corresponding side has no items, never 0.0, following
+    the same convention as :class:`FlagScores`.
+    """
+    missing = set(reference_flags) - set(predicted_flags)
+    extra = set(predicted_flags) - set(reference_flags)
+    if missing or extra:
+        raise ValueError(
+            f"flag sets do not correspond: missing items {sorted(missing)}, unexpected "
+            f"items {sorted(extra)}"
+        )
+    if not reference_flags:
+        raise ValueError("flag coincidence is undefined with no items to score")
+    _require_vocabulary(reference_flags, reference_vocabulary, reference_flag, "reference")
+    _require_vocabulary(predicted_flags, predicted_vocabulary, predicted_flag, "predicted")
+    with_reference = 0
+    without_reference = 0
+    fired_with = 0
+    fired_without = 0
+    for item_id in sorted(reference_flags):
+        fired = predicted_flag in set(predicted_flags[item_id])
+        if reference_flag in set(reference_flags[item_id]):
+            with_reference += 1
+            fired_with += int(fired)
+        else:
+            without_reference += 1
+            fired_without += int(fired)
+    return FlagCoincidence(
+        predicted_flag=predicted_flag,
+        reference_flag=reference_flag,
+        items=with_reference + without_reference,
+        reference_items=with_reference,
+        non_reference_items=without_reference,
+        fired_with_reference=fired_with,
+        fired_without_reference=fired_without,
+        rate_with_reference=_defined_ratio(fired_with, with_reference),
+        rate_without_reference=_defined_ratio(fired_without, without_reference),
     )
 
 

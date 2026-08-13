@@ -36,14 +36,27 @@ def test_shipped_configs_parse(name: str) -> None:
 
 
 def test_parameters_echo_covers_every_stage() -> None:
-    """The provenance echo names a method for each stage and carries its parameters."""
+    """The provenance echo names a method for each processing stage and carries its parameters.
+
+    ``qc`` and ``normalization`` have no ``method``: they are not alternative algorithms but a
+    threshold set and a mode. Every threshold and the mode are echoed, because a parameter the
+    pipeline read and the result does not record is a hole in the provenance.
+    """
     parameters = load_config(CONFIG_DIR / "default.yaml").as_parameters()
 
-    assert set(parameters) == {"background", "detection", "quantification"}
-    for stage in parameters.values():
-        assert "method" in stage
+    assert set(parameters) == {"background", "detection", "quantification", "qc", "normalization"}
+    for name in ("background", "detection", "quantification"):
+        assert "method" in parameters[name]
     assert parameters["background"]["window_px"] == 51
     assert "radius_px" not in parameters["background"]
+    assert set(parameters["qc"]) == {
+        "saturated_min_clipped_pixels",
+        "overlap_iou_threshold",
+        "shoulder_half_maximum_fraction",
+        "shoulder_half_width_ratio",
+        "dynamic_range_min_peak_fraction",
+    }
+    assert parameters["normalization"] == {"mode": "total_protein", "exclude_qc_flagged": True}
 
 
 def test_digest_is_stable_and_sensitive() -> None:

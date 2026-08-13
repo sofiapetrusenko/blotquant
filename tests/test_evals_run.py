@@ -20,11 +20,15 @@ from evals.metrics import (
 from evals.run import (
     EVALUATED_SPLIT,
     ImageEvaluation,
+    QcEvaluation,
+    RatioComparison,
+    band_flag_scores,
     build_parser,
     evaluate_image,
     load_split,
     main,
     print_report,
+    shoulder_coincidence,
 )
 from pipeline.config import load_config
 from tests.test_pipeline_config import CONFIG_DIR
@@ -122,9 +126,13 @@ def test_one_gold_set_image_scores_end_to_end(committed_data_dir: Path) -> None:
     truth = load_split(committed_data_dir)[0]
     config = load_config(CONFIG_DIR / "default.yaml")
 
-    evaluation = evaluate_image(truth, committed_data_dir, config, PLAN_IOU_THRESHOLD)
+    evaluation, qc_evaluation = evaluate_image(
+        truth, committed_data_dir, config, PLAN_IOU_THRESHOLD
+    )
 
     assert evaluation.image_id == truth["image_id"]
+    assert qc_evaluation.image_id == truth["image_id"]
+    assert len(qc_evaluation.band_keys) == evaluation.bands.true_positives
     assert evaluation.lanes.true_positives + evaluation.lanes.false_negatives == len(
         truth["lanes"]
     )
@@ -152,13 +160,168 @@ def test_the_report_states_how_saturated_bands_are_treated() -> None:
     )
     stream = io.StringIO()
 
-    print_report([evaluation], [], load_config(CONFIG_DIR / "default.yaml"), 0.5, stream)
+    print_report([evaluation], [], load_config(CONFIG_DIR / "default.yaml"), 0.5, stream, [])
 
     text = stream.getvalue()
     assert "all 2 matched bands" in text
     assert "1 without a truth 'saturated' flag" in text
     assert "never dropped" in text
     assert "split=dev" in text
+
+
+def _qc_evaluation() -> QcEvaluation:
+    """Return one image's QC/normalization scores, with every field set by hand."""
+    return QcEvaluation(
+        image_id="fixture",
+        truth_image_flags=("saturated",),
+        predicted_image_flags=("saturated", "low_dynamic_range"),
+        band_keys=("fixture:t", "fixture:hk", "fixture:x"),
+        truth_band_flags=(("saturated",), ("overlapping",), ()),
+        predicted_band_flags=(("saturated",), ("unresolved_shoulder",), ("unresolved_shoulder",)),
+        clipped_pixel_counts=(7, 0, 0),
+        row_half_width_ratios=(1.0, 2.4, 1.6),
+        max_same_lane_ious=(0.0, 0.31, 0.0),
+        same_lane_pair_ious=(0.31, 0.0),
+        detected_max_same_lane_ious=(0.0, 0.31, 0.0),
+        censored_row_half_width_ratios=0,
+        brightest_peak_value=140.0,
+        max_value=255,
+        housekeeping=(
+            RatioComparison(
+                key="fixture:L0",
+                true_ratio=2.0,
+                predicted_ratio=2.2,
+                excluded=False,
+                reference_qc_flagged=True,
+            ),
+        ),
+        total_protein=(
+            RatioComparison(
+                key="fixture:t",
+                true_ratio=0.5,
+                predicted_ratio=0.4,
+                excluded=True,
+                reference_qc_flagged=False,
+            ),
+        ),
+        truth_lanes=4,
+        used_housekeeping_lanes=1,
+        skipped_housekeeping_lanes=3,
+        used_total_protein_lanes=2,
+        skipped_total_protein_lanes=2,
+        normalization_warnings=("single_housekeeping_reference",),
+        shipped_normalization_warnings=("lane_denominator_not_positive",),
+    )
+
+
+def test_the_report_discloses_the_oracle_reference_in_the_table() -> None:
+    """Human ruling: a reader of the printed table must see that the reference was an oracle."""
+    evaluation = ImageEvaluation(
+        image_id="fixture",
+        lanes=_scores(1, 0, 0),
+        bands=_scores(2, 0, 0),
+        true_intensities=(100.0, 200.0),
+        predicted_intensities=(110.0, 190.0),
+        saturated=(False, False),
+    )
+    stream = io.StringIO()
+
+    print_report(
+        [evaluation],
+        [],
+        load_config(DEFAULT_CONFIG),
+        PLAN_IOU_THRESHOLD,
+        stream,
+        [_qc_evaluation()],
+    )
+
+    text = stream.getvalue()
+    assert "ORACLE DISCLOSURE" in text
+    assert "ground truth's 'housekeeping' role" in text
+    assert "ORACLE: ground-truth role" in text, "the table row itself is labelled"
+    assert "conditional on a CORRECT reference" in text
+    assert "total_protein warnings raised across the split" in text, (
+        "the shipped mode's own warnings must be reported, not only the re-run's"
+    )
+    assert "lane_denominator_not_positive" in text
+    assert "housekeeping_single warnings raised across the split" in text
+    assert "4 truth lanes = 1 used + 3 skipped" in text, (
+        "each row must let a reader add its lanes up to the same denominator"
+    )
+    assert "4 truth lanes = 2 used + 2 skipped" in text
+
+
+def test_the_report_scores_the_two_overlap_flags_separately() -> None:
+    """``unresolved_shoulder`` is reported as a coincidence, not as accuracy against truth."""
+    stream = io.StringIO()
+
+    print_report(
+        [
+            ImageEvaluation(
+                image_id="fixture",
+                lanes=_scores(1, 0, 0),
+                bands=_scores(2, 0, 0),
+                true_intensities=(100.0,),
+                predicted_intensities=(110.0,),
+                saturated=(False,),
+            )
+        ],
+        [],
+        load_config(DEFAULT_CONFIG),
+        PLAN_IOU_THRESHOLD,
+        stream,
+        [_qc_evaluation()],
+    )
+
+    text = stream.getvalue()
+    assert "band   overlapping" in text
+    assert "unresolved_shoulder is NOT scored above" in text
+    assert "test on the row profile's shape" in text
+    assert "fires on 1/1 bands whose truth carries overlapping" in text
+    assert "1/2 that do not" in text
+
+
+def test_qc_flag_scoring_drops_the_shoulder_flag_only_from_the_like_for_like_table() -> None:
+    """The truth vocabulary has no shoulder flag, so scoring it there would be a rename."""
+    evaluations = [_qc_evaluation()]
+
+    band_scores = band_flag_scores(evaluations)
+    coincidence = shoulder_coincidence(evaluations)
+
+    assert set(band_scores.per_flag) == {"saturated", "overlapping"}
+    assert band_scores.per_flag["overlapping"].false_negatives == 1
+    assert band_scores.per_flag["overlapping"].false_positives == 0, (
+        "the shoulder flag must not be counted as an overlapping prediction"
+    )
+    assert (coincidence.fired_with_reference, coincidence.fired_without_reference) == (1, 1)
+
+
+def test_the_report_omits_the_qc_sections_when_it_has_no_qc_scores() -> None:
+    """An empty section is worse than none: it would read as 'QC ran and found nothing'."""
+    stream = io.StringIO()
+
+    print_report(
+        [
+            ImageEvaluation(
+                image_id="fixture",
+                lanes=_scores(1, 0, 0),
+                bands=_scores(1, 0, 0),
+                true_intensities=(100.0,),
+                predicted_intensities=(110.0,),
+                saturated=(False,),
+            )
+        ],
+        [],
+        load_config(DEFAULT_CONFIG),
+        PLAN_IOU_THRESHOLD,
+        stream,
+        [],
+    )
+
+    text = stream.getvalue()
+    assert "QC flag accuracy" not in text
+    assert "normalization ratio error" not in text
+    assert "TOTAL" in text
 
 
 def _write_gold_set(
@@ -282,6 +445,7 @@ def test_the_report_lists_failures(tmp_path: Path) -> None:
         load_config(CONFIG_DIR / "default.yaml"),
         0.5,
         stream,
+        [],
     )
 
     text = stream.getvalue()

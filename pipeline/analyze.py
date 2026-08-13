@@ -1,64 +1,61 @@
 """End-to-end analysis of one image, and the result document it produces.
 
-The document is a **strict subset** of ``schema/result.schema.json``: every field it
-emits has the name, type and shape the schema defines, and it emits no field the
-schema does not define -- but it omits the fields Phase 2 owns
-(:data:`PHASE2_RESULT_FIELDS`). Emitting them as empty structures would assert that QC
-ran and found nothing, and that normalization ran and produced no ratios, which is
-indistinguishable from a real clean result. A missing key is honest; an empty list is
-not. Phase 2 fills them in and the document becomes schema-valid.
+The document validates against ``schema/result.schema.json`` in full: every field the
+schema requires is emitted, every field emitted is one the schema defines, and
+``schema_version`` names the version it actually satisfies. Phase 1 emitted a documented
+strict subset because ``qc_flags``, ``excluded_from_normalization`` and the whole
+``normalization`` block had no producer yet, and emitting them empty would have asserted
+that QC ran and found nothing. Both producers exist now, so nothing is omitted.
+
+One consequence of the schema is load-bearing and easy to lose: ``excluded_from_normalization``
+is emitted on **every** band, including the ones that are not excluded. The band object's
+``allOf`` requires ``exclusion_reason`` whenever that key is *absent or* true -- JSON
+Schema's ``properties`` constrains only the keys a document actually has -- so a band that
+quietly omitted it would inherit a requirement written for excluded bands.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from pipeline import PIPELINE_VERSION, RESULT_SCHEMA_VERSION
 from pipeline.background import correct_background
-from pipeline.config import PipelineConfig
-from pipeline.detect import detect
+from pipeline.config import TOTAL_PROTEIN, PipelineConfig
+from pipeline.detect import DetectedLane, detect
 from pipeline.errors import PipelineError
 from pipeline.load import load_image
-from pipeline.quantify import quantify_bands
-
-PHASE2_RESULT_FIELDS: dict[str, tuple[str, ...]] = {
-    "<root>": ("normalization", "image_qc_flags"),
-    "bands[]": ("qc_flags", "excluded_from_normalization"),
-    "provenance.parameters": ("normalization",),
-}
-"""Schema-required fields Phase 1 deliberately does not emit, by the object holding them.
-
-Each is produced by ``pipeline/qc.py`` or ``pipeline/normalize.py``, which are Phase 2.
-``tests/test_pipeline_result.py`` pins this list from both sides: the result validates
-against the schema with exactly these requirements relaxed, and fails against the
-unmodified schema for exactly these reasons.
-"""
-
-PHASE2_CONDITIONAL_BAND_FIELDS: tuple[str, ...] = ("exclusion_reason",)
-"""Also absent, but required by the schema only through a conditional.
-
-The schema requires ``exclusion_reason`` when ``excluded_from_normalization`` is true.
-JSON Schema's ``properties`` constrains only the keys that are present, so omitting
-``excluded_from_normalization`` altogether satisfies that ``if`` and pulls in the
-``then``. Listing the field here keeps that consequence explicit instead of letting it
-surface as a surprise in Phase 2.
-"""
+from pipeline.normalize import NormalizationBand, normalize
+from pipeline.qc import BandQc, assess
+from pipeline.quantify import BandMeasurement, integrate_roi, quantify_bands
 
 RESULT_ID_HEX_DIGITS = 16
 """Length of the content-addressed result id, in hex characters."""
 
 
-def _result_id(source_sha256: str, config_digest: str) -> str:
-    """Return a deterministic id for the (image bytes, parameter set) pair.
+def _result_id(
+    source_sha256: str, config_digest: str, reference_band_ids: Sequence[str] | None
+) -> str:
+    """Return a deterministic id for every input that can change the document.
 
-    Derived from content rather than from the file path or the clock, so re-analysing
-    the same image with the same config reproduces the same id on any machine.
+    Derived from content rather than from the file path or the clock, so re-analysing the
+    same image with the same inputs reproduces the same id on any machine.
+
+    All **three** inputs are hashed, not two. The reference band ids are a per-image input no
+    parameter set can carry -- ``NormalizationConfig`` deliberately does not -- and they change
+    the denominators, the ratios and the exclusions, so hashing only the image and the config
+    would give two genuinely different documents the same id, and PLAN.md's Phase 4
+    ``GET /results/{id}`` would serve one for the other. The list is hashed *in order*, because
+    the order is recorded on the result and reappears in each ratio's ``denominator_band_ids``,
+    and it is JSON-encoded rather than joined so that no id can be forged through a separator
+    inside a band id.
     """
-    payload = f"{source_sha256}|{config_digest}".encode()
+    references = json.dumps(list(reference_band_ids or ()), separators=(",", ":"))
+    payload = f"{source_sha256}|{config_digest}|{references}".encode()
     return hashlib.sha256(payload).hexdigest()[:RESULT_ID_HEX_DIGITS]
 
 
@@ -67,19 +64,68 @@ def _created_at() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _band_document(
+    measurement: BandMeasurement, qc: BandQc, excluded: bool, reason: str | None
+) -> dict[str, Any]:
+    """Return one ``bands[]`` entry: the measurement, its QC verdict and its exclusion.
+
+    ``excluded_from_normalization`` is always present, whatever its value; see this
+    module's docstring for why an omitted false is not equivalent.
+    """
+    if measurement.band_id != qc.band_id:
+        raise PipelineError(
+            f"measurement {measurement.band_id!r} was paired with the QC verdict for "
+            f"{qc.band_id!r}; the two are produced in detection order and must stay aligned"
+        )
+    document = measurement.as_dict()
+    document["peak_value"] = qc.peak_value
+    document["clipped_pixel_count"] = qc.clipped_pixel_count
+    # Explicitly null rather than absent when the shape statistic was censored: absence would
+    # be indistinguishable from a writer that does not measure it, and null says "measured,
+    # and the answer is that it could not be measured here".
+    document["row_half_width_ratio"] = qc.row_half_width_ratio
+    document["qc_flags"] = list(qc.flags)
+    document["excluded_from_normalization"] = excluded
+    if reason is not None:
+        document["exclusion_reason"] = reason
+    return document
+
+
+def _lane_document(lane: DetectedLane, total_protein: float | None) -> dict[str, Any]:
+    """Return one ``lanes[]`` entry, carrying its total-protein signal only if it was used."""
+    document: dict[str, Any] = {
+        "lane_id": lane.lane_id,
+        "lane_index": lane.lane_index,
+        "roi": lane.roi.as_dict(),
+    }
+    if total_protein is not None:
+        document["total_protein_signal"] = total_protein
+    return document
+
+
 def analyze_image(
     image_path: Path,
     config: PipelineConfig,
     ground_truth_image_id: str | None = None,
+    reference_band_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Load, background-correct, detect and quantify one image; return its result document.
+    """Analyse one image end to end and return its result document.
 
-    Deterministic: for a fixed image and config every field except
+    Load, background-correct, detect, quantify, QC, normalize -- in that order, because QC
+    needs the measured ROIs and normalization needs the QC flags.
+
+    Deterministic: for a fixed image, config and reference list, every field except
     ``provenance.created_at`` is reproduced exactly on every run.
 
     ``ground_truth_image_id`` is recorded verbatim when the caller supplies one (the
     eval harness does, to join results to ground truth). Nothing in the analysis reads
     it, and it is never inferred from the file name.
+
+    ``reference_band_ids`` designates the housekeeping reference bands. It is required by
+    the housekeeping normalization modes and refused by ``total_protein``: which band is the
+    loading control is not visible in the pixels, so it is never inferred and never guessed
+    (human ruling, NOTES.md Phase 2). Band ids come from a previous run of this function on
+    the same image, or from a user correcting the detection.
     """
     loaded = load_image(image_path)
     correction = correct_background(loaded.pixels, config.background)
@@ -87,9 +133,50 @@ def analyze_image(
     measurements = quantify_bands(
         correction.corrected, correction.background, detection.bands, config.quantification
     )
+    report = assess(
+        loaded.pixels,
+        correction.corrected,
+        detection.bands,
+        loaded.max_value,
+        loaded.lossy_format,
+        config.qc,
+    )
+    flags = report.flags_by_band_id()
+    # Measured only for the mode that reads it: the lane integral is the total_protein
+    # denominator, and normalize refuses an input no mode of it would read. It is an ROI pixel
+    # sum, in the same units as a band's integrated_intensity, so the two are comparable -- not a
+    # mean-column-profile integral, which would differ from it by the lane's width.
+    lane_total_protein: Mapping[str, float] | None = (
+        {
+            lane.lane_id: integrate_roi(
+                correction.corrected, lane.roi, config.quantification.clamp_negative_pixels
+            )
+            for lane in detection.lanes
+        }
+        if config.normalization.mode == TOTAL_PROTEIN
+        else None
+    )
+    normalization = normalize(
+        [
+            NormalizationBand(
+                band_id=measurement.band_id,
+                lane_id=measurement.lane_id,
+                intensity=measurement.integrated_intensity,
+                qc_flags=flags[measurement.band_id],
+            )
+            for measurement in measurements
+        ],
+        [lane.lane_id for lane in detection.lanes],
+        config.normalization,
+        lane_total_protein=lane_total_protein,
+        reference_band_ids=reference_band_ids,
+        lossy_format=loaded.lossy_format,
+    )
+    exclusions = normalization.exclusion_by_band_id()
+    totals = normalization.lane_total_protein
     return {
         "schema_version": RESULT_SCHEMA_VERSION,
-        "result_id": _result_id(loaded.sha256, config.digest()),
+        "result_id": _result_id(loaded.sha256, config.digest(), reference_band_ids),
         "source": loaded.as_source(ground_truth_image_id),
         "provenance": {
             "software_version": PIPELINE_VERSION,
@@ -99,14 +186,20 @@ def analyze_image(
             "parameters": config.as_parameters(),
         },
         "lanes": [
-            {
-                "lane_id": lane.lane_id,
-                "lane_index": lane.lane_index,
-                "roi": lane.roi.as_dict(),
-            }
+            _lane_document(lane, None if totals is None else totals[lane.lane_id])
             for lane in detection.lanes
         ],
-        "bands": [measurement.as_dict() for measurement in measurements],
+        "bands": [
+            _band_document(
+                measurement,
+                qc,
+                exclusions[measurement.band_id].excluded,
+                exclusions[measurement.band_id].reason,
+            )
+            for measurement, qc in zip(measurements, report.bands, strict=True)
+        ],
+        "normalization": normalization.as_dict(),
+        "image_qc_flags": list(report.image_flags),
     }
 
 

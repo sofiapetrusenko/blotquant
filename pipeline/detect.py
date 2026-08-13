@@ -10,6 +10,12 @@ falls to a configured fraction of its height, and its horizontal extent is the s
 rule applied to the column profile of the rows it occupies -- bounded by the lane,
 because a band cannot be wider than the lane it migrated in.
 
+Each band also carries the row profile its ROI was walked from (:class:`RowProfile`), so
+that :mod:`pipeline.qc` can measure the peak's asymmetry (:func:`half_width_ratio`) at its
+own configured level and turn it into the ``unresolved_shoulder`` flag. Nothing about
+detection changes: one resolved maximum is still one band, one centre and one ROI, and no
+threshold or criterion for that flag lives in this module.
+
 Nothing here assumes how many lanes or bands exist, that lanes are evenly spaced, that
 bands are the same size, that band rows are shared between lanes, or any particular
 peak shape. Those would be assumptions about the synthetic generator (``synth/MODELS.md``,
@@ -84,12 +90,72 @@ class DetectedLane:
 
 
 @dataclass(frozen=True)
+class RowProfile:
+    """The row-profile geometry one band's ROI was walked from.
+
+    Carried on the band so that a *shape* test can be applied to the same profile, peak and
+    bounds the ROI came from, without recomputing them and without detection deciding
+    anything about shape. It holds no threshold and no criterion: every number here is a
+    measurement or an index.
+    """
+
+    samples: tuple[float, ...]
+    peak_index: int
+    baseline: float
+    lower_bound: int
+    upper_bound: int
+
+    def __post_init__(self) -> None:
+        """Reject a profile whose indices do not describe a peak inside its own bounds.
+
+        Detection cannot build an invalid one, but a caller can -- Phase 4's UI corrects ROIs by
+        hand -- and an out-of-range index would otherwise surface as a bare ``IndexError`` from
+        the middle of a level walk. :class:`Roi` rejects an empty rectangle for the same reason.
+        """
+        if len(self.samples) < 2:
+            raise ValueError(
+                f"a row profile needs at least two samples to have a width, got "
+                f"{len(self.samples)}"
+            )
+        if not 0 <= self.lower_bound <= self.peak_index <= self.upper_bound < len(self.samples):
+            raise ValueError(
+                f"row profile indices must satisfy 0 <= lower_bound <= peak_index <= "
+                f"upper_bound < {len(self.samples)}, got lower_bound={self.lower_bound}, "
+                f"peak_index={self.peak_index}, upper_bound={self.upper_bound}"
+            )
+
+    def half_width_ratio(self, level_fraction: float) -> float | None:
+        """Return how asymmetric this peak is, measured at ``level_fraction`` of its height.
+
+        Delegates to :func:`half_width_ratio`; the level is the caller's parameter, never a
+        constant here, because it sets the sensitivity of the shape test that reads it.
+        """
+        return half_width_ratio(
+            np.asarray(self.samples, dtype=np.float64),
+            self.peak_index,
+            self.baseline,
+            self.lower_bound,
+            self.upper_bound,
+            level_fraction,
+        )
+
+
+@dataclass(frozen=True)
 class DetectedBand:
-    """One detected band and the lane it belongs to."""
+    """One detected band, the lane it belongs to, and the row profile it was measured from.
+
+    ``row_profile`` carries no decision: :mod:`pipeline.qc` measures the peak's asymmetry
+    from it, at the level and against the threshold its own config declares, and turns that
+    into the ``unresolved_shoulder`` flag.
+
+    Nothing here splits a band: one resolved maximum is one band, one centre and one ROI
+    (NOTES.md, "Doublet resolution").
+    """
 
     band_id: str
     lane_id: str
     roi: Roi
+    row_profile: RowProfile
 
 
 @dataclass(frozen=True)
@@ -291,6 +357,77 @@ def _extent_threshold(
     return max(relative_height * peak_height, min_sigma * noise_sigma)
 
 
+def _level_crossing(
+    profile: np.ndarray, peak: int, level: float, step: int, bound: int
+) -> float | None:
+    """Return the sub-sample offset from ``peak`` at which ``profile`` falls to ``level``.
+
+    Walks in direction ``step`` no further than ``bound`` and interpolates linearly between
+    the last sample above ``level`` and the first at or below it. Returns ``None`` when the
+    profile has not reached ``level`` by ``bound``: the width is then censored by a
+    neighbouring peak or by the lane's edge, and inventing the crossing beyond the bound
+    would report a width that was never measured.
+
+    The caller guarantees ``profile[peak] > level`` (:func:`half_width_ratio` requires a
+    positive height and a level fraction below one), and the walk only advances while the
+    next sample is above ``level``, so at the interpolation ``above > level >= below``
+    strictly and the denominator below cannot be zero.
+    """
+    index = peak
+    while index != bound and profile[index + step] > level:
+        index += step
+    if index == bound:
+        # Every sample between the peak and the bound is above the level, so the crossing
+        # lies outside the range this peak may be measured over. Nothing beyond the bound is
+        # read: it belongs to a neighbouring peak, or is off the end of the profile.
+        return None
+    above = float(profile[index])
+    below = float(profile[index + step])
+    return abs(index - peak) + (above - level) / (above - below)
+
+
+def half_width_ratio(
+    profile: np.ndarray,
+    peak: int,
+    baseline: float,
+    lower_bound: int,
+    upper_bound: int,
+    level_fraction: float,
+) -> float | None:
+    """Return how asymmetric one peak of ``profile`` is, as a ratio of its two half-widths.
+
+    ``level_fraction`` is the height, as a fraction of the peak's height above ``baseline``,
+    at which both widths are measured; it must lie strictly between 0 and 1 and is the
+    caller's parameter, because it sets how far down the peak's flanks the comparison is made
+    and therefore how sensitive the statistic is to a shoulder.
+
+    Guarantees a value ``>= 1.0``: the wider half-width divided by the narrower one, so a
+    symmetric peak measures 1.0 whichever side is wider, and the statistic is scale-free --
+    independent of the peak's height, of the profile's units and of the band's size. A single
+    band's profile is symmetric about its own centre (diffusion about a migration position
+    has no preferred direction), so a ratio materially above 1.0 means the profile carries
+    structure a single band does not explain.
+
+    ``None`` when the statistic is undefined or censored: a non-positive peak height, or a
+    profile that does not reach the level on both sides within
+    ``[lower_bound, upper_bound]``. The caller must not read ``None`` as "symmetric".
+    """
+    if not 0.0 < level_fraction < 1.0:
+        raise ValueError(
+            f"level_fraction must be in (0, 1), got {level_fraction}; at 0 the width is the "
+            f"whole peak and at 1 it is zero, so neither bounds a half-width"
+        )
+    height = float(profile[peak]) - baseline
+    if height <= 0.0:
+        return None
+    level = baseline + level_fraction * height
+    left = _level_crossing(profile, peak, level, -1, lower_bound)
+    right = _level_crossing(profile, peak, level, +1, upper_bound)
+    if left is None or right is None or left <= 0.0 or right <= 0.0:
+        return None
+    return max(left, right) / min(left, right)
+
+
 def _measure_extent(
     profile: np.ndarray,
     peak: int,
@@ -383,6 +520,17 @@ def _detect_bands_in_lane(
             DetectedBand(
                 band_id=f"{lane.lane_id}_B{len(bands)}",
                 lane_id=lane.lane_id,
+                # The same profile, peak and bounds the ROI was walked from, so a shape test
+                # reading this describes the band's own peak and cannot stray into a
+                # neighbour's. Measuring and thresholding it is pipeline.qc's job, at
+                # pipeline.qc's configured level.
+                row_profile=RowProfile(
+                    samples=tuple(float(sample) for sample in row_profile),
+                    peak_index=int(peak),
+                    baseline=baseline,
+                    lower_bound=int(lower),
+                    upper_bound=int(upper),
+                ),
                 # top/bottom and left/right index the lane slice, so both are offset by
                 # the lane's own origin rather than relying on it being (0, 0).
                 roi=Roi(

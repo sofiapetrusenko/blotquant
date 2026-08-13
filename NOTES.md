@@ -375,8 +375,12 @@ exactly as strong as they are — no stronger.
   has moved: exactly, for the record's structure, its header and the two shipped config
   digests; within a per-class tolerance for the measured figures, for the reason the next
   entry sets out and no wider than the drift measured there. CI runs `--check` on every
-  push, so a parameter change that invalidates a recorded surface fails the build. It takes
-  about two minutes, which is why it is a CI step rather than part of `pytest`.
+  push, so a parameter change that invalidates a recorded surface fails the build. It is a CI
+  step rather than part of `pytest` because it is slow: **about nine and a quarter minutes of
+  CPU** on an arm64 machine (measured twice, 9m09s and 9m19s of CPU time). That figure is Phase
+  2's, and Phase 2 is what made it slow — it was about two minutes when this entry was written,
+  before the QC and normalization records added a pipeline pass. `.github/workflows/ci.yml`
+  carries the same measurement and what dominates it.
 - **`tests/test_recorded_figures.py`** checks the transcription, which is the half a
   re-measuring tool cannot: every figure quoted in this section or in a config comment
   sits inside a block marked with the sweep it came from, and the test fails if a number
@@ -648,22 +652,35 @@ document validates against the schema with exactly those requirements relaxed, a
 fails the unmodified schema for exactly those reasons and no others. Phase 2 deletes
 the gap; nothing about the schema was changed to accommodate Phase 1.
 
+**Superseded by Phase 2, and the pointers above are now historical.** Phase 2 produces all
+five fields, so it deleted `PHASE2_RESULT_FIELDS`, `PHASE2_CONDITIONAL_BAND_FIELDS` and the two
+tests that pinned the gap from both sides. What guards the same ground now is
+`tests/test_pipeline_result.py::test_the_result_validates_against_the_full_schema` — the
+document against the schema *as written*, with nothing relaxed — and
+`::test_every_band_states_its_exclusion_explicitly`, which pins the `allOf` consequence the
+next paragraph describes. The reasoning above is kept because it is why the subset was a
+subset; the two constants no longer exist.
+
 That test surfaced a consequence worth recording: the band `allOf` requires
 `exclusion_reason` whenever `excluded_from_normalization` is true, and JSON Schema's
 `properties` constrains only keys that are *present*, so omitting
 `excluded_from_normalization` satisfies the `if` and pulls in the `then`. Phase 1
-therefore also omits `exclusion_reason` (`PHASE2_CONDITIONAL_BAND_FIELDS`). Phase 2
-should note that any band object must carry `excluded_from_normalization` explicitly,
-even when false, or it inherits a requirement meant for excluded bands. Two other items
-belong on the Phase 2 list: `schema_version` should stop declaring a version the document
-knowingly fails, and the one place detection drops a peak without recording it — a lane
+therefore also omits `exclusion_reason` (`PHASE2_CONDITIONAL_BAND_FIELDS`, since removed).
+Phase 2 should note that any band object must carry `excluded_from_normalization` explicitly,
+even when false, or it inherits a requirement meant for excluded bands — **it does, and a test
+pins it.** Two other items belong on the Phase 2 list: `schema_version` should stop declaring a
+version the document knowingly fails (**done**), and the one place detection drops a peak
+without recording it — a lane
 whose columns carry no spread over the peak's rows, documented and tested in
 `_detect_bands_in_lane` — should surface a count rather than only a code comment.
 
 The parameter echo follows the same rule in reverse: `configs/*.yaml` carry only the
-parameters the pipeline reads, so there is no `normalization` block to echo yet, and a
-config that carries parameters for the background method it did *not* select is
-rejected. An echoed parameter that nothing read is a false provenance record.
+parameters the pipeline reads, so as Phase 1 shipped there was no `normalization` block to echo
+yet, and a config that carries parameters for the background method it did *not* select is
+rejected. An echoed parameter that nothing read is a false provenance record. (**Superseded in
+Phase 2**, which reads normalization and QC parameters and therefore echoes both: both configs
+carry a `normalization` and a `qc` block, and `provenance.parameters` requires them. The rule is
+unchanged — it is what put them there.)
 
 ### Lane ROI width — resolved: a detected Voronoi partition, one pitch wide
 
@@ -772,7 +789,16 @@ second boundary from an inflection, and in exactly the cells where the answer ma
 weak lanes under `high` noise — it would be fitting noise. Reporting two numbers where
 the data shows one peak is worse than reporting one, because both numbers would carry
 provenance implying they were measured. The honest report for an unresolved doublet is
-one band plus the `overlapping` QC flag, and the flag is Phase 2's job.
+one band plus a QC flag, and the flag is Phase 2's job.
+
+**Which flag, corrected by Phase 2's measurement.** This entry originally said "the `overlapping`
+QC flag", and that turned out to be the wrong flag for this job: `overlapping` is geometric, and
+once a doublet is one band with one ROI there is no second ROI to overlap with, so Phase 2
+measured it firing on **0** of the 52 truth-`overlapping` matched bands. That measurement is why
+the human issued Ruling 1, splitting the question in two: `overlapping` stays geometric, and
+`unresolved_shoulder` — a test on the row profile's shape — is the flag that reports an unresolved
+doublet. See the Phase 2 section; a reader stopping here would be left with exactly the
+misconception that ruling exists to prevent.
 
 `tests/test_pipeline_detect.py` pins both halves on a fixture the pipeline has never
 been tuned against: two peaks 4σ apart are reported as two bands, and a partner at
@@ -1346,17 +1372,22 @@ screen.
 - **A multi-channel image raises** rather than having a channel picked for it. PLAN.md's
   MVP scope is single-channel grayscale; choosing a channel silently would change every
   intensity downstream.
-- **`schema_version` names the contract targeted, not a claim of validity.** The
-  document declares `1.0.0` while omitting five of that version's required fields, so a
-  consumer that validates on the declared version gets `required` failures with no
-  in-band explanation. Nothing consumes results yet, and inventing an out-of-band
-  "partial" marker would need a schema change this phase may not make. Phase 2 closes
-  the gap and is the right place to decide whether the field should ever be able to say
-  "subset"; until then this file is the explanation.
-- **`result_id` is content-addressed** — `sha256(source digest | config digest)` — so
-  re-analysing the same image with the same parameters reproduces the same id on any
-  machine, and the determinism test can compare whole documents with only
-  `created_at` removed.
+- **`schema_version` named the contract targeted, not a claim of validity — and Phase 2 ended
+  that.** As Phase 1 shipped, the document declared `1.0.0` while omitting five of that
+  version's required fields, so a consumer validating on the declared version got `required`
+  failures with no in-band explanation; nothing consumed results yet, and inventing an
+  out-of-band "partial" marker would have needed a schema change Phase 1 was not authorised to
+  make. **Since Phase 2 this is history:** the version is `1.1.0`, the schema pins it as a
+  `const`, and the document validates in full. The idea of a `schema_version` that could say
+  "subset" was not taken up and should not be revived without a reason this concrete.
+- **`result_id` is content-addressed** — as Phase 1 shipped,
+  `sha256(source digest | config digest)` — so re-analysing the same image with the same
+  parameters reproduces the same id on any machine, and the determinism test can compare whole
+  documents with only `created_at` removed. **Phase 2 widened the inputs to three**: the
+  caller's `reference_band_ids` are hashed too, in order, because Ruling 2 made them a
+  per-image input that changes the document while no config digest can carry them. The property
+  is unchanged; the inputs are not, and ids computed before that change do not reproduce. The
+  Phase 2 entry gives the reasoning.
 - **`source.ground_truth_image_id` is supplied by the caller**, never inferred from the
   filename. `evals/run.py` passes it because it is iterating ground truth already;
   nothing in the analysis path reads it. A test parses every `pipeline/*.py` and fails on
@@ -1376,10 +1407,11 @@ screen.
   `profile_noise_sigma` needs two samples, and a lane one column wide is reachable
   through a legal config (`lane.min_separation_px: 1` with two adjacent peaks). It now
   raises a `PipelineError` subclass so the CLI prints `error: …` instead of a traceback.
-  The same inconsistency remains in `pipeline/quantify.py` and in `Roi.__post_init__`,
-  which raise bare `ValueError`/`TypeError`; those paths are programming errors that
-  `detect` cannot reach with any legal config, so they are left as they are rather than
-  converted into user-facing errors. Recorded here rather than silently accepted.
+  The same inconsistency remains in `pipeline/quantify.py`, in `Roi.__post_init__` and — added
+  in Phase 2 — in `RowProfile.__post_init__`; all three raise bare `ValueError`/`TypeError`, and
+  all three are programming errors that `detect` cannot reach with any legal config, so they are
+  left as they are rather than converted into user-facing errors. Recorded here rather than
+  silently accepted.
 - **Lane width is measured two different ways, and both are stated in `detect_lanes`'
   docstring.** With two or more lanes it is the median spacing of detected centres; with
   exactly one it is that lane's own column-profile extent, under the band extent rule with
@@ -1391,10 +1423,912 @@ screen.
 
 ---
 
+## Phase 2 — QC, normalization and provenance
+
+What this phase adds: `pipeline/qc.py`, `pipeline/normalize.py`, the QC and normalization
+parameter blocks in `configs/*.yaml`, and the fields that close the Phase 1 gap in the result
+document — which now validates against `schema/result.schema.json` in full rather than
+against a documented subset of it.
+
+**Detection, background and quantification are untouched, and that is checked rather than
+claimed.** Regenerating `evals/dev_sweeps.json` after this phase changed exactly two values in
+it: the two shipped config digests, which moved because the configs gained a `qc` and a
+`normalization` block. Every measured figure in the record reproduced bit for bit, including
+the headline:
+
+<!-- sweep: shipped_configs -->
+| config | lane F1 | band F1 | mean error % | median error % |
+|---|---|---|---|---|
+| `default.yaml` | 0.9967 | 0.8506 | 17.39 | 6.50 |
+<!-- end sweep -->
+
+The test split was not read, scored, or tuned on in this phase either.
+
+### The three human rulings this phase implements
+
+Recorded as ruled, because each one closes a question the phase could otherwise have answered
+silently, and Phase 3 inherits them.
+
+**Ruling 1 — the overlap warning is two flags, named and scored separately.** I measured that
+Phase 1's "one band per resolved maximum" ruling leaves the pipeline's own ROIs almost never
+overlapping, so a purely geometric flag cannot answer the question a reader thinks it answers.
+That measurement is the reason this ruling exists, so it is a recorded surface rather than a
+number in a sentence — `qc.overlap_iou_threshold`, over the shipped threshold, the generator's
+own labelling threshold, the smallest overlap the validator accepts, and one beyond:
+
+<!-- sweep: qc.overlap_iou_threshold -->
+| IoU threshold | same-lane pairs | pairs at or above it | detected bands flagged | truth `overlapping` bands | matched bands | tp | fp | fn |
+|---|---|---|---|---|---|---|---|---|
+| 0.001 | 161 | 3 | 6 | 104 | 279 | 0 | 1 | 52 |
+| **0.05** | 161 | 3 | 6 | 104 | 279 | 0 | 1 | 52 |
+| 0.15 | 161 | 2 | 4 | 104 | 279 | 0 | 0 | 52 |
+| 0.3 | 161 | 1 | 2 | 104 | 279 | 0 | 0 | 52 |
+<!-- end sweep -->
+
+Ground truth labels 104 bands `overlapping` across the split; the flag's true positives are
+**zero at every threshold**, including the smallest overlap the config validator will accept. The
+human's ruling:
+
+> Shoulder detection must be a test on the profile's shape (e.g. asymmetry or residual against
+> a single-peak model), with the criterion pinned by a test and recorded in config and
+> provenance. It must NOT create a second band, a second centre, or a second ROI — Phase 1's
+> ruling stands. Name and score the two flags separately.
+
+So `overlapping` stays strictly geometric — ROI IoU against same-lane neighbours, threshold in
+config — and a second flag, `unresolved_shoulder`, fires from a shape test on the lane's row
+profile. **Naming note:** the option preview called it `unresolved_structure`; the human's
+later note wrote `unresolved_shoulder`, and that is the name shipped.
+
+**Ruling 2 — reference bands are designated by the caller, never inferred.**
+
+> Yes — explicit ids from the caller; the pipeline must never infer which band is the loading
+> control, and must raise (not guess, not fall back) if a housekeeping mode is requested
+> without `reference_band_ids`.
+>
+> On evals: designating the reference from ground-truth `role` is an oracle input that does not
+> exist on a real blot. It is acceptable for scoring in this phase, but it must be disclosed in
+> the eval output, in NOTES.md, and in the PR body — the housekeeping normalization numbers are
+> conditional on a correct reference, not a measure of the pipeline finding one. Add it to Open
+> items for Phase 3, alongside the clean-band selector, as another criterion that needs a
+> real-blot substitute.
+
+**Ruling 3 — a flagged reference normalizes and warns, with the flag named.**
+
+> Normalize and warn — but the warning must name which flag the reference carries (saturated,
+> overlapping, unresolved_shoulder, lossy_format), not just that it is flagged. A saturated
+> reference biases every ratio in the lane upward in a known direction; an overlapping one
+> biases it in an unknown direction. Those are different caveats and the user needs to tell
+> them apart.
+>
+> Also record, per lane, that the ratio is reference-flagged, so a downstream consumer
+> (export, UI, Phase 3 scoring) can filter on it without re-deriving the condition.
+
+### What the flags score against ground truth
+
+Scored on the 30 dev images and on the 279 matched band pairs — a flag decision can only be
+scored where truth and prediction describe the same band, so unmatched truth bands and
+false-positive detections are detection failures, counted by `detection_scores`, not flag
+failures. Confusion counts (the record holds counts only; the rates below them are arithmetic
+on these six numbers):
+
+<!-- sweep: qc_flag_accuracy -->
+| flag | items | tp | fp | fn | tn |
+|---|---|---|---|---|---|
+| `image.saturated` | 30 | 10 | 0 | 0 | 20 |
+| `image.lossy_format` | 30 | 6 | 0 | 0 | 24 |
+| `image.low_dynamic_range` | 30 | 7 | 0 | 3 | 20 |
+| `band.saturated` | 279 | 23 | 2 | 0 | 254 |
+| `band.overlapping` | 279 | 0 | 1 | 52 | 226 |
+<!-- end sweep -->
+
+So: `saturated` and `lossy_format` are exact at image level (P = R = F1 = 1.000);
+`low_dynamic_range` is P 1.000, R 0.700, F1 0.824; band `saturated` is P 0.920, R 1.000,
+F1 0.958; and band `overlapping` is **0.000 on all three** — 0 true positives, 52 misses. Each
+flag has both a firing and a non-firing case in the split (the `tn` column), so none of these
+is the degenerate "flags everything" or "flags nothing" pass.
+
+**Band `overlapping` scoring 0.000 is the measured consequence of Phase 1's ruling, not a bug,
+and it is the reason Ruling 1 exists.** A doublet is reported as one band with one ROI, so
+there is no second ROI to overlap with; the flag can only fire where two *separately resolved*
+bands in one lane have ROIs that grow into each other. The recorded surface above says how often
+that is, and every count in this sentence is a column of it: at the shipped threshold **3 of the
+161 same-lane pairs overlap enough to flag, which puts the flag on 6 detected bands** — and not
+one of those is a band whose truth carries `overlapping`, which is why the confusion counts read
+0 true positives and 1 false positive. The 1 is the count among *matched* bands, a narrower
+denominator than the 6, and an earlier draft of this paragraph quoted it as the frequency of the
+event and so understated that frequency six-fold. Which three pairs they are is a one-off lookup,
+listed with the other one-off lookups at the end of this section.
+
+The flag is kept because it answers a question that matters for the integral — are these two
+numbers double-counting shared pixels — and because on a gel where a doublet *is* resolved it is
+the only flag that would fire. Its recall against this gold set is a statement about the gold
+set's doublets and about the detector, not about the flag's criterion.
+
+`unresolved_shoulder` is the flag that answers the question a reader of "overlapping" actually
+has, and it **cannot be scored as an accuracy at all**, because ground truth has no such label.
+Renaming truth's `overlapping` into it would be scoring a shape test against a geometry label
+and calling the result precision. So it is reported as a coincidence instead — the firing rate
+on bands whose truth carries `overlapping` and on bands whose truth does not — which
+`evals/metrics.flag_coincidence` computes and whose docstring says plainly that it is not an
+accuracy:
+
+<!-- sweep: qc_flag_accuracy -->
+| | matched bands | truth `overlapping` | truth clean | fires with | fires without |
+|---|---|---|---|---|---|
+| `band.unresolved_shoulder_coincidence` | 279 | 52 | 227 | 31 | 5 |
+<!-- end sweep -->
+
+31 of 52 is a rate of 0.596 on the bands truth calls overlapping, against 5 of 227 = 0.022 on
+the rest: a factor of 27 between the two populations, where the geometric flag separates them
+by nothing at all. `tests/test_sweep_check.py` asserts that separation from the record as a
+property, so it cannot quietly disappear.
+
+### Normalization, measured — and the oracle disclosure
+
+<!-- sweep: normalization_modes -->
+| mode | ratios | included | excluded | ref-flagged | lanes used | lanes skipped | included mean \|e\|% | included median \|e\|% | all mean \|e\|% | all median \|e\|% |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `housekeeping_single` | 129 | 77 | 52 | 2 | 129 | 21 | 12.22 | 3.96 | 22.95 | 6.13 |
+| `total_protein` | 172 | 150 | 22 | 40 | 86 | 64 | 31.65 | 13.94 | 34.10 | 11.31 |
+<!-- end sweep -->
+
+`included` is the default policy — QC-flagged bands excluded from the ratios — and `all` adds
+them back, because a flagged ratio is *reported* with its flags and its exclusion rather than
+dropped. Both columns are given for the same reason the saturated bands are shown twice in the
+Phase 1 recovery table: a number that quietly excluded its hard cases has to say so on the
+same screen.
+
+**The two modes' error columns are not directly comparable, and nothing here should be read as
+if they were.** 12.22% is over 77 included ratios drawn from 129 lanes; 31.65% is over 150
+included ratios drawn from 86 lanes. Different lane subsets, different ratio counts, and the
+housekeeping figure additionally uses an oracle reference the other does not. No common-subset
+figure is recorded, so the defensible statement is that each mode's error is known *on its own
+subset*; the size of the gap between them is not established. The direction is consistent and
+`dev_03`'s negative integral is independent evidence, which is why the open item below is worded
+as a candidate diagnosis rather than a measurement.
+
+**Why `total_protein` is scored on 86 of 150 lanes — an evaluation-comparability limit, not a
+product gap.** This is the phase's most easily misread figure, so the breakdown is stated rather
+than left to inference. Measured over the dev split with the shipped config: 59 lanes are
+unscored because not every truth band in them was matched, 4 because no truth band matched
+inside the matched lane, and 1 because detection never found the lane — 64 in total, against 86
+used. The eval requires *every* truth band of a lane to be matched, because the truth-side
+denominator is the sum of the true intensities of all that lane's bands; if one is missing the
+two sides describe different sets of bands and the ratio is not comparable. Of the 59, the
+shortfall is one band in 55 lanes (48 missing 1 of 3, 7 missing 1 of 2) and two bands in 4.
+**The missing band is overwhelmingly the doublet partner**: across all detected lanes the
+unmatched truth bands are 46 `target_secondary`, 13 `target` and 12 `housekeeping`, and 52 of
+the 150 truth lanes are 3-band doublet lanes. So the skip rate is largely Phase 1's
+one-band-per-maximum ruling propagating into Phase 2's scoring.
+
+What the *product* does on the same split is different and much less alarming: the pipeline
+emits 302 ratios across 148 of 149 detected lanes, and exactly one lane yields no ratio —
+`dev_03`'s, via `lane_denominator_not_positive`. `total_protein` is not silent on 60% of lanes;
+it is *scored* on 57% of them. Recording this breakdown as sweep fields needs an
+`evals/sweep.py` change and a tolerance class, which the pass that added this paragraph was
+instructed not to make; it is on Open items, and until then this is the one aggregate figure in
+the section the record does not hold (kind 3 below says so).
+
+**ORACLE DISCLOSURE, per Ruling 2.** The `housekeeping_single` row designates its reference
+band by reading ground truth's `role`. That input does not exist on a real blot: the pipeline
+refuses to infer a reference and requires the caller to name one, which on synthetic data
+means the eval is the caller and the eval cheats. **So 12.22% is the error of dividing by the
+right band, not evidence that the right band can be found.** `evals/run.py` prints that
+disclosure directly under the table, `evals/sweep.py` carries it in the record's own note, and
+it is an Open item for Phase 3 below.
+
+Two more things the table does not say on its own:
+
+- **What `skipped lanes` means, per mode.** For housekeeping, a truth lane is skipped when
+  either band of its truth ratio went undetected, or when the two were detected into different
+  lanes — then the predicted quotient is not the one the truth ratio describes. For
+  total_protein, a lane is skipped unless *every* truth band of the lane was detected into the
+  matched detected lane, because otherwise the two denominators cover different sets of bands.
+  Both counts are printed rather than absorbed.
+- **What the total_protein truth is.** Ground truth records no total-protein reference, so the
+  truth analogue is the sum of the true integrated intensities of the bands in that lane, and
+  the predicted denominator is the lane's whole background-corrected integral. That comparison
+  is fair only under the skip rule above, and it is why total_protein's error is several times
+  housekeeping's: the numerator's error is the same, and the denominator adds the background's
+  residual over ~9000 lane pixels to it. Which brings up the finding below.
+
+**The lane integral can come out negative, and one dev image does.** `local_median` estimates
+the background slightly high (band pixels inside its own window; the Phase 1 entry measures
+it), and a lane ROI is the full image height, so on a faint image the residual over ~9000
+pixels can exceed the band signal in the lane. On `dev_03` — `exposure: low` — one of its
+lanes does: the integral is about -5400 DN. Three options were available: raise (kills the image over
+one lane), emit a negative ratio (a published number with no meaning), or record it. The
+pipeline records it: that lane produces no ratios, every band in it carries
+`excluded_from_normalization` with a reason naming the denominator and its value, and the result
+carries the `lane_denominator_not_positive` warning. Not a silent fallback — the outcome is
+stated in three places and printed by the CLI — but it *is* a limitation of total-protein
+normalization on faint images, and it is an Open item rather than something this phase fixes.
+
+### Each threshold, its independent justification, and its coincidence audit
+
+`synth/MODELS.md`'s closing rule: a parameter equal to a number in that document is
+tuning-to-the-generator unless it has an independent justification recorded in the config and
+in NOTES.md. That rule bites hard here, because the generator's QC parameters
+(`saturated_min_clipped_pixels = 3`, `overlap_iou_threshold = 0.15`,
+`low_dynamic_range_peak_fraction = 0.2`) produced the very labels these flags are scored
+against: copying them would maximise the score circularly. So each threshold below was chosen
+from a criterion stated without reference to the generator, and *then* measured.
+
+**`qc.saturated_min_clipped_pixels = 1`.** Criterion: a single pixel at full scale means the
+ROI sum is a lower bound and not a measurement — the pixel's own value is unknown and
+everything above full scale was discarded — and QC annotates rather than drops, so a flag costs
+a caveat while a missed clipped band costs a published number. The whole surface is recorded,
+so the cost of choosing independently is a re-measured figure and not a claim:
+
+<!-- sweep: qc.saturated_min_clipped_pixels -->
+| clipped pixels | matched bands | tp | fp | fn | tn |
+|---|---|---|---|---|---|
+| **1** | 279 | 23 | 2 | 0 | 254 |
+| 2 | 279 | 23 | 1 | 0 | 255 |
+| 3 | 279 | 23 | 0 | 0 | 256 |
+| 5 | 279 | 22 | 0 | 1 | 256 |
+| 10 | 279 | 21 | 0 | 2 | 256 |
+<!-- end sweep -->
+
+So the shipped 1 is P 0.920, R 1.000, F1 0.958, and **the generator's 3 scores perfectly
+(1.000 / 1.000 / 1.000) and is not shipped.** Those two figures are the evidence that the trade
+was deliberate, and the human has ruled on it:
+
+> `saturated_min_clipped_pixels` stays at 1. Do not move it to the generator's 3. Any clipped
+> pixel means the detector saturated and the integrated intensity is truncated — western blot QC
+> treats any saturation as disqualifying, and 3 is the generator's arbitrary labelling threshold,
+> not a biological one. Moving the parameter to match it would be a third circularity of the same
+> family as the two you just removed from the test suite. Record this in NOTES.md explicitly: the
+> two "false positives" hold 1 and 2 clipped pixels and are correct detections against a coarser
+> label; the QC flag and the ground-truth label disagree here by design, and the score is the one
+> that is wrong, not the flag.
+
+Spelling that out, because it inverts how the table above should be read. The two "false
+positives" are `dev_10_L4_target`, which holds one pixel at full scale, and
+`dev_19_L4_housekeeping`, which holds two — ground truth records the same counts, so there is no
+disagreement about the pixels. **They are correct detections against a coarser label.** The
+generator labels a band `saturated` only at three clipped pixels, so that a lone noise excursion
+does not become a label; the pipeline flags at one because its criterion is whether the
+*measurement* is truncated, and one clipped pixel truncates it. Where the two disagree the flag is
+right and the score is wrong: F1 0.958 is the cost of being scored against a coarser rule, not
+evidence of a worse flag. The two arguments that were open when this entry was first drafted — that
+a lone full-scale pixel might be noise, and that 3 scores better — are both answered by the
+ruling: the first is a concern about labelling rather than about measurement, and the second is
+exactly the circularity this project forbids. It would have been the third of that family, after
+the two the test suite had to have removed from it.
+
+Coincides with `roi_width_fraction_of_pitch = 1.0` and `target_relative_levels[0] = 1.0` in
+`MODELS.md`, neither of which is a pixel count.
+
+**`qc.overlap_iou_threshold = 0.05`.** Criterion: two overlapping ROIs count their shared
+pixels into both integrals, so the question is how much double-counted signal changes a
+reported ratio. A tenth of a band's aperture does — it is larger than the aperture error the
+pipeline already carries — and for two ROIs of equal size, sharing a tenth of each box is
+IoU = 0.1/(2 - 0.1) = 0.0526, hence 0.05. This is *stricter* than the generator's
+`overlap_iou_threshold = 0.15`, which for equal boxes is a 26% shared area, and the strictness
+buys nothing measurable on this split — the recorded surface under Ruling 1 above shows one
+false positive at 0.05 and none at 0.15, with zero true positives either way. Coincides with
+`bbox_relative_threshold = 0.05`, the generator's
+band-ROI aperture rule — an unrelated quantity, and note that Phase 1 deliberately refused
+0.05 for `band.extent_relative_height` precisely because there it *would* have matched the
+generator's aperture. Here it is an overlap fraction, not an aperture.
+
+**`qc.shoulder_half_maximum_fraction = 0.5`.** The level at which the two half-widths are
+measured, as a fraction of the peak's height above its baseline. Criterion: it is the
+conventional half-maximum level — "half-width at half maximum" is what the statistic is called,
+and FWHM is how every instrument specification states a peak's width — so 0.5 is a convention
+rather than a fitted value, and it is the one point on the flank where the width has a name a
+reader already knows.
+
+**It is nonetheless a declared parameter, in `qc` and in provenance, on the human's ruling**
+(Ruling 1: "with the criterion pinned by a test and recorded in config and provenance"). Two
+reasons that is right rather than bureaucratic. First, the level sets the test's sensitivity as
+much as the threshold does: measured on a hand-computed profile in
+`tests/test_pipeline_qc.py::test_the_level_is_a_parameter_that_moves_the_measured_asymmetry`, the
+same peak measures a ratio of 1.0 at a level of 0.6 and 1.3788 at 0.2, because a shoulder low on
+one flank is invisible high up. Second, a level in a function body is exactly the magic number
+CLAUDE.md forbids, and the audit below only sees parameters that are config keys — so leaving it
+as a module constant would have kept it out of the coincidence audit as well. Coincides with
+`roi_tilt_excursion_fraction_of_height = 0.5` in `MODELS.md` §4a, a lane-geometry fraction with
+nothing to do with a profile's flank; it is also the only one of the five whose value would have
+been the same under any generator, being a naming convention.
+
+**`qc.shoulder_half_width_ratio = 1.5`.** Criterion: a single band's profile is symmetric about
+its own centre, because diffusion about a migration position has no preferred direction. The
+statistic is therefore the ratio of the wider half-width to the narrower one at the level above,
+which is 1.0 for one band and grows as a shoulder appears; it is scale-free, so it does not
+depend on the band's size, height or units. 1.5 says "one side is at least half again as wide
+as the other", which no single diffusive band produces. **This is the weakest of the five
+justifications and is disclosed as such**: "half again as wide" restates 1.5 rather than
+deriving it the way the dynamic-range fraction is derived, and the recorded surface below shows
+1.5 is also where the separation between the two populations is widest — so the choice is
+consistent with the measurement but not independent of it in the way the others are.
+
+<!-- sweep: qc.shoulder_half_width_ratio -->
+| ratio | matched bands | truth `overlapping` | truth clean | fires with | fires without |
+|---|---|---|---|---|---|
+| 1.2 | 279 | 52 | 227 | 46 | 100 |
+| 1.3 | 279 | 52 | 227 | 39 | 39 |
+| **1.5** | 279 | 52 | 227 | 31 | 5 |
+| 1.75 | 279 | 52 | 227 | 8 | 2 |
+| 2.0 | 279 | 52 | 227 | 3 | 1 |
+| 2.5 | 279 | 52 | 227 | 0 | 0 |
+<!-- end sweep -->
+
+The rates those counts give are 1.2: 0.885 / 0.441, 1.3: 0.750 / 0.172, 1.5: 0.596 / 0.022,
+1.75: 0.154 / 0.009, 2.0: 0.058 / 0.004 — separation ratios of 2.0, 4.4, 27.1, 17.5 and 13.1,
+computed from the counts rather than from those rounded rates. The shipped value is where that
+separation happens to be widest.
+
+**No test asserts that it is the widest, and that is deliberate.** An earlier draft of this
+section did assert the argmax, and it was wrong to: `evals/metrics.FlagCoincidence` and this
+section both say the coincidence with truth's `overlapping` label *cannot* be an accuracy, so
+making its maximum a property CI enforces would turn the diagnostic into the selection criterion
+in everything but name — and would freeze 1.5 at the dev-split optimum, since any later
+detection change that moved the surface could be made to pass again only by re-tuning the
+threshold. What the tests assert is what this section claims: that the shipped value is on the
+recorded surface, and that its separation is large (`with_reference > 10 * without_reference`).
+The ordering is recorded for a reader to check, not for CI to enforce. Coincides with the dust speck radius `U(1.5, 3.5)` in
+`MODELS.md`, which is a length in pixels.
+
+**`qc.dynamic_range_min_peak_fraction = 0.25`.** Criterion: derived from what the *weakest*
+band in the same image then measures. A blot's weakest band of interest is commonly around a
+seventh of its strongest, so at a quarter of full scale the weakest peaks near 0.25/7 = 3.6% of
+full scale, which at 8-bit is 9 DN — only a few times a typical read noise. Below a quarter,
+the dim end of the same image is not quantifiable at all.
+
+**A better score was available on this gold set and was declined.** That is the load-bearing
+claim of this whole entry, so it is a recorded surface, not a sentence:
+
+<!-- sweep: qc.dynamic_range_min_peak_fraction -->
+| peak fraction | images | tp | fp | fn | truth `low_dynamic_range` images | brightest peak among them |
+|---|---|---|---|---|---|---|
+| 0.15 | 30 | 5 | 0 | 5 | 10 | 0.3226 |
+| 0.2 | 30 | 7 | 0 | 3 | 10 | 0.3226 |
+| **0.25** | 30 | 7 | 0 | 3 | 10 | 0.3226 |
+| 0.3 | 30 | 8 | 0 | 2 | 10 | 0.3226 |
+| 0.4 | 30 | 10 | 0 | 0 | 10 | 0.3226 |
+<!-- end sweep -->
+
+So the shipped fraction is P 1.000, R 0.700, and **0.40 reaches R 1.000 with no false positive
+and is refused.** Refused because a scratch adds `0.25 * M` (`MODELS.md` §5), so reaching that
+row means matching the generator's scratch amplitude — the circularity this entire entry is
+about. The last column says why the shipped value misses what it misses: the brightest peak
+measured on any image ground truth calls `low_dynamic_range` is 0.3226 of full scale, well above
+0.25, because a scratch crossing a lane is additive contamination that a peak measurement cannot
+distinguish from signal. **The three misses are `dev_01`, `dev_03` and `dev_07`** — exactly the
+three `exposure: low` images that also carry `defect: scratch` (an identity, so a one-off
+lookup). The honest fix is to measure dynamic range on something a scratch cannot inflate, which
+is a Phase 3 question about the measure, not a threshold to move now. Coincides with the scratch
+amplitude `0.25 * M` itself, which is the coincidence that causes the misses.
+
+**Re-audited coincidence tally.** Phase 1's entry found **7 of 15** numeric processing
+parameters equal to a number in `MODELS.md`. Phase 2 adds **five** — four thresholds plus
+`shoulder_half_maximum_fraction`, which entered the config on the human's ruling and is inside
+the audit precisely because it did — and, as the entries above show, **all five coincide**. The
+count is now **12 of 20**; the eight that coincide with nothing are unchanged from Phase 1 and
+are listed in "`min_prominence_sigma` and where the shipped values coincide with generator
+constants", along with the seven Phase 1 coincidences.
+
+This is not a sign that five thresholds were copied: it is the second observation of that entry,
+arriving harder. `MODELS.md` declares roughly forty parameter values spread over the same numeric
+ranges QC thresholds live in — small counts, fractions of full scale, ratios near one — so
+coincidence is close to unavoidable and avoiding it is not the goal. Two of the five are
+*deliberately different* from the generator parameter that governs the same question (1 against
+3 clipped pixels, 0.05 against 0.15 IoU), one differs from it (0.25 against 0.20 of full scale),
+one answers a question the generator has no parameter for, and the fifth is a naming convention
+that would read 0.5 whatever generator it met.
+
+### `unresolved_shoulder` is a shape test that changes nothing about detection
+
+`pipeline/detect.py` owns the profiles, so it is where the profile *arrives* from: each band
+carries the `RowProfile` its ROI was walked from — the samples, the peak index, the baseline and
+the two bounds. `pipeline/qc.py` owns the whole criterion, and applies both of its parameters
+(the level and the ratio threshold) to that profile. Detection therefore holds no threshold, no
+level and no decision about shape, which is what makes the parameters' home unambiguous:
+`half_width_ratio` takes the level as a required argument and would raise rather than default it.
+
+Detection's behaviour is unchanged: the band count, the centre and the ROI are what Phase 1
+produced — the sweep record reproducing bit for bit is the evidence — and `DetectedBand` merely
+carries the profile it already had in hand.
+
+Three properties of the statistic that make it a QC flag rather than a deconvolution:
+
+- It is measured on the same profile, peak and bounds the ROI was walked from, so it describes
+  that band's own peak and cannot stray into a neighbour's.
+- Its level is a declared parameter and not a constant, so the sensitivity of the test is in the
+  provenance record of every result rather than in a source file (see the threshold entry above
+  and the human's Ruling 1).
+- It is `None`, not a number, when the profile does not fall to half maximum on both sides
+  within those bounds. A censored width is not a symmetric one, and reading `None` as either
+  would be the silent fallback this project forbids; `assess` does not flag on `None`.
+- `tests/test_pipeline_qc.py` pins it on the same doublet fixture
+  `tests/test_pipeline_detect.py` uses for the Phase 1 ruling: the row profile really has a
+  single maximum, the detector really reports one band, and the flag fires on that one band.
+  The symmetric single-band case is pinned beside it and measures 1.0 within 0.2.
+
+### The image `saturated` flag is a statement about bands
+
+An image is flagged `saturated` when at least one *band* is, not when any pixel in it is
+clipped. Ground truth uses the same definition (`MODELS.md` §7), so adopting it keeps the score
+like for like — but it also has an independent reason, which is why it was adopted rather than
+inherited: clipping outside every ROI is a bright artifact or a hot background, and this
+project's flags exist to qualify *measurements*. A saturated dust speck between two lanes
+invalidates nothing. `tests/test_pipeline_qc.py` pins both halves.
+
+Clipping itself is defined as a pixel at full scale, derived from the bit depth the loader
+read, and it is **not** a configured level. That is a definition, not a magic number: a pixel
+reading `max_value` is indistinguishable from one truncated there, so it is the only definition
+a pipeline can observe, and a "clipping level" parameter would invite a fraction of full scale
+that no detector actually reports.
+
+### Schema edits, and the honest `schema_version`
+
+`RESULT_SCHEMA_VERSION` goes **1.0.0 → 1.1.0**, and the schema now pins that value as a
+`const`, mirroring `ground_truth.schema.json`, with `tests/test_schema.py` asserting the two
+agree. Phase 1 left the field dishonest — it declared 1.0.0 on a document that failed five of
+1.0.0's required fields — and the fix has two halves: the document now validates
+(`tests/test_pipeline_result.py` checks the produced document against the schema as written,
+with no requirements relaxed), and the version is bumped because the contract itself changed.
+Minor rather than major: every edit is additive, and a 1.0.0 consumer keeps working.
+
+Every edit, with its reason:
+
+1. **`band_qc_flags` gains `unresolved_shoulder`.** Ruling 1 needs a second flag name; the
+   enum was closed. The `$def`'s description now states that the two flags ask different
+   questions and are scored separately, because that vocabulary is what `qc_flag_accuracy`
+   reads and the next reader has to know that one is not a proxy for the other.
+2. **`normalization_warning` gains four named-flag codes** —
+   `reference_band_saturated`, `reference_band_overlapping`,
+   `reference_band_unresolved_shoulder`, `reference_band_lossy_format` — because Ruling 3
+   requires the warning to name which flag the reference carries, and the enum was closed. The
+   general `reference_band_qc_flagged` is kept and is emitted *alongside* the specific code, so
+   a consumer written against 1.0.0 still sees the condition.
+3. **`normalization_warning` gains `lane_without_reference_band` and
+   `lane_denominator_not_positive`**, the two ways a lane can have no usable denominator. Both
+   are recorded rather than raised, per the entries above, and a warning is how a consumer
+   learns that some lane produced no ratio without diffing the lane and ratio lists.
+4. **The ratio object gains `reference_qc_flagged` and `reference_qc_flags`.** The per-lane
+   half of Ruling 3: a consumer filters on the condition instead of re-deriving it. Both are
+   emitted on every ratio, so absence is never ambiguous.
+5. **The ratio object gains `denominator_band_ids`.** `housekeeping_multi` divides by several
+   bands, and the singular `denominator_band_id` cannot say which. It is still emitted when
+   there is exactly one, so nothing that reads it breaks.
+6. **`provenance.parameters` gains a required `qc` block.** Every parameter the pipeline reads
+   is echoed; five new QC parameters are read. Left open like `detection`, because the pipeline
+   owns the key names.
+7. **The band object gains `row_half_width_ratio`** (`number` or `null`) — the observation the
+   `unresolved_shoulder` flag is decided on, recorded beside the flag for exactly the reason
+   `clipped_pixel_count` sits beside `saturated`: a reader can re-apply any threshold to the
+   number the decision was made on, and the flag becomes auditable from the document alone.
+   Explicitly `null` when the statistic was censored, because absence would be
+   indistinguishable from a writer that does not measure it. It is also what lets the eval's
+   threshold surfaces re-apply `pipeline.qc`'s own predicates instead of restating them.
+8. **Descriptions added** to `peak_value`, `clipped_pixel_count`, `schema_version`, the
+   `warnings` array and the ratio's `qc_flags` and `reference_qc_flags` — the fields existed but
+   did not say what they mean, and `peak_value` in particular is ambiguous without saying it is
+   background-corrected.
+
+`schema/ground_truth.schema.json` was **not touched**. It is the frozen gold-set contract, its
+`schema_version` is a `const` with a test pinning it, and the gold set cannot be regenerated
+while `synth/` is frozen.
+
+### Small decisions that would otherwise have to be reverse-engineered
+
+- **A flagged reference is not "excluded".** `excluded_from_normalization` on a reference band
+  is always false, even when the band carries flags, because its value *was* used — as the
+  denominator of its lane. The caveat travels as the named warning and as the ratio's
+  `reference_qc_flags`. Excluding it instead would delete every ratio in the lane, which is the
+  outcome Ruling 3 rejects.
+- **The override warning is only emitted when it is true.** `exclude_qc_flagged: false` with no
+  flagged band in the image emits no `qc_flagged_bands_included_by_override`, because the
+  warning asserts that flagged bands were included and there were none.
+- **The total-protein denominator is an ROI pixel sum, not a mean-column-profile integral.**
+  PLAN.md calls the mode's denominator a "lane-profile integral", and the two differ by the lane's
+  width — so on lanes of unequal width they are different quantities. The pixel sum is what ships,
+  because a band's `integrated_intensity` is a pixel sum over the same corrected image and the
+  ratio of the two is only meaningful if they are the same kind of quantity. The schema's
+  `total_protein_signal` description says which one it is.
+- **`total_protein` treats the lane's own flags as the denominator's caveat.** The lane integral
+  contains every band in the lane, so a saturated band in it under-reads the denominator and
+  biases every ratio in that lane upward — the same statement Ruling 3 makes about a flagged
+  housekeeping band, applied to the quantity that plays its part. That is why the recorded table
+  above shows a far larger share of `total_protein`'s ratios reference-flagged than of
+  `housekeeping_single`'s.
+- **`lossy_format` warns but never becomes a band flag.** It is a property of the image, and
+  the band and ratio flag lists carry the vocabulary they share with ground truth — which is
+  what makes them scorable. So `reference_band_lossy_format` is emitted on a JPEG while
+  `reference_qc_flags` stays empty, and `normalize` raises if a flag outside the band
+  vocabulary ever reaches it.
+- **Each mode takes exactly the input its denominator needs and refuses the other.**
+  `total_protein` requires the lane integrals and refuses `reference_band_ids`; the
+  housekeeping modes require the ids and refuse the integrals. Same rule as Phase 1's config
+  loader refusing parameters for the background method it did not select: an input nothing read
+  is a false provenance record. `analyze_image` therefore only *measures* the lane integrals in
+  `total_protein` mode, and `lanes[].total_protein_signal` is emitted only there.
+- **`housekeeping_multi` uses the geometric mean because the quantity is a ratio scale.** The
+  mean of several references has to be the one whose reciprocal is the mean of the reciprocals;
+  an arithmetic mean would let one bright reference dominate. `math.fsum` over the logarithms,
+  so the answer does not depend on the order the ids were given in — pinned by a test.
+- **A wrong *number* of references in a lane raises; a non-positive denominator does not.** The
+  first is a caller mistake (the mode divides by one band, or by at least two), the second is
+  an outcome of the data. The split is deliberate: raising on data would throw away the lanes
+  that measured fine. `NormalizationError`'s own docstring enumerates both sides, because it is
+  the class a consumer catches: a docstring promising an exception for a condition that is only
+  ever *recorded* would invite exactly the silent fallback this project forbids.
+- **Warning uniqueness is a property of the code, not a schema constraint.** `normalize` filters
+  a set through `WARNING_ORDER`, so a warning cannot repeat, and a test asserts it. A
+  `uniqueItems` on the schema's `warnings` array was written and then removed: it constrains
+  documents that were valid at 1.0.0, so it is a narrowing rather than an additive edit, and the
+  authorisation for this phase's schema edits was drawn narrowly on purpose.
+- **The CLI gained `--reference-band`, repeatable.** Band ids are only known after a run, so
+  the housekeeping workflow is two runs: one to see the ids, one to name the references. That
+  is the honest shape of "the caller designates the reference" for a CLI.
+- **`evals/run.py` runs the pipeline once per image, and so does the whole sweep record.** The
+  housekeeping ratios come from re-running `normalize` over the same measured intensities and QC
+  flags with the mode replaced, not from analysing the image twice. The two QC threshold surfaces
+  work the same way: they re-apply `pipeline.qc.is_saturated` and
+  `pipeline.qc.is_unresolved_shoulder` — the shipped criteria, exported for this — to the
+  observations the result documents already carry, with one config field replaced per row. A
+  first draft recomputed the clipping count and both comparisons inside `evals/sweep.py`, which
+  was a second copy of the criteria *presented as the shipped flag's behaviour*, and cost a
+  second full pipeline pass; `tests/test_sweep_check.py` now also pins each surface's shipped row
+  against the corresponding `qc_flag_accuracy` row, exactly, so the two records cannot describe
+  different rules. Switching from the copy to the shipped predicates left every figure in both
+  surfaces identical, which is the evidence that the copy had been faithful *so far* — and not a
+  reason to have kept it.
+- **One pipeline pass in the sweep is still not shared, and is paid deliberately.** The QC record
+  runs `evals.run.evaluate_image`, which re-estimates the background that `evals/sweep.py`'s cache
+  already holds — 1.4 s per image, 43 s of a `--check` that costs about 9m15s of CPU. The alternative is to
+  assemble a result document inside `evals/sweep.py` from the cached surfaces, which duplicates
+  `pipeline.analyze.analyze_image`; the QC row is worth more measured through the same path the
+  runner and the CLI use than 8% of a CI step is worth saving. `.github/workflows/ci.yml` states
+  the measured runtime rather than an estimate.
+- **`result_id` hashes three inputs, not two.** Phase 1 content-addressed a result by
+  `sha256(source digest | config digest)`. Ruling 2 introduced a third input that changes the
+  document and that no parameter set can carry: the caller's reference band ids. Two runs of the
+  same image and config with different references produce different denominators, different
+  ratios and different exclusions, so on the Phase 1 id they would have collided — and PLAN.md's
+  Phase 4 serves results by id. The ids are hashed **in order**, because the order is recorded
+  on the result and reappears in each ratio's `denominator_band_ids`, and JSON-encoded rather
+  than joined so no id can be forged through a separator inside a band id. Consequence worth
+  stating: an id computed before this change does not reproduce after it. Nothing had been
+  persisted, so nothing broke.
+- **`normalize` requires `lossy_format`; it has no default.** It is the one input that is not
+  refused by some mode, so a default would be the one way a caller could silently lose a caveat
+  — every JPEG's `reference_band_lossy_format` warning — rather than being told. The tests route
+  through a wrapper that states `False` once, so the requirement is not diluted per call.
+- **`evals.metrics.flag_coincidence` takes truth first, like `qc_flag_accuracy`, and declares
+  both vocabularies.** The two mappings have the same type, so a swapped pair would type-check
+  and run; and the two sides genuinely have different vocabularies — `unresolved_shoulder` is
+  legal as a prediction and illegal as a truth label — so each is checked against its own,
+  including the two flag names. A mistyped flag name would otherwise report an honest-looking
+  0.0 rate. `qc_flag_accuracy`'s own signature is untouched: other phases depend on it.
+- **Under `total_protein`, a ratio's `reference_qc_flags` includes the numerator's own flags**,
+  because the numerator band is part of the lane integral it is divided by. That is the honest
+  reading of "what qualifies this denominator", but it means the field alone cannot distinguish
+  "the denominator is independently compromised" from "this band is flagged" — a consumer
+  compares it with the band's own `qc_flags`. The schema's description says so.
+
+### Deviations from PLAN.md in this phase, and the disclosure the PR body must carry
+
+Three, all recorded above and gathered here so a PR body can cite them:
+
+1. **`total_protein`'s denominator is an ROI pixel sum, not literally the "lane-profile integral"
+   PLAN.md names.** The two differ by the lane's width, so on lanes of unequal width they are
+   different quantities. The pixel sum ships because a band's `integrated_intensity` is a pixel sum
+   over the same corrected image, and their ratio only means something if both are the same kind of
+   quantity. The schema's `total_protein_signal` description says which one it is.
+2. **`evals/run.py` and `evals/sweep.py` grew QC and normalization reporting** — four threshold
+   surfaces, a flag-accuracy record and a normalization record — beyond the file list PLAN.md gives
+   Phase 1. This continues the deviation the human ratified in Phase 1 for the same reason: the
+   phase makes measured claims, and a claim that is not mechanically re-measured goes stale.
+3. **The CLI gained `--reference-band`** (repeatable), because Ruling 2 requires the caller to name
+   the reference bands and PLAN.md's Phase 1 CLI has no way to.
+
+**The disclosure that must appear in the PR body, per Ruling 2:** the `housekeeping_single`
+normalization figures are conditional on an **oracle** reference. The eval designates the reference
+band by reading ground truth's `role`, an input a real blot does not supply, and the pipeline
+itself refuses to infer one. 12.22% is the error of dividing by the right band, not evidence that
+the right band can be found. It is printed with the eval table, carried in the record's own note,
+and carried as an Open item for Phase 3 beside the clean-band selector.
+
+### One item Phase 1 put on this phase's list and this phase did not do
+
+The Phase 1 entry "The Phase 1 result is a strict subset of the result schema" left three items
+for Phase 2. Two are done: `schema_version` no longer declares a version the document fails,
+and every band states `excluded_from_normalization` explicitly. The third is **not** done —
+"the one place detection drops a peak without recording it … should surface a count rather than
+only a code comment", the guard in `_detect_bands_in_lane` for a lane whose columns carry no
+spread over a peak's rows.
+
+Why not: **it is unreachable on any committed image** — it needs a lane exactly constant across
+its whole width at a peak's rows — so no figure this phase reports depends on it, and a counter
+that is always zero is a field a reader learns to ignore. Reporting it also means another
+`schema/result.schema.json` field, and while this phase did add fields beyond the four the
+rulings required (`denominator_band_ids`, the `qc` block, `row_half_width_ratio` — each argued
+where it is listed), every one of them carries a number some flag or ratio *rests* on. A
+detection diagnostic that never fires is a different kind of addition. It stays a documented,
+tested guard and moves to whichever phase next touches the detection contract.
+
+### What is checked mechanically in this section, and what is not
+
+The Phase 1 entry "How the figures in this section are kept true" applies here unchanged: every
+figure inside a `<!-- sweep: ... -->` block in this section, and in the Open items below it, is
+tied to `evals/dev_sweeps.json` by `tests/test_recorded_figures.py`, and that record is
+re-measured from the committed gold set by `python -m evals.sweep --check` in CI. (The checker's
+span used to stop at `## Open items`, which left a marked block quoting a recorded trade-off curve
+*in* that section unchecked. The span was widened rather than the block moved.)
+
+**This is the fourth attempt at the paragraph below, and the three failures are the reason it is
+written as a closed list.** Cycle 4 of Phase 1 rejected a "three-way exhaustive taxonomy that
+several figures fell outside of". Phase 2's first draft reintroduced the same defect, claiming
+"two one-off diagnostics" while four unrecorded dev-split measurements sat outside a block —
+including the evidence for Ruling 1 itself. The correction then missed three more. Each round the
+fix was to *record the measurement*, not to widen the words: the saturation surface, the overlap
+surface (which carries Ruling 1's evidence, the IoU 0.15 claim and the flagged-band count as a
+column) and the dynamic-range surface are all in the record because of this paragraph. What
+follows was written by extracting every standalone number in this section and in the Open items
+that is not inside a block — 150 lines carry one — and classifying each. Six kinds account for all
+of them, and the extraction is a three-line script over this file, so the next reader can repeat it
+rather than trust it: strip phase, ruling, cycle and section references and list numbering, strip
+version numbers, and every number that remains is one of the six.
+
+1. **Figures a block on this page holds, restated in prose or turned into a rate.** Every
+   precision, recall, F1, firing rate and separation ratio quoted above, and the counts they are
+   computed from where a sentence names them. The QC records hold counts only, deliberately — a
+   rate is `None` rather than zero in cases the record cannot express, and recording one would
+   turn an honestly undefined score into a comparison failure — so
+   `tests/test_sweep_check.py` asserts the *properties* the rates are quoted for (no missed
+   clipped band, no false image flag, the shoulder separation, the declined perfect
+   dynamic-range row) from the record instead, which is stronger than pinning a transcription.
+   **The hazard in this kind is worth naming rather than hiding: a restated figure can go stale
+   while its block updates**, which is exactly what happened once to a lane count in the
+   normalization table. Restatements are therefore kept adjacent to their block — usually the
+   next sentence — so a reader sees both at once, and none is more than a page away.
+2. **Figures a recorded surface forces, with the derivation stated.** Two: that
+   `dev_10_L4_target` and `dev_19_L4_housekeeping` hold 1 and 2 clipped pixels (the *counts* are
+   forced by the saturation surface — false positives run 2, 1, 0 at thresholds 1, 2, 3 — and only
+   the two band ids are a lookup), and that the shoulder bounds admit 1.5, 1.75 and 2.0, which the
+   meta-test recomputes from the surface.
+3. **Named one-off dev-split measurements the record does not hold.** Five, and this is the whole
+   list. Four are identities or single-image readings, not aggregate scores: the identity of the
+   three `low_dynamic_range` misses (`dev_01`, `dev_03`, `dev_07`, all `exposure: low` with
+   `defect: scratch`); the two band ids in kind 2; `dev_03`'s total-protein integral of about
+   -5400 DN; and the three same-lane ROI overlaps the geometric flag fires on — `dev_03`
+   L0_B1/L0_B2 at IoU 0.1705, `dev_03` L3_B0/L3_B1 at 0.3736 and `dev_12` L4_B0/L4_B1 at 0.0918,
+   whose *count* is recorded but whose identities and exact overlaps are not.
+
+   **The fifth is an aggregate, and it is the only one, so it is named as the exception rather
+   than hidden inside the kind:** the `total_protein` lane-skip breakdown in the normalization
+   entry above — 59 / 4 / 1 by reason, the 48 / 7 / 4 shortfall split, the 46 / 13 / 12 roles of
+   the unmatched bands, the 52 doublet lanes, and the 302 ratios over 148 of 149 detected lanes.
+   It was added because a human gate asked why 64 lanes go unscored and the answer was not
+   written down anywhere. Recording it properly means new `evals/sweep.py` fields with a
+   tolerance class, and the pass that measured it was instructed to change no code — so this
+   entry is a promise to record it in the next code-touching pass, not a claim that widening the
+   words was the right fix. The precedent this paragraph sets is *record the measurement*; this
+   is the one figure currently in debt to that rule, and Open items tracks it.
+4. **Closed-form and hand-computed values that touch no gold set**, each stated with the
+   arithmetic that produces it: the IoU 0.1/(2 - 0.1) = 0.0526 behind the overlap threshold and
+   the 26% shared area the generator's 0.15 implies; the 0.25/7 = 3.6% and 9 DN behind the
+   dynamic-range fraction; the 1.0 and 1.3788 asymmetries hand-computed in the
+   half-maximum-level test, and the 1.0-within-0.2 the symmetric-band fixture asserts; and the
+   ~9000 pixels of a full-height lane, which is the canvas height times a lane's width.
+5. **Generator parameter values quoted from `synth/MODELS.md`** — `saturated_min_clipped_pixels`
+   3, `overlap_iou_threshold` 0.15, `low_dynamic_range_peak_fraction` 0.2, the scratch's
+   `0.25 * M`, `bbox_relative_threshold` 0.05, `roi_tilt_excursion_fraction_of_height` 0.5, the
+   dust radius 1.5–3.5, and the rest of the coincidence audit's subject matter. These are the
+   frozen generator's own constants, not measurements of anything, and `synth/` cannot change
+   without a `SYNTH_VERSION` bump and a break marker.
+6. **Facts about this repository rather than about the gold set**: the coincidence tally's
+   parameter counts (7 of 15, now 12 of 20 — counts of config keys, checkable by reading the two
+   config files), schema and version numbers, the numbering of the schema-edit list, the tolerance
+   constants in `evals/sweep.py`, and the measured runtimes (1.4 s per background estimate, 43 s
+   for the QC pass, about 9m15s of CPU for `--check`), which `.github/workflows/ci.yml` carries
+   as well.
+
+The new record fields are compared within four tolerance classes, each derived in
+`evals/sweep.py`: `QC_FLAG_COUNT` (+/-4 counts, inherited from the matched band set's own
+permitted movement), `IMAGE_FLAG_COUNT` (+/-2, tighter and derived rather than inherited: an
+image flag is one decision per image over a 30-image split, and the CI drift the count class
+comes from moved 2 of 303 band ROIs, so at most two images can flip on drift that has actually
+been observed), `NORMALIZATION_ERROR` (+/-35% of the recorded value, from the leverage of four
+ratios on a subset mean — a derivation the record now carries the inputs for, since both
+subsets' largest |error| is recorded so the leverage can be recomputed for both means rather
+than asserted; the two *medians* inherit that bound without a derivation of their own, which is
+recorded as a weakness in the class's docstring) and `EXTREME_RELATIVE`, which the largest ratio
+error inherits from the largest recovery error. **The count and error classes are wide, and
+neither is a regression alarm** — a one-band change in a QC decision passes `--check`. What
+guards the QC behaviour tightly is `tests/test_pipeline_qc.py` against the gold set and the
+property assertions in `tests/test_sweep_check.py`; `--check` catches staleness and gross
+regression. That is recorded as an Open item rather than presented as a guarantee.
+
+**What the suite asserts about the shoulder threshold, in full**, since an earlier draft of this
+section described it incompletely and the omission mattered. Three assertions touch that
+surface: the shipped value is present on it; the shipped row fires on at least one band; and its
+firing rate on truth-`overlapping` bands exceeds ten times its rate on the rest. Nothing asserts
+how *often* it fires — an earlier version added a `> 0.5` recall floor, and that floor together
+with the 10× separation admitted exactly one of the six recorded thresholds, so the argmax this
+section says is unpinned was still pinned, in a conjunction rather than in an assertion. The
+bounds as they now stand admit **1.5, 1.75 and 2.0**, and
+`tests/test_sweep_check.py::test_the_shoulder_assertions_do_not_pin_a_single_threshold` re-applies
+them to every recorded row and fails if only one row could ever pass — a guard on the guard,
+because that is the failure that has already happened once.
+
+---
+
 ## Open items
 
 Unresolved questions carried out of a phase. Not decisions — each one names the phase
 that has to settle it.
+
+### The housekeeping reference is an oracle and needs a real-blot substitute — Phase 3 to settle
+
+**Human ruling, recorded so Phase 3 inherits it explicitly:** designating the reference band
+from ground truth's `role` is an oracle input that does not exist on a real blot; it is
+acceptable for scoring in Phase 2 provided it is disclosed in the eval output, in this file and
+in the PR body, and it goes on this list "alongside the clean-band selector, as another
+criterion that needs a real-blot substitute".
+
+So there are now **two** criteria in the project that exist only on synthetic data. The
+clean-band selector (Phase 1) chose thirteen parameters by a statistic defined on ground-truth
+QC flags. The housekeeping reference (Phase 2) is a ground-truth *role*. Neither can be
+computed from a real image, and the housekeeping normalization figures — the whole
+`housekeeping_single` row of the Phase 2 table — are conditional on the reference being right.
+
+What Phase 3 has to decide is not the same thing in both cases. The selector needs a
+substitute *criterion* (ImageJ agreement is the candidate). The reference needs a substitute
+*input*: on a real blot the reference is whatever the scientist says it is, so the honest
+answer may be that there is nothing to substitute and the number simply cannot be measured
+without a human in the loop — in which case Phase 3 should say so in the README rather than
+report a housekeeping accuracy at all. A third possibility, worth naming because it is
+tempting and wrong: inferring the reference from the data (the band row that varies least
+across lanes, say) would make the pipeline guess the loading control, which is exactly what
+the Ruling 2 forbids.
+
+### `low_dynamic_range` is inflated by additive contamination — Phase 3 to settle
+
+The flag reads the brightest detected band's background-corrected peak. A scratch crossing a
+lane is additive contamination that a peak measurement cannot distinguish from signal, so on the
+three dev images that are both `exposure: low` and `defect: scratch` the measured peak rises well
+above the shipped fraction and the flag misses them. The Phase 2 threshold entry carries the
+recorded surface: precision 1.000 and recall 0.700 at the shipped value, a perfect row at 0.40,
+and 0.40 refused because it is the generator's scratch amplitude.
+
+What would actually fix it is measuring dynamic range on a quantity contamination cannot
+inflate — a robust upper quantile of the band peaks rather than the maximum, or the peak of the
+lane profile rather than of any single pixel neighbourhood. Both are new measures rather than
+new thresholds, both need their own justification, and neither can be chosen honestly on a set
+whose only contamination model is this generator's. Phase 3, where real blots arrive with real
+artifacts, is the place.
+
+### Band `overlapping` has zero recall against this gold set — needs a ruling
+
+Measured: 0 true positives, 52 misses, one false positive (Phase 2 table). The flag's criterion
+is sound — overlapping ROIs double-count shared pixels — but Phase 1's "one band per resolved
+maximum" means a doublet yields one ROI, so there is nothing for it to overlap with, and the
+flag can only fire where two separately resolved bands' ROIs grow into each other.
+`unresolved_shoulder` answers the question a reader of "overlapping" actually has, and does
+separate the populations (0.596 against 0.022).
+
+Three ways to resolve it, none of which this phase may take: keep both flags and state the
+recall in the README as measured (the current position); raise the generator's
+`doublet_offset_sigma` past 2.55 so doublets resolve into two bands and the geometric flag has
+something to fire on, which needs the ruling the Phase 0 open item below already asks for and a
+regeneration; or retire the geometric flag, which would lose the only flag that fires when two
+bands genuinely do share pixels. The measurement above is what a decision should be made on.
+
+### Total-protein normalization is limited by the background residual over a full-height lane
+
+The denominator is the lane's whole background-corrected integral, ~9000 pixels on the committed
+canvas, so it accumulates the background estimator's residual bias over an area far larger than
+any band. Consequences measured in Phase 2: total_protein's ratio error is larger than
+housekeeping's, and on `dev_03` the integral is negative outright, so that lane produces no ratios
+and says so.
+
+**The error comparison is suggestive, not established, and must not be quoted as a ratio.** 31.65%
+is over 150 included ratios drawn from 86 lanes; 12.22% is over 77 included ratios drawn from 129
+lanes, and the housekeeping figure uses an oracle reference this mode does not have. Three
+differences at once, so "several times housekeeping's" — which an earlier draft of this entry said
+— is not a claim the numbers support. What *is* established: each mode's error on its own subset,
+and one lane whose integral is negative. A common-subset comparison would settle the size of the
+gap and is worth producing before Gate 1 rules on the measure.
+
+Three candidate directions, all of them changes to the *measure* rather than to a parameter, and
+all needing Phase 3's Gate 1: integrate the lane profile above its own robust baseline (what
+ImageJ's gel analyzer does), integrate only the rows the lane's bands occupy, or keep the full
+integral and report it with an explicit uncertainty from the background estimate. The first two
+change what "total protein" means, which is why none of them is a Phase 2 decision.
+
+### The QC and normalization figures are only loosely re-measurement-checked
+
+`python -m evals.sweep --check` compares the new QC and normalization figures within
+`QC_FLAG_COUNT` (+/-4 counts) and `NORMALIZATION_ERROR` (+/-35% of the recorded value). Both
+derive from the matched band set's own permitted movement, which the detection-count class
+already allows to be four bands, so neither can be tightened without failing on drift the
+record accepts two sweeps over. The consequence is that a one-band change in a QC decision, or
+a few points of ratio error, passes the check.
+
+This is the same shape of gap as the aperture-ordering item below, and it is mitigated the same
+way rather than closed: `tests/test_pipeline_qc.py` pins the flag behaviour against gold-set
+images case by case, and `tests/test_sweep_check.py` asserts the properties the figures are
+quoted for — no missed clipped band, no false image flag, the shoulder separation — from the
+record. What would close it is a QC item set that does not move with detection, e.g. scoring
+band flags over *truth* ROIs rather than over matched detections. That is a change to the eval's
+join, which Phase 3 owns.
+
+### `saturated_min_clipped_pixels` stays at 1 — settled by the human, not an open question
+
+**No longer open.** It shipped at 1, from the criterion that any pixel at full scale makes the ROI
+sum a lower bound rather than a measurement, and the human has ruled that it stays there. The
+ruling and its reasoning are recorded in full in the Phase 2 threshold entry: any clipped pixel
+truncates the integrated intensity and western blot QC treats any saturation as disqualifying; 3
+is the generator's labelling threshold, not a biological one; matching it would be a third
+circularity of the family the test suite has already had two removed from; and the two "false
+positives" are **correct detections against a coarser label**, so the flag and the ground-truth
+label disagree by design and the score is what is wrong there, not the flag.
+
+The measurement stays on the page because it is the evidence the trade was taken deliberately:
+F1 **0.958** at the shipped 1 against **1.000** at the generator's 3, from a recorded surface.
+
+**The mechanics of a change are kept here anyway, because a future phase may still want them.**
+Moving the value is a config line **plus two test edits plus a record regeneration.**
+`tests/test_pipeline_qc.py` deliberately pins the shipped value — it asserts
+`saturated_min_clipped_pixels == 1` and parametrises `(1, True)`, `(2, True)` — so `pytest` fails
+loudly rather than passing on a stale claim. The record needs regenerating too, and here is the
+part that does not announce itself: at 3 the `band.saturated` row moves fp 2 → 0 and tn 254 → 256,
+both **inside** `QC_FLAG_COUNT`'s ±4, so `python -m evals.sweep --check` would *pass* on the stale
+record. What catches it is the digest comparison — a changed config parameter moves both shipped
+digests — not the figure guard. Worth knowing that the figure guard would not have caught it alone.
+
+### The `low_dynamic_range` threshold trades recall against circularity — Phase 3 to settle
+
+**Human's ruling, verbatim:**
+
+> image `low_dynamic_range` ships at recall 0.700 / precision 1.000 — three genuinely low-range
+> images are not flagged. For a QC-first tool, silence is the more dangerous error direction, and
+> precision 1.000 leaves room to trade. Do NOT change the threshold now. Record it in NOTES.md
+> under Open items as a Phase 3 decision, with the measured precision/recall trade-off curve if a
+> sweep already covers it, and state the asymmetry argument: under-warning is worse than
+> over-warning for this flag.
+
+A sweep does cover it. The curve, transcribed from `evals/dev_sweeps.md`:
+
+<!-- sweep: qc.dynamic_range_min_peak_fraction -->
+| peak fraction | images | tp | fp | fn | truth low-range images |
+|---|---|---|---|---|---|
+| 0.15 | 30 | 5 | 0 | 5 | 10 |
+| 0.2 | 30 | 7 | 0 | 3 | 10 |
+| **0.25** | 30 | 7 | 0 | 3 | 10 |
+| 0.3 | 30 | 8 | 0 | 2 | 10 |
+| 0.4 | 30 | 10 | 0 | 0 | 10 |
+<!-- end sweep -->
+
+**The fact that sharpens the ruling: precision is 1.000 at every swept threshold, including 0.40.**
+The false-positive column is zero all the way up. So on this gold set raising the threshold costs
+*nothing measurable* — not a single image that ground truth calls fine would be flagged — and the
+only objection to 0.40 is that it sits above the amplitude the generator gives a scratch
+(`0.25 * M`, `MODELS.md` §5), i.e. the tuning-to-the-generator objection rather than a measured
+cost.
+
+That is what makes this a genuine Phase 3 decision rather than a settled trade: **the
+anti-circularity argument and the QC-asymmetry argument point in opposite directions here.**
+Anti-circularity says do not move a threshold onto a generator constant to buy a score.
+QC asymmetry says under-warning is worse than over-warning for this flag, because a silently
+unflagged low-dynamic-range image yields numbers a reader trusts, while an over-warned one yields
+a caveat a reader can dismiss. Both are right, and neither can break the tie on synthetic data,
+because the whole disagreement is about a generator constant. A real-blot criterion is what would
+settle it — which is Phase 3, where real blots arrive with real artifacts and where a scratch
+amplitude is whatever a scratch happens to be.
+
+What Phase 3 should weigh, beyond the threshold: the deeper fix is a *measure* a scratch cannot
+inflate, since the misses are all `exposure: low` images that also carry `defect: scratch` and the
+brightest peak among truth's low-range images is 0.3226 of full scale. A robust upper quantile of
+the band peaks rather than the maximum, or the lane profile's peak rather than a single pixel
+neighbourhood, would make the threshold question smaller. That direction is recorded in its own
+open item below.
+
 
 ### The aperture ordering is transcription-checked but not re-measurement-checked — Phase 3 to settle
 
@@ -1441,14 +2375,56 @@ dev split has no single-lane image and so no sweep can reach the path. Phase 3 s
 quantify the single-lane recovery-error impact on the synthetic single-lane cases — which
 means the gold set needs some, so it is also an input to any regeneration decision.
 
-### Phase 1 has already selected every parameter on dev, which pre-empts Phase 3's Gate 1
+### The `total_protein` lane-skip breakdown is not in the record — record it next code pass
+
+A human gate asked why the shipped mode is scored on 86 of 150 lanes, and the answer was not
+written down anywhere: 59 lanes because not every truth band in them was matched, 4 because none
+matched inside the matched lane, 1 because detection missed the lane, with the missing band
+overwhelmingly the doublet partner (46 `target_secondary` of 71 unmatched). Those figures are now
+in the normalization entry as prose, which makes them the one aggregate measurement in the
+section the sweep record does not hold — the debt the outside-a-block taxonomy names in kind 3.
+
+Recording it means new fields on the `normalization_modes` rows (unscored lanes by reason, and
+the roles of the unmatched bands) plus a tolerance class, since `evals/sweep.py` raises on an
+unclassified field. The pass that measured this was instructed to change no code, so it is
+deferred rather than declined. Whoever next touches `evals/sweep.py` should close it; the numbers
+above are the expected values.
+
+Worth carrying into that change: the same accounting shows the *product* leaves only one lane
+without a ratio (302 ratios over 148 of 149 detected lanes), so the eval's 64 and the product's 1
+are answers to different questions, and a record that reports only one of them will be misread
+the way the first draft of the Phase 2 PR body was.
+
+### Phases 1 and 2 have already selected parameters on dev, which pre-empts Phase 3's Gate 1
 
 PLAN.md puts "Gate 1 (human): eval design sign-off **before parameter iteration begins**"
-ahead of "iterate detection/background parameters on the dev split to plateau". Phase 1 has
-now selected thirteen of its fifteen shipped numeric parameters from thirteen dev-split
-sweeps, so that gate has been pre-empted in substance even though the artifact it produced —
+ahead of "iterate detection/background parameters on the dev split to plateau". Phase 1
+selected thirteen of its fifteen shipped numeric parameters from thirteen dev-split sweeps, so
+that gate has been pre-empted in substance even though the artifact it produced —
 `evals/sweep.py` plus `evals/dev_sweeps.json` — exists to make Phase 1's recorded claims
 checkable rather than to iterate to a plateau.
+
+**Phase 2 adds five parameters and two more dev-split surfaces to that list.** The count is
+now twenty numeric parameters, not fifteen. The five QC parameters were each chosen from a
+criterion stated without reference to the generator and *then* measured, which is a different
+process from Phase 1's selection — but two of them need the human's eye at Gate 1 all the same:
+
+- **`qc.shoulder_half_width_ratio = 1.5` is the one whose justification leans on a dev
+  measurement.** Its criterion ("one side at least half again as wide as the other") restates
+  the value rather than deriving it, and the recorded surface shows 1.5 is also where the
+  separation between the two truth populations is widest. Phase 2 says so in its own entry and
+  deliberately does *not* pin the argmax in CI, but the honest summary is that this value's
+  position on a dev-split surface is part of why it is 1.5. It is the Phase 2 parameter most
+  likely to need redoing under a real-blot criterion.
+- **`qc.saturated_min_clipped_pixels = 1` is a disclosed trade against a better score**, and
+  there is a separate open item below asking whether the human prefers 3. Gate 1 is the natural
+  place to settle it, since the choice is a policy question (how conservative a QC flag should
+  be) rather than a measurement.
+
+The other three — the overlap IoU threshold, the dynamic-range fraction and the half-maximum
+level — are derived from stated criteria and are not any surface's argmax; the dynamic-range
+entry explicitly refuses the value that would have scored best. Gate 1 should still see them,
+because the two recorded QC surfaces are dev-split surfaces like any other.
 
 What the human is being asked to ratify or redo:
 
@@ -1478,9 +2454,10 @@ What the human is being asked to ratify or redo:
 
 **The human's ruling on this, recorded so Phase 3 inherits it explicitly, has two halves:**
 
-1. **Gate 1 must ratify or redo the thirteen parameters Phase 1 selected on the dev split.**
-   They are not provisional defaults that Phase 3 may quietly keep; they are a selection that
-   pre-empted the gate, and the gate has to take a position on it either way.
+1. **Gate 1 must ratify or redo the thirteen parameters Phase 1 selected on the dev split, and
+   take a position on the two Phase 2 thresholds named above.** They are not provisional
+   defaults that Phase 3 may quietly keep; they are a selection that pre-empted the gate, and
+   the gate has to take a position on it either way.
 2. **The clean-band selector needs a real-blot substitute in Phase 3.** It is defined by
    ground-truth QC flags, so it exists only on synthetic data, and Phase 3 is where real
    blots arrive. Something has to play its role there — ImageJ agreement on the CC-BY set is

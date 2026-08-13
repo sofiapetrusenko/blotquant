@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
+from pipeline import RESULT_SCHEMA_VERSION
 from synth import GROUND_TRUTH_SCHEMA_VERSION
 
 GROUND_TRUTH_SCHEMA = Path("schema/ground_truth.schema.json")
@@ -46,11 +47,12 @@ def sample_ground_truth(committed_data_dir: Path) -> dict[str, Any]:
 def valid_result() -> dict[str, Any]:
     """Return a minimal result document that satisfies ``result.schema.json``.
 
-    Phase 0 defines the contract; no code produces results yet, so this fixture is
-    the only executable statement of what a conforming result looks like.
+    Hand-written rather than produced by the pipeline, so that the contract is stated
+    independently of the code that writes it; ``tests/test_pipeline_result.py`` checks the
+    produced document against the same schema.
     """
     return {
-        "schema_version": "1.0.0",
+        "schema_version": RESULT_SCHEMA_VERSION,
         "result_id": "example",
         "source": {
             "path": "data/images/dev_00.jpg",
@@ -69,6 +71,13 @@ def valid_result() -> dict[str, Any]:
                 "background": {"method": "rolling_ball", "radius_px": 50},
                 "detection": {"method": "profile_projection"},
                 "quantification": {"method": "roi_sum"},
+                "qc": {
+                    "saturated_min_clipped_pixels": 1,
+                    "overlap_iou_threshold": 0.05,
+                    "shoulder_half_maximum_fraction": 0.5,
+                    "shoulder_half_width_ratio": 1.5,
+                    "dynamic_range_min_peak_fraction": 0.25,
+                },
                 "normalization": {"mode": "housekeeping_single", "exclude_qc_flagged": True},
             },
         },
@@ -80,22 +89,29 @@ def valid_result() -> dict[str, Any]:
                 "roi": {"x": 10, "y": 50, "width": 30, "height": 16},
                 "integrated_intensity": 1234.5,
                 "background_estimate": 20.0,
-                "qc_flags": ["saturated"],
+                "peak_value": 210.0,
+                "clipped_pixel_count": 4,
+                "qc_flags": ["saturated", "unresolved_shoulder"],
                 "excluded_from_normalization": True,
-                "exclusion_reason": "saturated",
+                "exclusion_reason": "carries QC flags: saturated, unresolved_shoulder",
             }
         ],
         "normalization": {
             "mode": "housekeeping_single",
             "exclude_qc_flagged": True,
+            "reference_band_ids": ["L0_housekeeping"],
             "warnings": ["single_housekeeping_reference"],
             "ratios": [
                 {
                     "lane_id": "L0",
                     "numerator_band_id": "L0_target",
                     "denominator_band_id": "L0_housekeeping",
+                    "denominator_band_ids": ["L0_housekeeping"],
                     "ratio": 1.5,
                     "excluded": False,
+                    "qc_flags": ["saturated"],
+                    "reference_qc_flagged": False,
+                    "reference_qc_flags": [],
                 }
             ],
         },
@@ -107,6 +123,67 @@ def test_schema_file_and_generator_constant_declare_the_same_version(repo_root: 
     """The schema file's own version and the constant the generator writes must match."""
     schema = json.loads((repo_root / GROUND_TRUTH_SCHEMA).read_text(encoding="utf-8"))
     assert schema["properties"]["schema_version"]["const"] == GROUND_TRUTH_SCHEMA_VERSION
+
+
+def test_result_schema_file_and_pipeline_constant_declare_the_same_version(
+    repo_root: Path,
+) -> None:
+    """The result schema's version and the constant the pipeline writes must match.
+
+    Mirrors the ground-truth check above. Before Phase 2 the result schema had a pattern and
+    no ``const``, so the two could drift -- and did: the pipeline declared 1.0.0 on documents
+    that failed 1.0.0. A ``const`` makes that a schema error rather than a convention.
+    """
+    schema = json.loads((repo_root / RESULT_SCHEMA).read_text(encoding="utf-8"))
+    assert schema["properties"]["schema_version"]["const"] == RESULT_SCHEMA_VERSION
+
+
+def test_result_schema_rejects_another_schema_version(
+    result_validator: Draft202012Validator,
+) -> None:
+    """A document declaring a different contract version is not this contract's document."""
+    document = valid_result()
+    document["schema_version"] = "1.0.0"
+
+    errors = list(result_validator.iter_errors(document))
+
+    assert any("was expected" in error.message for error in errors)
+
+
+def test_result_schema_rejects_an_unknown_band_qc_flag(
+    result_validator: Draft202012Validator,
+) -> None:
+    """The band flag vocabulary is closed: a flag no consumer can interpret is rejected."""
+    document = valid_result()
+    document["bands"][0]["qc_flags"] = ["probably_fine"]
+
+    errors = list(result_validator.iter_errors(document))
+
+    assert any("is not one of" in error.message for error in errors)
+
+
+def test_result_schema_rejects_an_unknown_normalization_warning(
+    result_validator: Draft202012Validator,
+) -> None:
+    """So is the warning vocabulary: a warning is a code a consumer can act on."""
+    document = valid_result()
+    document["normalization"]["warnings"] = ["looks_a_bit_off"]
+
+    errors = list(result_validator.iter_errors(document))
+
+    assert any("is not one of" in error.message for error in errors)
+
+
+def test_result_schema_requires_a_reason_when_a_ratio_is_excluded(
+    result_validator: Draft202012Validator,
+) -> None:
+    """An excluded ratio without a recorded reason is a silent drop wearing a flag."""
+    document = valid_result()
+    document["normalization"]["ratios"][0]["excluded"] = True
+
+    errors = list(result_validator.iter_errors(document))
+
+    assert any("exclusion_reason" in error.message for error in errors)
 
 
 def test_every_committed_ground_truth_file_validates(

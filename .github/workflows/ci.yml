@@ -73,8 +73,13 @@ jobs:
       # Every dev-split figure quoted in NOTES.md and configs/*.yaml is transcribed from
       # evals/dev_sweeps.json, and tests/test_recorded_figures.py checks the
       # transcription on every pytest run. This step checks the other half: that the
-      # record itself still reproduces from the committed gold set. It re-runs all 13
-      # sweeps (~3 minutes), which is why it is a CI step and not part of pytest. Three
-      # review cycles were lost to figures that had silently stopped reproducing.
+      # record itself still reproduces from the committed gold set. It re-runs every recorded
+      # sweep: about nine and a quarter minutes of CPU on an arm64 developer machine (two
+      # measurements, 9m09s and 9m19s of CPU time; this is compute, not I/O). Background
+      # estimation dominates it -- about 1.4 s per image, once per distinct background parameter
+      # set swept -- and the QC/normalization records add one further pipeline pass, about 43 s
+      # of that total. That is why this is a CI step and not
+      # part of pytest. Three review cycles were lost to figures that had silently stopped
+      # reproducing.
       - name: Recorded dev-split figures still reproduce
         run: python -m evals.sweep --check
