@@ -156,7 +156,7 @@ This is the anti-circularity discipline costing something measurable, and both a
 
 ## Limitations
 
-Honest ones, not a formality:
+Honest ones, not a formality. [DEBT.md](DEBT.md) is the full register — every known weakness with its evidence, a phase or trigger that should close it, and its status; the list below draws from it — the part a user needs before trusting a number.
 
 - **Single-channel grayscale chemiluminescence only.** 8/16-bit TIFF, PNG, JPEG. Multichannel fluorescence, dot blots and 2D gels are out of scope. Unsupported bit depths raise rather than being squashed to 8-bit.
 - **Chemiluminescence is not linear in protein amount** over an arbitrary range. blotquant measures the image it is given; it cannot correct for an exposure taken outside the detector's linear range, only warn that the dynamic range looks wrong.

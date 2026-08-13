@@ -2213,6 +2213,12 @@ what Phase 5 has to do is replace absence statements with measurements, not walk
 Unresolved questions carried out of a phase. Not decisions — each one names the phase
 that has to settle it.
 
+**See also [DEBT.md](DEBT.md)**, the repository-wide debt register. It collects these items
+together with the ones recorded only in PR bodies, groups them by whether they affect the
+meaning of the numbers, the usability of the tool, or the trustworthiness of the record, and
+carries the evidence for each. This section stays the per-phase narrative; DEBT.md is the
+index.
+
 ### The housekeeping reference is an oracle and needs a real-blot substitute — Phase 3 to settle
 
 **Human ruling, recorded so Phase 3 inherits it explicitly:** designating the reference band
