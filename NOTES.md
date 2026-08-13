@@ -2158,6 +2158,56 @@ because that is the failure that has already happened once.
 
 ---
 
+## After Phase 2 — repository-level decisions
+
+Decisions that belong to the repository rather than to a phase, taken between the Phase 2 merge
+and the start of Phase 3. Both are human rulings, recorded here in the same form as the
+sweep-harness deviation above because PLAN.md is the contract and a deviation folded in silently
+is the thing that form exists to prevent.
+
+### Licence: MIT, chosen by the human — and it does not reach third-party figures
+
+**Human ruling: the repository is MIT licensed.** Nothing in PLAN.md or CLAUDE.md specified a
+licence before this. PLAN.md mentions licensing exactly twice and both times about *other
+people's* images — the `data/real/` provenance file and Gate 2's "CC-BY figures only, DOI +
+licence recorded per image" — so there was no project licence to inherit or contradict, and the
+choice was made rather than derived. `LICENSE` at the repository root carries it.
+
+What it covers: the code, and the generated contents of `data/`. The gold set under
+`data/images/` and `data/ground_truth/` is output of this repository's own generator from a seed
+committed here, so it is this project's work and carries the project's licence.
+
+What it does **not** cover: `data/real/`, when Phase 3 adds it. Those are third-party published
+figures, and each will carry its own CC-BY terms with source, DOI and licence recorded per image
+in `data/real/provenance.md`, per PLAN.md's Gate 2. **The repository licence does not relicense
+them** — MIT on this repository says nothing about a figure someone else published, and a reader
+who takes the root `LICENSE` as covering the whole tree would be wrong about exactly the files
+where being wrong matters. The distinction is stated in the README's License section for the same
+reason.
+
+### The README arrived in the interim, not in Phase 5, as a ratified deviation
+
+**Human ruling: an interim README stays, as a ratified deviation from PLAN.md's phase plan and
+from CLAUDE.md's branch convention.** PLAN.md schedules the README as a **Phase 5** deliverable
+("README: problem, architecture, eval numbers, screenshots, Design Decisions…, honest
+Limitations"), and CLAUDE.md requires work to happen on a branch named `phase-N-<short-name>`.
+`README.md` and `LICENSE` were written between Phase 2 and Phase 3 on a branch named
+`docs/readme`, which satisfies neither.
+
+The stated reason: **a public repository with three merged phases and no README misrepresents the
+project to anyone who opens it.** A reader arriving at that point would have found working code,
+a committed gold set and measured numbers, with nothing telling them what the tool is, that no
+figure has been measured on a real blot, or that the API, UI and export do not exist. The absence
+was itself a misleading claim, and waiting three phases to correct it was the worse option.
+
+It is scoped as interim rather than complete, and says so in its own Status section: **the Phase 5
+README supersedes it.** Phase 5 inherits two obligations from this — the screenshots PLAN.md asks
+for, which cannot exist until Phase 4 builds a UI, and the real-blot and ImageJ-agreement numbers
+that Phase 3 produces. The interim version states in its Limitations that neither exists yet, so
+what Phase 5 has to do is replace absence statements with measurements, not walk back a claim.
+
+---
+
 ## Open items
 
 Unresolved questions carried out of a phase. Not decisions — each one names the phase
