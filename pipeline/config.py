@@ -37,6 +37,15 @@ DETECTION_METHOD = "profile_projection"
 QUANTIFICATION_METHOD = "roi_sum"
 """The only quantification method implemented in Phase 1."""
 
+HOUSEKEEPING_SINGLE = "housekeeping_single"
+HOUSEKEEPING_MULTI = "housekeeping_multi"
+TOTAL_PROTEIN = "total_protein"
+NORMALIZATION_MODES: tuple[str, ...] = (HOUSEKEEPING_SINGLE, HOUSEKEEPING_MULTI, TOTAL_PROTEIN)
+"""The normalization modes this pipeline implements. ``mode`` must name one of them."""
+
+HOUSEKEEPING_MODES: frozenset[str] = frozenset({HOUSEKEEPING_SINGLE, HOUSEKEEPING_MULTI})
+"""Modes whose denominator is one or more caller-designated reference bands."""
+
 
 def _as_mapping(value: Any, where: str) -> Mapping[str, Any]:
     """Return ``value`` as a mapping, or raise :class:`ConfigError` naming ``where``."""
@@ -267,6 +276,71 @@ class QuantificationConfig:
 
 
 @dataclass(frozen=True)
+class QcConfig:
+    """The five parameters QC decides its flags on.
+
+    Each is chosen from a criterion that can be stated without reference to the synthetic
+    generator, because the flags are *scored* against labels the generator's own thresholds
+    produced and copying those would make the score circular
+    (``synth/MODELS.md``, "What counts as special-casing"). NOTES.md's Phase 2 section
+    records each criterion and says which of these values coincide with a generator value.
+
+    * ``saturated_min_clipped_pixels`` -- how many pixels at full scale inside a band's ROI
+      make that band's integrated intensity a lower bound rather than a measurement.
+    * ``overlap_iou_threshold`` -- how much two same-lane ROIs may overlap before the
+      shared pixels are counted into both bands' integrals.
+    * ``shoulder_half_maximum_fraction`` and ``shoulder_half_width_ratio`` -- together, the
+      shape criterion for ``unresolved_shoulder``. The first is the height, as a fraction of
+      the peak's height above its baseline, at which the two half-widths are measured; the
+      second is how far their ratio may exceed 1.0 before the profile is reported as more
+      structure than a single band. Both are declared here rather than in a function body
+      because the human's Ruling 1 requires the criterion to be recorded in config and
+      provenance, and the level sets the test's sensitivity as much as the threshold does. A
+      shape test, not a second band: it never creates a centre, a boundary or an ROI.
+    * ``dynamic_range_min_peak_fraction`` -- how much of the available range the brightest
+      band must use before the weakest bands beside it are quantifiable at all.
+    """
+
+    saturated_min_clipped_pixels: int
+    overlap_iou_threshold: float
+    shoulder_half_maximum_fraction: float
+    shoulder_half_width_ratio: float
+    dynamic_range_min_peak_fraction: float
+
+    def as_parameters(self) -> dict[str, Any]:
+        """Return the provenance echo of these parameters."""
+        return {
+            "saturated_min_clipped_pixels": self.saturated_min_clipped_pixels,
+            "overlap_iou_threshold": self.overlap_iou_threshold,
+            "shoulder_half_maximum_fraction": self.shoulder_half_maximum_fraction,
+            "shoulder_half_width_ratio": self.shoulder_half_width_ratio,
+            "dynamic_range_min_peak_fraction": self.dynamic_range_min_peak_fraction,
+        }
+
+
+@dataclass(frozen=True)
+class NormalizationConfig:
+    """The normalization mode and whether QC-flagged bands are excluded from ratios.
+
+    ``exclude_qc_flagged`` is the default-true policy PLAN.md fixes: a flagged band still
+    reports its value and its flags, and its *ratio* is reported too, marked excluded with
+    a reason. Setting it false is an explicit override and is recorded as a warning on the
+    result.
+
+    Which bands are the housekeeping references is **not** here: band ids are a property of
+    one image, not of a parameter set, so they arrive per call and are recorded on the
+    result under ``normalization.reference_band_ids``.
+    """
+
+    mode: str
+    exclude_qc_flagged: bool
+
+    def as_parameters(self) -> dict[str, Any]:
+        """Return the provenance echo, with ``mode`` first."""
+        return {"mode": self.mode, "exclude_qc_flagged": self.exclude_qc_flagged}
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     """A complete, explicit parameter set for one pipeline run."""
 
@@ -274,6 +348,8 @@ class PipelineConfig:
     background: BackgroundConfig
     detection: DetectionConfig
     quantification: QuantificationConfig
+    qc: QcConfig
+    normalization: NormalizationConfig
 
     def as_parameters(self) -> dict[str, Any]:
         """Return the full provenance echo of every parameter the pipeline reads."""
@@ -281,6 +357,8 @@ class PipelineConfig:
             "background": self.background.as_parameters(),
             "detection": self.detection.as_parameters(),
             "quantification": self.quantification.as_parameters(),
+            "qc": self.qc.as_parameters(),
+            "normalization": self.normalization.as_parameters(),
         }
 
     def digest(self) -> str:
@@ -477,18 +555,96 @@ def _parse_quantification(raw: Any) -> QuantificationConfig:
     )
 
 
+def _parse_qc(raw: Any) -> QcConfig:
+    """Build a :class:`QcConfig` from the ``qc`` block."""
+    where = "qc"
+    mapping = _as_mapping(raw, where)
+    _require_exact_keys(
+        mapping,
+        (
+            "saturated_min_clipped_pixels",
+            "overlap_iou_threshold",
+            "shoulder_half_maximum_fraction",
+            "shoulder_half_width_ratio",
+            "dynamic_range_min_peak_fraction",
+        ),
+        where,
+    )
+    clipped = _as_int(mapping, "saturated_min_clipped_pixels", where)
+    if clipped < 1:
+        raise ConfigError(
+            f"{where}.saturated_min_clipped_pixels must be >= 1, got {clipped}; a band with "
+            f"no pixel at full scale is not saturated, so 0 would flag every band"
+        )
+    ratio = _as_float(mapping, "shoulder_half_width_ratio", where)
+    if ratio <= 1.0:
+        raise ConfigError(
+            f"{where}.shoulder_half_width_ratio must be > 1.0, got {ratio}; it is the ratio "
+            f"of a profile's wider half-width to its narrower one, which is 1.0 for a "
+            f"symmetric peak, so a value at or below 1.0 flags every band"
+        )
+    return QcConfig(
+        saturated_min_clipped_pixels=clipped,
+        overlap_iou_threshold=_require_range(
+            _as_float(mapping, "overlap_iou_threshold", where),
+            0.0,
+            1.0,
+            f"{where}.overlap_iou_threshold",
+            low_open=True,
+            high_open=False,
+        ),
+        shoulder_half_maximum_fraction=_require_range(
+            _as_float(mapping, "shoulder_half_maximum_fraction", where),
+            0.0,
+            1.0,
+            f"{where}.shoulder_half_maximum_fraction",
+            low_open=True,
+            high_open=True,
+        ),
+        shoulder_half_width_ratio=ratio,
+        dynamic_range_min_peak_fraction=_require_range(
+            _as_float(mapping, "dynamic_range_min_peak_fraction", where),
+            0.0,
+            1.0,
+            f"{where}.dynamic_range_min_peak_fraction",
+            low_open=True,
+            high_open=True,
+        ),
+    )
+
+
+def _parse_normalization(raw: Any) -> NormalizationConfig:
+    """Build a :class:`NormalizationConfig` from the ``normalization`` block."""
+    where = "normalization"
+    mapping = _as_mapping(raw, where)
+    _require_exact_keys(mapping, ("mode", "exclude_qc_flagged"), where)
+    mode = _as_str(mapping, "mode", where)
+    if mode not in NORMALIZATION_MODES:
+        raise ConfigError(
+            f"{where}.mode must be one of {list(NORMALIZATION_MODES)}, got {mode!r}"
+        )
+    return NormalizationConfig(
+        mode=mode,
+        exclude_qc_flagged=_as_bool(mapping, "exclude_qc_flagged", where),
+    )
+
+
 def parse_config(raw: Any, source: str) -> PipelineConfig:
     """Build a :class:`PipelineConfig` from already-parsed YAML data.
 
     ``source`` names the origin of the data and appears in every error message.
     """
     mapping = _as_mapping(raw, source)
-    _require_exact_keys(mapping, ("id", "background", "detection", "quantification"), source)
+    _require_exact_keys(
+        mapping, ("id", "background", "detection", "quantification", "qc", "normalization"), source
+    )
     return PipelineConfig(
         config_id=_as_str(mapping, "id", source),
         background=_parse_background(mapping["background"]),
         detection=_parse_detection(mapping["detection"]),
         quantification=_parse_quantification(mapping["quantification"]),
+        qc=_parse_qc(mapping["qc"]),
+        normalization=_parse_normalization(mapping["normalization"]),
     )
 
 
@@ -514,5 +670,5 @@ def load_config(path: Path) -> PipelineConfig:
         raise ConfigError(f"config file {path} is not valid YAML: {error}") from error
     if raw is None:
         raise ConfigError(f"config file {path} is empty; it must define id, background, "
-                          f"detection and quantification")
+                          f"detection, quantification, qc and normalization")
     return parse_config(raw, str(path))

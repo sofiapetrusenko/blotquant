@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/blotquant/schema/result.schema.json",
   "title": "blotquant analysis result",
-  "description": "One file per analysed image, written by the pipeline (Phase 1-2). This schema is the source of truth for the result contract; Phase 0 defines it, no code produces it yet. Every reported number is traceable to an ROI, a parameter set and a software version, and every value carries its QC flags rather than being dropped.",
+  "description": "One file per analysed image, written by the pipeline. This schema is the source of truth for the result contract. Every reported number is traceable to an ROI, a parameter set and a software version, and every value carries its QC flags rather than being dropped. Version 1.1.0 is the first version a produced document validates against: Phase 2 added the unresolved_shoulder band flag, the warnings that name which flag a normalization reference carries, the per-ratio reference-flagged record, the multi-reference denominator list, and the qc parameter block. All additive; NOTES.md's Phase 2 section records each edit and its reason.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -16,7 +16,12 @@
     "image_qc_flags"
   ],
   "properties": {
-    "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "const": "1.1.0",
+      "description": "The version of this contract the document was written against. A const, mirroring ground_truth.schema.json, so the schema file and pipeline.RESULT_SCHEMA_VERSION cannot drift apart; tests/test_schema.py pins the two together."
+    },
     "result_id": { "type": "string", "minLength": 1 },
     "source": {
       "type": "object",
@@ -51,8 +56,8 @@
         "created_at": { "type": "string", "format": "date-time" },
         "parameters": {
           "type": "object",
-          "required": ["background", "detection", "quantification", "normalization"],
-          "description": "Echo of the processing config. Sub-objects stay open because Phase 1 owns their exact keys, but the four stages must each be present and each must name its method explicitly.",
+          "required": ["background", "detection", "quantification", "qc", "normalization"],
+          "description": "Echo of the processing config. Sub-objects stay open because the pipeline owns their exact keys, but every stage must be present and each processing stage must name its method explicitly. Completeness of the echo is enforced by pipeline.config, which accepts a config only when it carries exactly the keys the pipeline reads.",
           "properties": {
             "background": {
               "type": "object",
@@ -66,6 +71,10 @@
             },
             "detection": { "type": "object", "required": ["method"] },
             "quantification": { "type": "object", "required": ["method"] },
+            "qc": {
+              "type": "object",
+              "description": "Echo of the QC thresholds. Open like the other stages: the pipeline owns the key names, and each threshold's independent justification is recorded in NOTES.md rather than in this contract."
+            },
             "normalization": {
               "type": "object",
               "required": ["mode", "exclude_qc_flagged"],
@@ -93,7 +102,7 @@
           "roi": { "$ref": "#/$defs/roi" },
           "total_protein_signal": {
             "type": "number",
-            "description": "Lane-profile integral, present when total_protein normalization is used."
+            "description": "The sum of the background-corrected pixels inside this lane's ROI, in DN of the source bit depth -- the denominator total_protein normalization divides by, and present only when that mode was used. Not a mean-column-profile integral: it is an ROI pixel sum, which is the profile integral multiplied by the lane's width, so the two differ between lanes of unequal width. The pixel sum is the comparable quantity, because a band's integrated_intensity is a pixel sum over the same image."
           },
           "qc_flags": { "$ref": "#/$defs/band_qc_flags" }
         }
@@ -122,8 +131,20 @@
             "description": "Background-corrected integrated intensity over the ROI, in DN of the source bit depth."
           },
           "background_estimate": { "type": "number" },
-          "peak_value": { "type": "number" },
-          "clipped_pixel_count": { "type": "integer", "minimum": 0 },
+          "peak_value": {
+            "type": "number",
+            "description": "The brightest background-corrected pixel inside the ROI, in DN of the source bit depth -- the same units as integrated_intensity. The image-level low_dynamic_range flag is decided on the largest of these."
+          },
+          "clipped_pixel_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many pixels inside the ROI sit at full scale in the image as loaded. Full scale is the only observable definition of clipping: a pixel reading max_value is indistinguishable from one truncated there."
+          },
+          "row_half_width_ratio": {
+            "type": ["number", "null"],
+            "minimum": 1,
+            "description": "The observation the unresolved_shoulder flag is decided on: the wider of this peak's two half-widths in its lane's row profile divided by the narrower, measured at qc.shoulder_half_maximum_fraction of the peak's height. 1.0 for a symmetric single peak. Explicitly null when the statistic was censored -- the profile did not reach that level on both sides within the bounds this peak was measured in -- which is not the same as symmetric, and never flags. Recorded beside the flag for the same reason clipped_pixel_count is: a reader can re-apply any threshold to the number the decision was made on."
+          },
           "qc_flags": { "$ref": "#/$defs/band_qc_flags" },
           "excluded_from_normalization": {
             "type": "boolean",
@@ -153,7 +174,7 @@
         "warnings": {
           "type": "array",
           "items": { "$ref": "#/$defs/normalization_warning" },
-          "description": "housekeeping_single always emits single_housekeeping_reference, per current journal guidance."
+          "description": "housekeeping_single always emits single_housekeeping_reference, per current journal guidance. lane_without_reference_band says at least one lane had no designated reference, and lane_denominator_not_positive that at least one lane's denominator measured zero or negative; in both cases that lane produces no ratios and every band in it is recorded as excluded with the reason, rather than being normalized against a guess."
         },
         "ratios": {
           "type": "array",
@@ -164,11 +185,33 @@
             "properties": {
               "lane_id": { "type": "string", "minLength": 1 },
               "numerator_band_id": { "type": "string", "minLength": 1 },
-              "denominator_band_id": { "type": "string", "minLength": 1 },
+              "denominator_band_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Present when the lane was divided by exactly one reference band."
+              },
+              "denominator_band_ids": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "string", "minLength": 1 },
+                "description": "Every reference band this lane was divided by: one under housekeeping_single, several under housekeeping_multi (their geometric mean), absent under total_protein, whose denominator is the lane integral rather than a band."
+              },
               "ratio": { "type": "number" },
               "excluded": { "type": "boolean" },
               "exclusion_reason": { "type": "string", "minLength": 1 },
-              "qc_flags": { "$ref": "#/$defs/band_qc_flags" }
+              "qc_flags": {
+                "$ref": "#/$defs/band_qc_flags",
+                "description": "Every band flag carried by any band entering this ratio -- the numerator and the reference(s)."
+              },
+              "reference_qc_flagged": {
+                "type": "boolean",
+                "description": "Whether this ratio's denominator carries a QC flag. A flagged reference is normalized against and warned about rather than dropped, so this is recorded per lane and a consumer can filter on it without re-deriving the condition."
+              },
+              "reference_qc_flags": {
+                "$ref": "#/$defs/band_qc_flags",
+                "description": "The flags the denominator carries: the reference band's under a housekeeping mode, or those of every band in the lane under total_protein, since the lane integral contains them all. Note the consequence under total_protein: the numerator band is itself part of the lane integral, so its own flags appear here too, and this field therefore does not distinguish 'the denominator is independently compromised' from 'this band is flagged'. Compare it with the band's own qc_flags to tell the two apart."
+              }
             },
             "allOf": [
               {
@@ -206,18 +249,25 @@
     "band_qc_flags": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["saturated", "overlapping"] },
-      "description": "Same vocabulary as ground truth, so evals can score flags directly."
+      "items": { "enum": ["saturated", "overlapping", "unresolved_shoulder"] },
+      "description": "`saturated` and `overlapping` share the ground-truth vocabulary, so evals score them directly. `unresolved_shoulder` has no ground-truth counterpart: it is a test on the row profile's shape, where `overlapping` is a test on ROI geometry, and the two are named and scored separately rather than one standing in for the other. It never implies a second band, a second centre or a second ROI."
     },
     "image_qc_flag": { "enum": ["saturated", "lossy_format", "low_dynamic_range"] },
     "normalization_mode": {
       "enum": ["housekeeping_single", "housekeeping_multi", "total_protein"]
     },
     "normalization_warning": {
+      "description": "`reference_band_qc_flagged` is kept as the general code and is emitted alongside the specific one, so a consumer written against version 1.0.0 still works. The specific codes exist because the caveats differ in direction: a saturated reference under-reads, so every ratio in its lane is biased upward by a known sign, while an overlapping or shouldered one is biased in an unknown direction. `reference_band_lossy_format` is the one code that is not about a band flag -- it says the denominator was measured on pixels a lossy codec rewrote -- and it is therefore never present in any band's or ratio's qc_flags.",
       "enum": [
         "single_housekeeping_reference",
         "reference_band_qc_flagged",
-        "qc_flagged_bands_included_by_override"
+        "reference_band_saturated",
+        "reference_band_overlapping",
+        "reference_band_unresolved_shoulder",
+        "reference_band_lossy_format",
+        "qc_flagged_bands_included_by_override",
+        "lane_without_reference_band",
+        "lane_denominator_not_positive"
       ]
     }
   }

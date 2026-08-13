@@ -298,6 +298,250 @@ Variance reduction of a size x size uniform_filter with mode='nearest' on white 
   - whole_image_variance_reduction: 316.31
   - interior_variance_reduction: 449.95
 
+## `qc_flag_accuracy`
+
+QC flags against the ground-truth labels, scored on the images and on the matched band pairs by evals.metrics.qc_flag_accuracy. Counts only: the rates are arithmetic on them, and are undefined rather than zero in cases this record cannot express. The last row is not an accuracy -- unresolved_shoulder has no ground-truth counterpart, so it is recorded as a coincidence with truth's overlapping label.
+
+- **image.saturated**
+  - items: 30
+  - true_positives: 10
+  - false_positives: 0
+  - false_negatives: 0
+  - true_negatives: 20
+- **image.lossy_format**
+  - items: 30
+  - true_positives: 6
+  - false_positives: 0
+  - false_negatives: 0
+  - true_negatives: 24
+- **image.low_dynamic_range**
+  - items: 30
+  - true_positives: 7
+  - false_positives: 0
+  - false_negatives: 3
+  - true_negatives: 20
+- **band.saturated**
+  - items: 279
+  - true_positives: 23
+  - false_positives: 2
+  - false_negatives: 0
+  - true_negatives: 254
+- **band.overlapping**
+  - items: 279
+  - true_positives: 0
+  - false_positives: 1
+  - false_negatives: 52
+  - true_negatives: 226
+- **band.unresolved_shoulder_coincidence**
+  - items: 279
+  - reference_items: 52
+  - non_reference_items: 227
+  - fired_with_reference: 31
+  - fired_without_reference: 5
+
+## `normalization_modes`
+
+Normalized ratios against ground truth, by mode, with configs/default.yaml's other parameters shipped. `included` is the default policy -- QC-flagged bands excluded from the ratios -- and `all` adds them back, since a flagged ratio is reported rather than dropped. `skipped_lanes` counts lanes whose truth ratio could not be joined to a predicted one. ORACLE: the housekeeping row takes its reference band from ground truth's role, an input no real blot supplies, so its figures are conditional on a correct reference. housekeeping_multi needs at least two references per lane and the gold set has one, so it is verified against hand-computed fixtures in the test suite instead of scored here.
+
+- **housekeeping_single**
+  - ratios: 129
+  - included_ratios: 77
+  - excluded_ratios: 52
+  - reference_flagged_ratios: 2
+  - used_lanes: 129
+  - skipped_lanes: 21
+  - included_mean_absolute_percent: 12.22%
+  - included_median_absolute_percent: 3.96%
+  - included_max_absolute_percent: 71.45%
+  - all_mean_absolute_percent: 22.95%
+  - all_median_absolute_percent: 6.13%
+  - all_max_absolute_percent: 82.59%
+- **total_protein**
+  - ratios: 172
+  - included_ratios: 150
+  - excluded_ratios: 22
+  - reference_flagged_ratios: 40
+  - used_lanes: 86
+  - skipped_lanes: 64
+  - included_mean_absolute_percent: 31.65%
+  - included_median_absolute_percent: 13.94%
+  - included_max_absolute_percent: 306.39%
+  - all_mean_absolute_percent: 34.10%
+  - all_median_absolute_percent: 11.31%
+  - all_max_absolute_percent: 437.03%
+
+## `qc.saturated_min_clipped_pixels`
+
+The band `saturated` flag against ground truth's labels, over candidate clipped-pixel thresholds, on the matched bands of the shipped config. Every row applies pipeline.qc.is_saturated to the pipeline's own recorded clipped-pixel counts with only that threshold replaced, so the row at the shipped value is the shipped flag. Counts only, as in qc_flag_accuracy.
+
+- **1**
+  - items: 279
+  - true_positives: 23
+  - false_positives: 2
+  - false_negatives: 0
+  - true_negatives: 254
+- **2**
+  - items: 279
+  - true_positives: 23
+  - false_positives: 1
+  - false_negatives: 0
+  - true_negatives: 255
+- **3**
+  - items: 279
+  - true_positives: 23
+  - false_positives: 0
+  - false_negatives: 0
+  - true_negatives: 256
+- **5**
+  - items: 279
+  - true_positives: 22
+  - false_positives: 0
+  - false_negatives: 1
+  - true_negatives: 256
+- **10**
+  - items: 279
+  - true_positives: 21
+  - false_positives: 0
+  - false_negatives: 2
+  - true_negatives: 256
+
+## `qc.overlap_iou_threshold`
+
+The band `overlapping` flag against ground truth's labels, over candidate ROI overlap thresholds, on the matched bands of the shipped config. Every row applies pipeline.qc.is_overlapping to the pipeline's own largest same-lane overlap per band with only that threshold replaced. The two repeated counts are the threshold-independent evidence for the human's first ruling in this phase: how many pairs of detected bands share a lane at all, and how many bands ground truth labels overlapping across the split. `pairs_at_or_above_threshold` and `detected_bands_flagged` count over every detected band, not only the matched ones.
+
+- **0.001**
+  - items: 279
+  - true_positives: 0
+  - false_positives: 1
+  - false_negatives: 52
+  - true_negatives: 226
+  - same_lane_band_pairs: 161
+  - pairs_at_or_above_threshold: 3
+  - detected_bands_flagged: 6
+  - truth_overlapping_bands: 104
+- **0.05**
+  - items: 279
+  - true_positives: 0
+  - false_positives: 1
+  - false_negatives: 52
+  - true_negatives: 226
+  - same_lane_band_pairs: 161
+  - pairs_at_or_above_threshold: 3
+  - detected_bands_flagged: 6
+  - truth_overlapping_bands: 104
+- **0.15**
+  - items: 279
+  - true_positives: 0
+  - false_positives: 0
+  - false_negatives: 52
+  - true_negatives: 227
+  - same_lane_band_pairs: 161
+  - pairs_at_or_above_threshold: 2
+  - detected_bands_flagged: 4
+  - truth_overlapping_bands: 104
+- **0.3**
+  - items: 279
+  - true_positives: 0
+  - false_positives: 0
+  - false_negatives: 52
+  - true_negatives: 227
+  - same_lane_band_pairs: 161
+  - pairs_at_or_above_threshold: 1
+  - detected_bands_flagged: 2
+  - truth_overlapping_bands: 104
+
+## `qc.shoulder_half_width_ratio`
+
+The shape test's firing rate on matched bands whose ground truth carries `overlapping` and on those it does not, over candidate half-width ratios, at the shipped half-maximum level. Every row applies pipeline.qc.is_unresolved_shoulder to the pipeline's own recorded asymmetry with only that threshold replaced. Not an accuracy: the two flags ask different questions, so this is a coincidence, the rates are arithmetic on these counts, and the surface is recorded to be read rather than to be optimised. `censored_asymmetry_bands` counts the matched bands whose asymmetry could not be measured at all, and so can never flag: it is threshold-independent, and it is recorded because a blind spot that grew silently would look like a flag that had simply stopped firing.
+
+- **1.2**
+  - items: 279
+  - reference_items: 52
+  - non_reference_items: 227
+  - fired_with_reference: 46
+  - fired_without_reference: 100
+  - censored_asymmetry_bands: 0
+- **1.3**
+  - items: 279
+  - reference_items: 52
+  - non_reference_items: 227
+  - fired_with_reference: 39
+  - fired_without_reference: 39
+  - censored_asymmetry_bands: 0
+- **1.5**
+  - items: 279
+  - reference_items: 52
+  - non_reference_items: 227
+  - fired_with_reference: 31
+  - fired_without_reference: 5
+  - censored_asymmetry_bands: 0
+- **1.75**
+  - items: 279
+  - reference_items: 52
+  - non_reference_items: 227
+  - fired_with_reference: 8
+  - fired_without_reference: 2
+  - censored_asymmetry_bands: 0
+- **2.0**
+  - items: 279
+  - reference_items: 52
+  - non_reference_items: 227
+  - fired_with_reference: 3
+  - fired_without_reference: 1
+  - censored_asymmetry_bands: 0
+- **2.5**
+  - items: 279
+  - reference_items: 52
+  - non_reference_items: 227
+  - fired_with_reference: 0
+  - fired_without_reference: 0
+  - censored_asymmetry_bands: 0
+
+## `qc.dynamic_range_min_peak_fraction`
+
+The image `low_dynamic_range` flag against ground truth's labels, over candidate peak fractions. Every row applies pipeline.qc.is_low_dynamic_range to the brightest band peak each result document reports, with only that threshold replaced, so the row at the shipped value is the shipped flag. The last row is the one to read: it scores perfectly and is refused, because reaching it means matching the amplitude the generator gives a scratch. `max_peak_fraction_among_truth_low` is why the shipped value misses what it misses -- a scratch crossing a lane raises the brightest measured peak on a faint image.
+
+- **0.15**
+  - items: 30
+  - true_positives: 5
+  - false_positives: 0
+  - false_negatives: 5
+  - true_negatives: 20
+  - truth_low_dynamic_range_images: 10
+  - max_peak_fraction_among_truth_low: 0.32
+- **0.2**
+  - items: 30
+  - true_positives: 7
+  - false_positives: 0
+  - false_negatives: 3
+  - true_negatives: 20
+  - truth_low_dynamic_range_images: 10
+  - max_peak_fraction_among_truth_low: 0.32
+- **0.25**
+  - items: 30
+  - true_positives: 7
+  - false_positives: 0
+  - false_negatives: 3
+  - true_negatives: 20
+  - truth_low_dynamic_range_images: 10
+  - max_peak_fraction_among_truth_low: 0.32
+- **0.3**
+  - items: 30
+  - true_positives: 8
+  - false_positives: 0
+  - false_negatives: 2
+  - true_negatives: 20
+  - truth_low_dynamic_range_images: 10
+  - max_peak_fraction_among_truth_low: 0.32
+- **0.4**
+  - items: 30
+  - true_positives: 10
+  - false_positives: 0
+  - false_negatives: 0
+  - true_negatives: 20
+  - truth_low_dynamic_range_images: 10
+  - max_peak_fraction_among_truth_low: 0.32
+
 ## `aperture_selector_uncertainty`
 
 Paired bootstrap, 2000 resamples of the unflagged bands every variant of the aperture sweep matches -- the subset the band.extent_relative_height sweep's `clean` columns use, whose size that sweep records as `clean_count` -- seed 20260811. `difference_from_shipped_percent` is mean |error| minus the shipped 0.06 value's, on the same resample; its interval excludes 0 only where the ordering is resolved.

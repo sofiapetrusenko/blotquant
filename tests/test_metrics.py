@@ -12,6 +12,7 @@ from evals.metrics import (
     PLAN_IOU_THRESHOLD,
     BoundingBox,
     detection_scores,
+    flag_coincidence,
     intensity_recovery_error,
     iou,
     match_boxes,
@@ -293,6 +294,112 @@ def test_qc_flag_accuracy_rejects_empty_inputs() -> None:
 def test_qc_flag_accuracy_rejects_duplicate_vocabulary() -> None:
     with pytest.raises(ValueError, match="duplicates"):
         qc_flag_accuracy({"a": []}, {"a": []}, ["saturated", "saturated"])
+
+TRUTH_FLAGS = ("saturated", "overlapping")
+PREDICTED_FLAGS = ("saturated", "overlapping", "unresolved_shoulder")
+"""The two band flag vocabularies :func:`flag_coincidence` compares across: ground truth's,
+and the pipeline's, which has one flag truth has no label for."""
+
+
+def test_flag_coincidence_reports_a_rate_on_each_side_of_the_reference_label() -> None:
+    """The shoulder diagnostic's arithmetic, on a case whose counts are read off by hand.
+
+    Deliberately not precision/recall: the predicted flag and the reference label are
+    different questions, so there is no "true positive" to speak of.
+    """
+    predicted = {
+        "a": ["unresolved_shoulder"],
+        "b": ["unresolved_shoulder"],
+        "c": [],
+        "d": ["unresolved_shoulder"],
+        "e": [],
+    }
+    truth = {"a": ["overlapping"], "b": ["overlapping"], "c": ["overlapping"], "d": [], "e": []}
+
+    scores = flag_coincidence(
+        truth, predicted, "overlapping", "unresolved_shoulder", TRUTH_FLAGS, PREDICTED_FLAGS
+    )
+
+    assert (scores.items, scores.reference_items, scores.non_reference_items) == (5, 3, 2)
+    assert scores.fired_with_reference == 2
+    assert scores.fired_without_reference == 1
+    assert scores.rate_with_reference == pytest.approx(2 / 3)
+    assert scores.rate_without_reference == pytest.approx(1 / 2)
+
+
+def test_flag_coincidence_leaves_an_empty_side_undefined() -> None:
+    """No item carries the reference label, so a rate on that side has no denominator."""
+    scores = flag_coincidence(
+        {"a": []},
+        {"a": ["unresolved_shoulder"]},
+        "overlapping",
+        "unresolved_shoulder",
+        TRUTH_FLAGS,
+        PREDICTED_FLAGS,
+    )
+
+    assert scores.reference_items == 0
+    assert scores.rate_with_reference is None
+    assert scores.rate_without_reference == pytest.approx(1.0)
+
+
+def test_flag_coincidence_requires_the_same_items_on_both_sides() -> None:
+    """A comparison over two different item sets is not a comparison."""
+    with pytest.raises(ValueError, match="do not correspond"):
+        flag_coincidence(
+            {"a": []}, {"b": []}, "overlapping", "unresolved_shoulder", TRUTH_FLAGS,
+            PREDICTED_FLAGS,
+        )
+
+
+def test_flag_coincidence_refuses_an_empty_item_set() -> None:
+    """Both rates would be undefined, which is not a score to print."""
+    with pytest.raises(ValueError, match="no items"):
+        flag_coincidence(
+            {}, {}, "overlapping", "unresolved_shoulder", TRUTH_FLAGS, PREDICTED_FLAGS
+        )
+
+
+def test_flag_coincidence_rejects_a_flag_name_outside_its_own_vocabulary() -> None:
+    """A typo would otherwise report a rate of 0.0, which reads like a real measurement."""
+    truth = {"a": ["overlapping"]}
+    predicted = {"a": ["unresolved_shoulder"]}
+
+    with pytest.raises(ValueError, match="not in the predicted vocabulary"):
+        flag_coincidence(
+            truth, predicted, "overlapping", "unresolved_sholder", TRUTH_FLAGS, PREDICTED_FLAGS
+        )
+    with pytest.raises(ValueError, match="not in the reference vocabulary"):
+        flag_coincidence(
+            truth, predicted, "overlaping", "unresolved_shoulder", TRUTH_FLAGS, PREDICTED_FLAGS
+        )
+
+
+def test_flag_coincidence_rejects_flags_outside_the_declared_vocabularies() -> None:
+    """The two sides have different vocabularies, and each is checked against its own.
+
+    In particular the pipeline's ``unresolved_shoulder`` is legal on the predicted side and
+    illegal on the reference side, which is the whole asymmetry this function exists for.
+    """
+    with pytest.raises(ValueError, match="reference flags for item"):
+        flag_coincidence(
+            {"a": ["unresolved_shoulder"]},
+            {"a": []},
+            "overlapping",
+            "unresolved_shoulder",
+            TRUTH_FLAGS,
+            PREDICTED_FLAGS,
+        )
+    with pytest.raises(ValueError, match="predicted flags for item"):
+        flag_coincidence(
+            {"a": []},
+            {"a": ["probably_fine"]},
+            "overlapping",
+            "unresolved_shoulder",
+            TRUTH_FLAGS,
+            PREDICTED_FLAGS,
+        )
+
 
 def test_micro_average_pools_counts_and_recomputes_from_totals() -> None:
     """The pooled score comes from summed confusion counts, not from averaged F1s.

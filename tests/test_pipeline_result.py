@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import copy
 import json
 from pathlib import Path
 from typing import Any
@@ -16,8 +15,6 @@ from jsonschema import Draft202012Validator
 from pipeline import PIPELINE_VERSION, RESULT_SCHEMA_VERSION
 from pipeline.__main__ import main
 from pipeline.analyze import (
-    PHASE2_CONDITIONAL_BAND_FIELDS,
-    PHASE2_RESULT_FIELDS,
     analyze_image,
     require_writable_destination,
     write_result,
@@ -50,53 +47,36 @@ def _schema() -> dict[str, Any]:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
-def _phase1_schema() -> dict[str, Any]:
-    """Return the result schema with exactly the Phase 2 requirements relaxed.
+def test_the_result_validates_against_the_full_schema(result: dict[str, Any]) -> None:
+    """No gap left: the document satisfies every requirement of the version it declares.
 
-    ``list.remove`` raises if a name is absent, so this fails loudly if the schema
-    stops requiring something :data:`PHASE2_RESULT_FIELDS` claims it requires.
+    Phase 1 emitted a documented strict subset -- ``normalization``, ``image_qc_flags``,
+    per-band ``qc_flags`` and ``excluded_from_normalization`` and the ``normalization``
+    parameter echo had no producer, and empty structures would have read as "QC ran and
+    found nothing". All of them are produced now, so the subset is closed and
+    ``schema_version`` is no longer a version the document knowingly fails.
     """
-    schema = copy.deepcopy(_schema())
-    for name in PHASE2_RESULT_FIELDS["<root>"]:
-        schema["required"].remove(name)
-    band = schema["properties"]["bands"]["items"]
-    for name in PHASE2_RESULT_FIELDS["bands[]"]:
-        band["required"].remove(name)
-    # With excluded_from_normalization absent, the schema's conditional fires and asks
-    # for exclusion_reason; see PHASE2_CONDITIONAL_BAND_FIELDS.
-    assert "exclusion_reason" in PHASE2_CONDITIONAL_BAND_FIELDS
-    del band["allOf"]
-    parameters = schema["properties"]["provenance"]["properties"]["parameters"]
-    for name in PHASE2_RESULT_FIELDS["provenance.parameters"]:
-        parameters["required"].remove(name)
-    return schema
-
-
-def test_result_validates_against_the_schema_minus_phase_2(result: dict[str, Any]) -> None:
-    """Every field Phase 1 emits has the name, type and shape the schema defines."""
-    errors = list(Draft202012Validator(_phase1_schema()).iter_errors(result))
+    errors = list(Draft202012Validator(_schema()).iter_errors(result))
 
     assert errors == [], [f"{list(error.path)}: {error.message}" for error in errors]
 
 
-def test_the_only_gap_to_full_validity_is_the_phase_2_fields(result: dict[str, Any]) -> None:
-    """The document fails the full schema for exactly the declared reasons and no others.
+def test_every_band_states_its_exclusion_explicitly(result: dict[str, Any]) -> None:
+    """``excluded_from_normalization`` is present on every band, false included.
 
-    This is the deliberate part of the Phase 1 decision: rather than emitting empty
-    ``normalization``/``qc_flags`` structures that would read as "ran and found
-    nothing", the fields are absent, and this test states precisely which ones.
+    The band object's ``allOf`` requires ``exclusion_reason`` whenever that key is absent
+    *or* true, because JSON Schema's ``properties`` constrains only the keys a document
+    has. A band that omitted a false would inherit a requirement written for excluded
+    bands, which is why this is asserted rather than left to the schema test above.
     """
-    missing: set[str] = set()
-    for error in Draft202012Validator(_schema()).iter_errors(result):
-        assert error.validator == "required", f"unexpected error: {error.message}"
-        assert isinstance(error.instance, dict)
-        missing.update(
-            name for name in error.validator_value if name not in error.instance
-        )
-
-    expected = {name for names in PHASE2_RESULT_FIELDS.values() for name in names}
-    expected.update(PHASE2_CONDITIONAL_BAND_FIELDS)
-    assert missing == expected
+    assert result["bands"], "the fixture must produce bands for this to mean anything"
+    for band in result["bands"]:
+        assert "excluded_from_normalization" in band
+        assert isinstance(band["excluded_from_normalization"], bool)
+        if band["excluded_from_normalization"]:
+            assert band["exclusion_reason"]
+        else:
+            assert "exclusion_reason" not in band
 
 
 def test_provenance_records_version_config_and_every_parameter(
@@ -163,13 +143,13 @@ def test_the_same_image_and_config_produce_identical_results(
 
 
 @pytest.mark.parametrize("config_name", ["default.yaml", "rolling_ball.yaml"])
-def test_both_shipped_configs_produce_a_schema_subset_result(
+def test_both_shipped_configs_produce_a_valid_result(
     blot_png: Path, config_name: str
 ) -> None:
-    """Neither background method can emit a field the Phase 1 schema subset forbids."""
+    """Neither background method can emit a document the schema rejects."""
     result = analyze_image(blot_png, load_config(CONFIG_DIR / config_name))
 
-    errors = list(Draft202012Validator(_phase1_schema()).iter_errors(result))
+    errors = list(Draft202012Validator(_schema()).iter_errors(result))
     assert errors == [], [f"{list(error.path)}: {error.message}" for error in errors]
     assert result["provenance"]["parameters"]["background"]["method"] in {
         "local_median",
@@ -192,6 +172,60 @@ def test_the_result_id_is_content_addressed(blot_png: Path, tmp_path: Path) -> N
     ]
 
 
+def test_the_result_id_covers_the_reference_band_ids(blot_png: Path, tmp_path: Path) -> None:
+    """Two different references give two different documents, so they cannot share an id.
+
+    The reference list is a per-image input that no config digest can carry, and it changes the
+    denominators, the ratios and the exclusions. An id that ignored it would collide across
+    genuinely different results -- and PLAN.md's Phase 4 serves results by id.
+    """
+    config = load_config(_config_with_mode(tmp_path, "housekeeping_single"))
+
+    first = analyze_image(blot_png, config, reference_band_ids=["L0_B1", "L1_B1", "L2_B1"])
+    second = analyze_image(blot_png, config, reference_band_ids=["L0_B0", "L1_B0", "L2_B0"])
+    repeated = analyze_image(blot_png, config, reference_band_ids=["L0_B1", "L1_B1", "L2_B1"])
+
+    assert first["normalization"]["ratios"] != second["normalization"]["ratios"], (
+        "the two reference sets must really produce different documents"
+    )
+    assert first["result_id"] != second["result_id"]
+    assert first["result_id"] == repeated["result_id"], "still content-addressed"
+
+
+def test_the_result_id_covers_the_reference_order(blot_png: Path, tmp_path: Path) -> None:
+    """Order is recorded on the result, so two orders are two documents."""
+    config = load_config(_config_with_mode(tmp_path, "housekeeping_multi"))
+
+    forward = analyze_image(blot_png, config, reference_band_ids=["L0_B0", "L0_B1"])
+    reversed_order = analyze_image(blot_png, config, reference_band_ids=["L0_B1", "L0_B0"])
+
+    assert forward["normalization"]["reference_band_ids"] != reversed_order["normalization"][
+        "reference_band_ids"
+    ]
+    assert forward["result_id"] != reversed_order["result_id"]
+
+
+def test_every_band_records_the_observation_its_shoulder_flag_rests_on(
+    result: dict[str, Any],
+) -> None:
+    """``row_half_width_ratio`` travels with the flag, as ``clipped_pixel_count`` does.
+
+    Null is a censored measurement, never a symmetric one, and must not flag; a number at or
+    above the configured threshold must.
+    """
+    threshold = load_config(CONFIG_DIR / "default.yaml").qc.shoulder_half_width_ratio
+    assert result["bands"], "the fixture must produce bands"
+    for band in result["bands"]:
+        assert "row_half_width_ratio" in band
+        ratio = band["row_half_width_ratio"]
+        flagged = "unresolved_shoulder" in band["qc_flags"]
+        if ratio is None:
+            assert not flagged
+        else:
+            assert ratio >= 1.0
+            assert flagged is (ratio >= threshold)
+
+
 def test_cli_writes_a_result_and_reports_success(
     blot_png: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -208,6 +242,92 @@ def test_cli_writes_a_result_and_reports_success(
     document = json.loads(written.read_text(encoding="utf-8"))
     assert len(document["bands"]) == 6
     assert "wrote" in capsys.readouterr().out
+
+
+def _config_with_mode(tmp_path: Path, mode: str) -> Path:
+    """Write a copy of the shipped config with the normalization mode replaced."""
+    import yaml
+
+    mapping = yaml.safe_load((CONFIG_DIR / "default.yaml").read_text(encoding="utf-8"))
+    mapping["normalization"]["mode"] = mode
+    path = tmp_path / f"{mode}.yaml"
+    path.write_text(yaml.safe_dump(mapping), encoding="utf-8")
+    return path
+
+
+def test_a_housekeeping_mode_without_a_reference_band_fails_loudly(
+    blot_png: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The pipeline never infers the loading control, and never falls back to another mode."""
+    config = _config_with_mode(tmp_path, "housekeeping_single")
+
+    code = main(
+        ["run", str(blot_png), "--config", str(config), "--out", str(tmp_path / "out")]
+    )
+
+    assert code == 1
+    assert "needs reference_band_ids" in capsys.readouterr().err
+    assert not (tmp_path / "out" / "fixture_blot.json").exists()
+
+
+def test_the_cli_normalizes_against_the_reference_bands_it_is_given(
+    blot_png: Path, tmp_path: Path
+) -> None:
+    """``--reference-band`` designates the denominator, and the result records which bands."""
+    config = _config_with_mode(tmp_path, "housekeeping_single")
+    references = ["L0_B1", "L1_B1", "L2_B1"]
+
+    code = main(
+        [
+            "run",
+            str(blot_png),
+            "--config",
+            str(config),
+            "--out",
+            str(tmp_path / "out"),
+            *[argument for reference in references for argument in ("--reference-band", reference)],
+        ]
+    )
+
+    assert code == 0
+    document = json.loads((tmp_path / "out" / "fixture_blot.json").read_text(encoding="utf-8"))
+    normalization = document["normalization"]
+    assert normalization["mode"] == "housekeeping_single"
+    assert normalization["reference_band_ids"] == references
+    assert "single_housekeeping_reference" in normalization["warnings"]
+    assert {ratio["denominator_band_id"] for ratio in normalization["ratios"]} == set(references)
+    assert list(Draft202012Validator(_schema()).iter_errors(document)) == []
+    assert all("total_protein_signal" not in lane for lane in document["lanes"])
+
+
+def test_a_housekeeping_result_stays_deterministic(blot_png: Path, tmp_path: Path) -> None:
+    """Determinism holds with a caller-supplied reference list, as it does without one."""
+    config = load_config(_config_with_mode(tmp_path, "housekeeping_multi"))
+    references = ["L0_B0", "L0_B1"]
+
+    first = analyze_image(blot_png, config, reference_band_ids=references)
+    second = analyze_image(blot_png, config, reference_band_ids=references)
+
+    del first["provenance"]["created_at"]
+    del second["provenance"]["created_at"]
+    assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+
+
+def test_a_jpeg_input_is_flagged_lossy_end_to_end(
+    tmp_path: Path, three_lane_blot: Blot
+) -> None:
+    """PLAN.md: JPEG input gets ``lossy_format``, and the ratios say the denominator is lossy."""
+    path = tmp_path / "fixture_blot.jpg"
+    assert cv2.imwrite(str(path), (three_lane_blot.pixels // 257).astype(np.uint8))
+
+    result = analyze_image(path, load_config(CONFIG_DIR / "default.yaml"))
+
+    assert result["source"]["image_format"] == "jpeg"
+    assert result["source"]["lossy_format"] is True
+    assert "lossy_format" in result["image_qc_flags"]
+    assert "reference_band_lossy_format" in result["normalization"]["warnings"]
+    for band in result["bands"]:
+        assert "lossy_format" not in band["qc_flags"], "an image flag is not a band flag"
 
 
 def test_cli_reports_a_missing_image(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

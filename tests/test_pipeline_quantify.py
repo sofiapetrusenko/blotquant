@@ -15,7 +15,7 @@ from pipeline.config import (
     QuantificationConfig,
     load_config,
 )
-from pipeline.detect import DetectedBand, Roi
+from pipeline.detect import DetectedBand, Roi, RowProfile
 from pipeline.quantify import integrate_roi, mean_over_roi, quantify_bands
 from tests.conftest import Band, Blot, build_blot
 from tests.test_pipeline_config import CONFIG_DIR
@@ -24,6 +24,12 @@ MEDIAN = BackgroundConfig(method=LOCAL_MEDIAN, params=LocalMedianParams(window_p
 KEEP_NEGATIVES = QuantificationConfig(method="roi_sum", clamp_negative_pixels=False)
 CLAMP_NEGATIVES = QuantificationConfig(method="roi_sum", clamp_negative_pixels=True)
 FLAT_DN = 1000.0
+
+NO_PROFILE = RowProfile(
+    samples=(0.0, 0.0, 0.0), peak_index=1, baseline=0.0, lower_bound=0, upper_bound=2
+)
+"""Quantification never reads a band's row profile -- it integrates the ROI -- so these tests
+hand it a profile with no height, whose shape statistic is undefined."""
 
 
 def test_a_box_of_known_total_is_recovered_exactly() -> None:
@@ -100,7 +106,7 @@ def test_quantify_bands_reconstructs_the_raw_roi_sum(blot: Callable[..., Blot]) 
     )
     correction = correct_background(built.pixels, MEDIAN)
     roi = Roi(x=28, y=23, width=25, height=15)
-    band = DetectedBand(band_id="L0_B0", lane_id="L0", roi=roi)
+    band = DetectedBand(band_id="L0_B0", lane_id="L0", roi=roi, row_profile=NO_PROFILE)
 
     measured = quantify_bands(
         correction.corrected, correction.background, [band], KEEP_NEGATIVES
@@ -119,7 +125,12 @@ def test_quantify_bands_preserves_identity_and_order() -> None:
     """Every detected band gets exactly one measurement, in the order detection gave."""
     corrected = np.ones((40, 40))
     bands = [
-        DetectedBand(f"L0_B{index}", "L0", Roi(x=2, y=2 + 10 * index, width=6, height=6))
+        DetectedBand(
+            f"L0_B{index}",
+            "L0",
+            Roi(x=2, y=2 + 10 * index, width=6, height=6),
+            NO_PROFILE,
+        )
         for index in range(3)
     ]
 

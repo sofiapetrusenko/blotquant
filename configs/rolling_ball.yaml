@@ -225,3 +225,76 @@ quantification:
   # Keep pixels below the background. Noise is symmetric about the background, so the ROI
   # sum is unbiased only if both signs survive; clamping adds ~0.4 sigma per pixel.
   clamp_negative_pixels: false
+
+qc:
+  # Five parameters. Every one is chosen from a criterion that can be stated WITHOUT reference
+  # to the synthetic generator, and then measured. The generator's own QC parameters are
+  # documented in synth/MODELS.md, and these flags are scored against the labels those
+  # parameters produced - so a threshold copied from them would score well circularly.
+  #
+  # Where the five stand against the generator, exactly: three differ from the generator
+  # parameter that governs the same question (1 against saturated_min_clipped_pixels = 3, 0.05
+  # against overlap_iou_threshold = 0.15, 0.25 against low_dynamic_range_peak_fraction = 0.20),
+  # one answers a question the generator has no parameter for (shoulder_half_width_ratio), and
+  # one - shoulder_half_maximum_fraction = 0.5 - does equal a number in MODELS.md
+  # (roi_tilt_excursion_fraction_of_height, a lane-geometry fraction). Per MODELS.md's closing
+  # rule that coincidence needs an independent justification recorded here and in NOTES.md; it
+  # is given where the parameter is set below. All five coincide with *some* number in that
+  # document, which is why the rule is about justification and not about avoidance; NOTES.md,
+  # "Phase 2", audits each one.
+  #
+  # How many pixels at full scale inside a band's ROI make that band saturated. 1, because a
+  # single pixel at full scale already means the ROI sum is a lower bound rather than a
+  # measurement - the pixel's true value is unknown and everything above full scale was
+  # discarded - and because QC annotates rather than drops: a flag costs a caveat, while a
+  # missed clipped band costs a published number. This is stricter than the generator's
+  # saturated_min_clipped_pixels = 3, deliberately: 3 exists there to keep a lone noise
+  # excursion out of a *label*, whereas here the question is whether a value is quantifiable.
+  saturated_min_clipped_pixels: 1
+  # How much two same-lane band ROIs may overlap before both are flagged. Two overlapping
+  # rectangles count their shared pixels into both bands' integrals, so the criterion is how
+  # much double-counted signal changes a reported ratio. A tenth of a band's aperture does:
+  # it is larger than the aperture error the pipeline already carries. For two ROIs of equal
+  # size, sharing a tenth of each box is IoU = 0.1/(2 - 0.1) = 0.0526, so 0.05. Not the
+  # generator's overlap_iou_threshold = 0.15, which for equal boxes is a 26% shared area.
+  overlap_iou_threshold: 0.05
+  # The shape criterion for unresolved_shoulder, in two parts. Both live here, rather than as
+  # constants in a function body, because the human's Ruling 1 requires the criterion to be
+  # recorded in config and provenance - and the level below sets the test's sensitivity as
+  # much as the threshold does.
+  #
+  # The height at which the two half-widths are measured, as a fraction of the peak's height
+  # above its baseline. 0.5 is the conventional half-maximum level - "half-width at half
+  # maximum" is what the statistic is called - and is a convention rather than a fitted
+  # value; it is declared, echoed and audited like every other knob so that a future phase
+  # can move it deliberately instead of discovering it in the code.
+  shoulder_half_maximum_fraction: 0.5
+  # How asymmetric one band's row profile may be at that level before it is flagged, as the
+  # ratio of its wider half-width to its narrower one. A single band is symmetric about its
+  # own centre - diffusion about a migration position has no preferred direction - so this
+  # ratio is 1.0 for one band and grows as a shoulder appears. 1.5 says "one side is at least
+  # half again as wide as the other", which no single diffusive band produces. It is a shape
+  # test only: it never adds a band, a centre or an ROI.
+  shoulder_half_width_ratio: 1.5
+  # How much of the available range the brightest band must use, or the image is flagged
+  # low_dynamic_range. Derived from what the *weakest* band in the same image then measures:
+  # a blot's weakest band of interest is commonly around a seventh of its strongest, so at a
+  # quarter of full scale the weakest band peaks near 0.25/7 = 3.6% of full scale, which at
+  # 8-bit is 9 DN - only a few times a typical read noise. Below a quarter, the dim end of
+  # the same image is not quantifiable at all. Not the generator's
+  # low_dynamic_range_peak_fraction = 0.20.
+  dynamic_range_min_peak_fraction: 0.25
+
+normalization:
+  # total_protein is the shipped mode because it is the only one that needs no caller input -
+  # its denominator is the lane's own signal integral over the detected lane ROI - and
+  # because PLAN.md makes it a first-class mode against single-housekeeping normalization.
+  # housekeeping_single and housekeeping_multi are implemented and require the reference band
+  # ids to be passed explicitly (`--reference-band`, repeatable); they raise rather than
+  # guessing which band is the loading control.
+  mode: total_protein
+  # Exclude QC-flagged bands from the ratios. The band still reports its value and its
+  # flags, and its ratio is still reported - marked excluded, with the reason recorded - so
+  # nothing is dropped silently. Setting this false is an explicit override and is recorded
+  # on the result as the qc_flagged_bands_included_by_override warning.
+  exclude_qc_flagged: true

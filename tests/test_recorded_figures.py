@@ -65,8 +65,21 @@ YAML_END = re.compile(r"^\s*#\s*end sweep\s*$")
 MARKDOWN_MARKER = re.compile(r"^\s*<!--\s*sweep:\s*(\S+)\s*-->\s*$")
 MARKDOWN_END = re.compile(r"^\s*<!--\s*end sweep\s*-->\s*$")
 
-PHASE_1_HEADING = "## Phase 1 — core pipeline"
-NEXT_HEADING = "## Open items"
+FIRST_CHECKED_HEADING = "## Phase 1 — core pipeline"
+REQUIRED_HEADINGS = (
+    FIRST_CHECKED_HEADING,
+    "## Phase 2 — QC, normalization and provenance",
+    "## Open items",
+)
+"""The sections whose marked blocks are checked against the sweep record.
+
+The checked span runs from the first of these to the **end of the file**, so a new phase section
+or a new open item is covered automatically -- and each heading is asserted to be inside the span,
+so a renamed heading cannot silently take a section out of the check. It used to stop at
+``## Open items``, which left a marked block quoting a recorded trade-off curve *in* that section
+unchecked; the span was widened rather than the block moved, because an open item is exactly where
+a measured curve gets quoted.
+"""
 
 MINIMUM_MARKED_BLOCKS = 5
 """A silently empty checker would pass forever, so require the convention to be in use."""
@@ -289,10 +302,12 @@ def _markdown_blocks(text: str) -> list[tuple[str, list[str]]]:
     return blocks
 
 
-def _phase_1_section(text: str) -> str:
-    """Return NOTES.md's Phase 1 section."""
-    start = text.index(PHASE_1_HEADING)
-    return text[start : text.index(NEXT_HEADING, start)]
+def _checked_sections(text: str) -> str:
+    """Return the span of NOTES.md whose marked blocks this module checks."""
+    section = text[text.index(FIRST_CHECKED_HEADING) :]
+    for heading in REQUIRED_HEADINGS:
+        assert heading in section, f"{heading!r} is not inside the checked span of NOTES.md"
+    return section
 
 
 def _check(blocks: list[tuple[str, list[str]]], record: dict[str, object], where: str) -> list[str]:
@@ -315,7 +330,7 @@ def test_at_least_one_block_is_marked_in_each_file(record: dict[str, object]) ->
     """The convention has to actually be in use, or this module guards nothing."""
     for path in CONFIG_PATHS:
         assert _yaml_blocks(path.read_text(encoding="utf-8")), f"{path.name} marks no sweep block"
-    section = _phase_1_section(NOTES_PATH.read_text(encoding="utf-8"))
+    section = _checked_sections(NOTES_PATH.read_text(encoding="utf-8"))
     assert len(_markdown_blocks(section)) >= MINIMUM_MARKED_BLOCKS
 
 
@@ -328,8 +343,8 @@ def test_config_figures_come_from_the_sweep_record(path: Path, record: dict[str,
 
 
 def test_notes_figures_come_from_the_sweep_record(record: dict[str, object]) -> None:
-    """Same for NOTES.md's Phase 1 section."""
-    section = _phase_1_section(NOTES_PATH.read_text(encoding="utf-8"))
+    """Same for the phase sections of NOTES.md."""
+    section = _checked_sections(NOTES_PATH.read_text(encoding="utf-8"))
 
     problems = _check(_markdown_blocks(section), record, "NOTES.md")
 
