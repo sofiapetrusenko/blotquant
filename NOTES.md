@@ -2208,6 +2208,338 @@ what Phase 5 has to do is replace absence statements with measurements, not walk
 
 ---
 
+## Phase 3 Gate 1 — eval design sign-off
+
+PLAN.md puts Gate 1 before parameter iteration begins. It ran late — Phases 1 and 2 had already
+selected parameters on the dev split, which is recorded as debt (DEBT.md S12). These are the
+rulings the human made at the gate. They are recorded here and reflected in the affected DEBT.md
+entries; **nothing was implemented, tuned or regenerated in response to them.**
+
+The human's first instruction described its rulings as seven and then listed eight; later rounds
+added two more. **Ten are recorded**, numbered 1–10 by this record rather than by the human. The
+original miscount is noted here rather than silently reconciled.
+
+### Gate 1 ruling 1 — the thirteen dev-selected parameters are ratified as a procedure, not re-selected
+
+**Human ruling: the thirteen parameters selected from dev-split sweeps are ratified as they
+stand.** They are not re-selected.
+
+**Reason.** Re-running selection on the same split with the same selector would produce the same
+values and change nothing epistemically. The value comes from external validation, not from
+repetition. The ratification rests on the selector being documented, uniform, and recorded per
+parameter — parameters that change what is *measured* were chosen on the clean-band mean recovery
+error, and parameters that only change what is *found* on the relevant detection F1. Each of the
+thirteen carries its recorded surface.
+
+**Two qualifications, recorded rather than absorbed.** "Uniform" is the human's word and it is not
+quite what the repository records. `configs/default.yaml`'s own header names **two of the thirteen
+as deliberate exceptions**: `band.min_separation_px` is an a-priori floor set to impose none, and
+`background.local_median.window_px` "trades the two criteria against each other monotonically, so
+no value optimises both" — it ships on the *aggregate* mean, not the clean mean, and this file
+elsewhere calls it "the one shipped value the project's usual selector does not choose". Gate 1 ruling 1
+ratifies them along with the rest; what it does not do is make the selector uniform in fact.
+Separately, not every *shipped* value carries a surface at all — DEBT S3's two carry an inheritance
+argument and are outside this ruling.
+
+**Scope.** Ratifies the procedure and the resulting values. It does not ratify the *evidence* behind
+any individual value. Gate 1 ruling 2 ratifies a **fourteenth** parameter separately — not one of
+these thirteen — and the two parameters with no evidence at all (DEBT S3) are untouched by this.
+
+**What this ruling does *not* settle, flagged rather than assumed.** PLAN.md's Phase 3 checklist
+still contains "Iterate detection/background parameters on the dev split to plateau", and it is
+ordered *after* "per-difficulty-cell breakdown (which matrix cells fail)", which does not exist
+yet. Gate 1 ruling 1's rationale — that re-running the same selector on the same split changes nothing —
+does not reach iteration prompted by evidence that has not been gathered. So this record does not
+treat that checklist item as discharged; it is an open question for the human (listed at the end of
+this section).
+
+### Gate 1 ruling 2 — `qc.shoulder_half_width_ratio = 1.5` is ratified on its own terms, as a fourteenth
+
+**Human ruling: `qc.shoulder_half_width_ratio = 1.5` is ratified separately, on its own terms.**
+
+**It is not one of the thirteen.** Gate 1 ruling 1 ratifies the thirteen parameters selected from
+dev-split sweeps. This parameter is not among them: it is one of the **five QC parameters chosen
+from stated criteria** (DEBT S12 records 13 dev-selected of 20 shipped, the other 7 being 2 that
+no sweep can exercise and those 5). Gate 1 ruling 2 therefore ratifies a **fourteenth** value, on a
+different basis from Gate 1 ruling 1's thirteen — not a carve-out from them. An earlier draft of this
+record used the human's phrase "does not inherit the confidence of the other twelve"; that phrasing
+implied membership in the thirteen and has been withdrawn.
+
+**Reason.** Its stated criterion — "one side at least half again as wide as the other" — restates
+the value rather than deriving it from an independent quantity, which is what the other criteria
+do (a tenth of a shared aperture giving IoU 0.0526; a weakest band at a seventh of the strongest
+giving 3.6% of full scale). Its position on the recorded surface is also the widest separation
+between the two truth populations on the fold-ratio reading, so the value is consistent with a
+dev-split measurement rather than independent of one.
+
+**Scope.** Recorded so the weak link stays visible instead of being absorbed into a list. No change
+to the value.
+
+**"Weakest" is split, not assigned — the two candidates describe different weaknesses.** An earlier
+draft reported a conflict: this ruling and DEBT S3 both claimed the weakest basis, unqualified, for
+different parameters. The human's resolution is to split the claim rather than pick a winner,
+because the split is the more useful record. Both entries now carry the qualified form:
+
+- **`qc.shoulder_half_width_ratio` has the weakest *justification* among the shipped parameters.**
+  Its stated criterion restates the value rather than deriving it from an independent quantity —
+  unlike a tenth of a shared aperture giving IoU 0.0526, or a weakest band at a seventh of the
+  strongest giving 3.6% of full scale. But it **is testable against the gold set**: it has a
+  recorded surface, and a future argument or measurement can confirm or overturn it.
+- **The two single-lane parameters (DEBT S3) have the weakest *evidential basis*.** No sweep can
+  reach them at all on the committed data, because the gold set contains no single-lane image.
+
+**The second is the more serious of the two.** A poor justification can be improved by argument; an
+absent evidential basis cannot — there is nothing to argue from. And under Gate 1 ruling 3 the single-lane
+pair can now only ever be **falsified** on a real single-lane image, never selected. So the
+parameter with the weak justification is recoverable and the pair with no evidence is not.
+
+Neither entry may claim an unqualified superlative. This parameter remains **the Phase 2 parameter**
+most likely to need revisiting if a real-blot criterion becomes available — the scoping this file
+uses elsewhere — and under Gate 1 ruling 3 such a criterion could only falsify it, never re-select it.
+
+### Gate 1 ruling 3 — real blots may falsify a parameter but never select one
+
+**Human ruling: no parameter value may be chosen, tuned, or ranked using `data/real/`.** Real blots
+are used for measurement only: agreement with ImageJ, and pass/fail observation of whether a code
+path produces sensible output.
+
+**Reason.** Selecting on real blots would make the real set a second training set, and the project
+would then have no held-out evidence at all. Keeping selection on synthetic data and validation on
+real data preserves the one thing the real set is for.
+
+**Scope.** If a real blot shows a parameter or a code path to be wrong, the finding is recorded in
+DEBT.md as a defect evidenced on real data. It is **not** fixed by adjusting the value to suit
+those images. A consequence worth stating plainly: a parameter known to be wrong on real data
+cannot then be repaired against real data, so the repair must come from a principled argument or
+from synthetic evidence, and until it does the defect stays recorded as a defect.
+
+This **supersedes the search for a real-blot substitute for the clean-band selector** (DEBT S7):
+no substitute selector is needed, because no selection happens there. It also gives the two
+single-lane parameters (DEBT S3) a route they did not have — they can be falsified on a real
+single-lane image even though no sweep can reach them — without giving them a route to being
+tuned.
+
+Note this ruling addresses the *selector* (S7). It does not settle the housekeeping **reference
+band** oracle (DEBT S6), which is a measurement input rather than a parameter choice: scoring
+housekeeping normalization on a real blot would still require a human to designate the reference.
+S6 remains open, and S7's closure is now decoupled from it.
+
+### Gate 1 ruling 4 — `qc.dynamic_range_min_peak_fraction` stays at 0.25; the question is closed
+
+**Human ruling: the threshold stays at 0.25, and the question is closed on synthetic data** rather
+than left open awaiting real-blot evidence.
+
+**Reason.** Under Gate 1 ruling 3 the threshold cannot be selected on real blots either, and the entire
+disagreement is about a generator constant — 0.40 was refused because it sits above the generator's
+scratch amplitude `0.25·M`. Waiting for data that cannot settle the question would leave a decision
+permanently deferred.
+
+**Scope.** Recorded as a known limitation rather than an open decision: the flag under-warns,
+missing 3 of the 10 low-dynamic-range dev images (recall 0.700, precision 1.000). The measured
+trade-off curve stays in NOTES.md and in the recorded surface. DEBT S10 changes status accordingly.
+
+### Gate 1 ruling 5 — `synth/` stays frozen; the gold set is not regenerated
+
+**Human ruling: `doublet_offset_sigma` is not raised and the gold set is not regenerated.**
+
+**Reason.** The cost — a break in eval comparability, a `SYNTH_VERSION` bump, and regeneration of
+every recorded figure — exceeds the benefit. The resulting recall ceiling is already measured and
+disclosed.
+
+**Scope.** Settles DEBT S8 (whether the `doublet` cell is meant to be resolvable: it stays as it
+is) and confirms DEBT S4's recall ceiling of 0.852 as a standing property rather than an artifact
+awaiting correction. It also **forecloses one of the two closure routes DEBT S3 named** — "a
+gold-set regeneration decision that adds single-lane images" is now ruled out, leaving falsification
+on a real single-lane image under Gate 1 ruling 3 as the remaining route.
+
+### Gate 1 ruling 6 — the geometric `overlapping` flag is retained as measured evidence
+
+**Human ruling: the flag is kept, as a recorded negative result rather than as a working feature.**
+
+**Reason.** It scores F1 0.000 and fires predominantly on detection false positives — 5 of the 6
+bands it flags match no truth band. Retiring it would remove the evidence that a plausible-sounding
+QC flag can fail completely, which is a result worth keeping. `unresolved_shoulder` covers the
+real need.
+
+**Scope.** README must state that the flag is kept as a recorded negative result, not as
+functionality — done in its Limitations section. DEBT S5's status becomes Accepted, with that
+reason, and keeps its measurement.
+
+### Gate 1 ruling 7 — `total_protein` keeps the ROI pixel-sum denominator
+
+**Human ruling: the denominator stays as an ROI pixel sum over the lane rectangle.**
+
+**Reason.** No alternative denominator was shown to be better, and changing the measure would
+invalidate the recorded figures without evidence that the replacement is an improvement.
+
+**Scope.** Limitations must state two things, and now do: that the 31.65% mean error follows from
+integrating background-estimator residual over a full-height lane (~9000 px), and that **the claim
+of total-protein normalization being *better* than single-housekeeping is not currently supported
+by measurement** — only that it needs no oracle reference. This settles DEBT S2's denominator
+question and ratifies the wording deviation recorded as DEBT S16.
+
+### Gate 1 ruling 8 — Phase 3 success criteria, fixed before the first real-blot measurement
+
+**Human ruling: the criteria for ImageJ agreement are fixed now, before any real-blot measurement
+is run**, so that interpretation cannot be fitted to the outcome.
+
+**The comparison is run on normalized ratios, not absolute intensities.** Absolute values are
+convention-dependent (DEBT S11 — a band's ROI depends on the lane slice it was measured in) and
+ImageJ's aperture convention differs from this pipeline's, so an absolute comparison would measure
+the conventions rather than the methods.
+
+**Thresholds, on normalized ratios over the CC-BY set:**
+
+| Spearman r_s | verdict |
+|---|---|
+| r_s ≥ 0.9 | agreement |
+| 0.7 ≤ r_s < 0.9 | partial agreement — **every discrepant blot must be individually explained in NOTES.md** |
+| r_s < 0.7 | the method is **not corroborated**, and that result is published in the README as stated, not reframed |
+
+**Scope.** Recorded before the first run. The r_s < 0.7 branch is the one this ruling exists for: it
+commits the project to publishing a negative result in the README in the same terms it would have
+published a positive one.
+
+**The statistic is Spearman rank correlation (r_s), on normalized ratios.** An earlier draft left
+this open; it is now fixed, and the thresholds above attach to r_s.
+
+**Why Spearman and not Pearson.** The human's reason: agreement between two measurement methods is
+a question of **monotonicity, not proportionality** — whether the two tools order the lanes the
+same way, not whether they produce the same numbers.
+
+**What actually discriminates the two statistics, stated precisely, because an earlier draft of
+this paragraph got it wrong.** That draft said Pearson "would penalise a constant scale factor
+between the two conventions". **That is false**: Pearson's *r* is invariant under a positive affine
+transform of either variable, so a pure rescaling leaves it at exactly 1.0 (verified: on a
+synthetic `y = 3.7x + 12`, Pearson = Spearman = 1.000000). Scale-invariance therefore does not
+distinguish them, and neither does Gate 1 ruling 8's use of normalized ratios, which divides out a
+per-image factor before either statistic is computed.
+
+The discriminator is **non-linearity, not scale**. Pearson measures *linear* association; Spearman
+measures *monotone* association. Where the relationship between the two tools is monotone but
+curved, Pearson understates agreement and Spearman does not — on a synthetic monotone-but-non-linear
+pair, Pearson 0.965 against Spearman 1.000. That case is expected here rather than hypothetical:
+DEBT S13 records that chemiluminescence is not linear in protein amount, and the two tools
+integrate over different apertures, so a curved relationship between their outputs is the likely
+shape. Spearman is additionally more robust to a single discrepant blot at the small N this
+comparison will have.
+
+**Pearson was considered and rejected on that basis**, recorded so the choice is not re-opened
+later as a matter of taste. The two can straddle the 0.9 and 0.7 boundaries on the same data, which
+is why the statistic had to be named before the first run rather than after.
+
+**Still unfixed, and to be settled before the first run:** the unit of analysis — r_s pooled over
+all ratios across blots, or per-blot r_s aggregated — whether QC-excluded ratios are in or out, and
+a minimum N. These remain open questions below.
+
+### Gate 1 ruling 9 — `background.local_median.window_px` stays at 51 px, decided rather than absorbed
+
+**Human ruling: the window stays at 51 px.** This file routed the 51-vs-61 choice to Gate 1
+explicitly — "a reader who weights measurement over detection more heavily than this file does
+should prefer 61 px, and Phase 3's Gate 1 is the right place to settle it" — and Gate 1 ruling 1
+ratified it by inclusion, without examining it. It is now taken up on its merits and decided.
+
+**Reason.** The same reason as Gate 1 ruling 4: changing a shipped value invalidates the recorded
+figures without evidence that the alternative is better, and under Gate 1 ruling 3 real blots
+cannot select it either. The recorded trade is unchanged and stays visible — 61 px measures 1.16
+points better on the clean subset for 0.011 of band F1, and 81 px measures 2 points better for
+0.057 of band F1 and two lane false positives.
+
+**Scope.** The value does not move. What changes is the record: this is a decision, not an
+absorption. It is also one of the two values `configs/default.yaml` names as not being any
+selector's argmax, so ratifying it does not imply the selector chose it.
+
+### Gate 1 ruling 10 — the three remaining QC parameters are ratified explicitly
+
+**Human ruling: `qc.saturated_min_clipped_pixels`, `qc.overlap_iou_threshold` and
+`qc.shoulder_half_maximum_fraction` are ratified.** With Gate 1 rulings 2 and 4, this completes the
+set of twenty.
+
+**Reason.** Each has a stated criterion recorded in the config and in this file: any full-scale
+pixel makes the ROI sum a lower bound rather than a measurement (`saturated_min_clipped_pixels = 1`,
+which the human had already ruled on separately, outside this gate); a tenth of a shared aperture
+double-counted gives IoU 0.1/(2 − 0.1) = 0.0526 (`overlap_iou_threshold = 0.05`); and the
+conventional half-maximum level, a naming convention rather than a fitted value
+(`shoulder_half_maximum_fraction = 0.5`). Ratifying them completes the set rather than leaving
+three parameters in an undefined state — neither ratified nor flagged.
+
+**Scope.** No value moves. Ratification is of the criteria as recorded, not of any claim that they
+are optimal: none of the three was selected on a surface, and `overlap_iou_threshold` in particular
+governs a flag Gate 1 ruling 6 retains as a recorded negative result rather than as functionality.
+
+### Deferred to Gate 2 — deliberately, because the data to decide does not exist yet
+
+**The first three must be settled before Phase 3's ImageJ measurement begins**, and their trigger is
+Gate 2's approval of the CC-BY image list: they cannot be decided before it, and the measurement
+cannot honestly begin after it without them. The fourth is deferred on a different trigger and says
+so. All four were considered at Gate 1 and postponed, not overlooked. Recording them here makes each
+deferral a scheduled obligation rather than an open question that can be forgotten between phases.
+
+**Gate 1 ruling 8's unit of analysis, minimum N, and treatment of QC-excluded ratios.** Fixing a
+success threshold before measurement is the whole point of Gate 1 ruling 8; fixing statistical
+*power* before the sample size is known is not possible. How many CC-BY blots exist, how many lanes
+each carries, and therefore how many ratios the comparison has, are all unknown until Gate 2
+approves the image list. These must be fixed **after the image list is approved and before the
+first ImageJ run**. Until then **Gate 1 ruling 8 fixes the statistic and the thresholds but not the
+power**, and its guarantee against post-hoc fitting is only complete once they are settled.
+
+**Whether Spearman at the expected N can discriminate 0.9 from 0.7 at all.** With N around ten
+blots the confidence interval on r_s may be wide enough that the two thresholds are not
+distinguishable — in which case the criterion cannot do the job Gate 1 ruling 8 assigns it. This
+must be checked once N is known. If it cannot discriminate, **the thresholds are revised before the
+run, not after**; revising them afterwards would be exactly the fitting Gate 1 ruling 8 exists to
+prevent.
+
+**PLAN.md's `mean |Δ|`.** PLAN.md specifies the ImageJ comparison reports "correlation + mean |Δ|";
+Gate 1 ruling 8 fixes thresholds on the correlation only. This cannot be resolved yet because it is
+not established **which quantity PLAN.md means** — a difference of normalized ratios, or of absolute
+intensities — and the two have different standing. Normalization divides out a per-image scale
+factor, so the convention-mismatch argument that makes an absolute comparison meaningless (DEBT S11,
+and Gate 1 ruling 8's own reason for comparing ratios) does not obviously carry over to a difference
+of ratios. Determine which is meant, then either give it a criterion alongside r_s, or amend
+PLAN.md's wording and record the deviation in DEBT P2.
+
+**PLAN.md's "iterate detection/background parameters on the dev split to plateau" — deferred on a
+different trigger, not on Gate 2.** Gate 1 ruling 1 does not reach it: the item is ordered *after*
+"per-difficulty-cell breakdown (which matrix cells fail)", which does not exist. Its precondition is
+therefore a piece of Phase 3 work rather than Gate 2's image list — so unlike the three items above
+it does **not** block the start of Phase 3 measurement, because the breakdown it waits on *is*
+Phase 3 measurement. Recorded as **conditional**: possible only once that breakdown exists, and on
+the dev split only, since Gate 1 ruling 3 forbids selection on real blots. Neither discharged nor
+abandoned. It sits in this subsection because it was considered at Gate 1 and postponed; its
+trigger is the breakdown, not the image list.
+
+### Open questions this gate raised and did not settle
+
+Recorded so they are not mistaken for ruled:
+
+- ~~**Is `qc.shoulder_half_width_ratio` one of the thirteen or not?**~~ **Resolved:** it is not.
+  Gate 1 ruling 2 ratifies a fourteenth value on its own terms; the "other twelve" phrasing is withdrawn.
+- ~~**Is it the weakest basis in the *shipped set* or the weakest of the *five QC criteria*?**~~
+  **Resolved by splitting rather than assigning:** this parameter has the weakest *justification*
+  but is testable; DEBT S3's pair has the weakest *evidential basis* and is not. The second is the
+  more serious. Neither entry claims an unqualified superlative. See Gate 1 ruling 2's Scope.
+- **PLAN.md's "iterate … to plateau"** — moved to "Deferred to Gate 2" above and recorded as
+  conditional on the per-difficulty-cell breakdown existing.
+- ~~**Which correlation statistic?**~~ **Resolved: Spearman rank correlation (r_s)**, because
+  agreement between two measurement methods is a question of monotonicity, not proportionality, and
+  ImageJ's aperture convention differs from this pipeline's. Pearson was considered and rejected;
+  see Gate 1 ruling 8.
+- **The unit of analysis, minimum N, and QC-excluded ratios** — moved to "Deferred to Gate 2"
+  above, because they cannot be fixed until the image list gives an N.
+- **PLAN.md's `mean |Δ|`** — moved to "Deferred to Gate 2" above; which quantity PLAN.md means has
+  to be settled first.
+- **DEBT S6 stays open.** Gate 1 ruling 3 settles the selector, not the housekeeping reference-band
+  oracle.
+- ~~**Was `background.local_median.window_px` 51 vs 61 px settled?**~~ **Resolved: taken up on its
+  merits and decided — 51 px stands (Gate 1 ruling 9).** It is no longer ratified by absorption.
+- ~~**Only one of the two Phase 2 thresholds Gate 1 was asked to take a position on was taken
+  up.**~~ **Resolved: both are now ratified** — `qc.shoulder_half_width_ratio` by Gate 1 ruling 2
+  and `qc.saturated_min_clipped_pixels` by Gate 1 ruling 10, which also ratifies the two remaining
+  QC parameters and completes the set of twenty.
+
+---
+
 ## Open items
 
 Unresolved questions carried out of a phase. Not decisions — each one names the phase
@@ -2220,6 +2552,11 @@ carries the evidence for each. This section stays the per-phase narrative; DEBT.
 index.
 
 ### The housekeeping reference is an oracle and needs a real-blot substitute — Phase 3 to settle
+
+**Ruled at Phase 3 Gate 1** — see "Phase 3 Gate 1 — eval design sign-off" above. Gate 1 ruling 3 settles
+the *selector* question (a substitute is not needed, because no selection happens on real blots) but
+explicitly does **not** settle this one: designating a reference band is a measurement input, not a
+parameter choice. This stays open.
 
 **Human ruling, recorded so Phase 3 inherits it explicitly:** designating the reference band
 from ground truth's `role` is an oracle input that does not exist on a real blot; it is
@@ -2241,9 +2578,14 @@ without a human in the loop — in which case Phase 3 should say so in the READM
 report a housekeeping accuracy at all. A third possibility, worth naming because it is
 tempting and wrong: inferring the reference from the data (the band row that varies least
 across lanes, say) would make the pipeline guess the loading control, which is exactly what
-the Ruling 2 forbids.
+Phase 2's Ruling 2 forbids.
 
 ### `low_dynamic_range` is inflated by additive contamination — Phase 3 to settle
+
+**Ruled at Phase 3 Gate 1** — see "Phase 3 Gate 1 — eval design sign-off" above. Gate 1 ruling 4 fixes the
+*threshold* at 0.25 and closes the threshold question on synthetic data. It does **not** rule on the
+route this entry actually proposes — replacing the *measure* (a robust upper quantile of band peaks,
+or the lane-profile peak) rather than the threshold. That remains Phase 3 work.
 
 The flag reads the brightest detected band's background-corrected peak. A scratch crossing a
 lane is additive contamination that a peak measurement cannot distinguish from signal, so on the
@@ -2261,6 +2603,9 @@ artifacts, is the place.
 
 ### Band `overlapping` has zero recall against this gold set — needs a ruling
 
+**Ruled at Phase 3 Gate 1** — see "Phase 3 Gate 1 — eval design sign-off" above. Gate 1 ruling 6 retains
+the flag as a recorded negative result rather than as functionality.
+
 Measured: 0 true positives, 52 misses, one false positive (Phase 2 table). The flag's criterion
 is sound — overlapping ROIs double-count shared pixels — but Phase 1's "one band per resolved
 maximum" means a doublet yields one ROI, so there is nothing for it to overlap with, and the
@@ -2276,6 +2621,9 @@ regeneration; or retire the geometric flag, which would lose the only flag that 
 bands genuinely do share pixels. The measurement above is what a decision should be made on.
 
 ### Total-protein normalization is limited by the background residual over a full-height lane
+
+**Ruled at Phase 3 Gate 1** — see "Phase 3 Gate 1 — eval design sign-off" above. Gate 1 ruling 7 keeps the
+ROI pixel-sum denominator and retracts the comparative claim instead of changing the measure.
 
 The denominator is the lane's whole background-corrected integral, ~9000 pixels on the committed
 canvas, so it accumulates the background estimator's residual bias over an area far larger than
@@ -2339,6 +2687,10 @@ record. What catches it is the digest comparison — a changed config parameter 
 digests — not the figure guard. Worth knowing that the figure guard would not have caught it alone.
 
 ### The `low_dynamic_range` threshold trades recall against circularity — Phase 3 to settle
+
+**Ruled at Phase 3 Gate 1** — see "Phase 3 Gate 1 — eval design sign-off" above. Gate 1 ruling 4 closes it:
+0.25 stands, and the question is settled on synthetic data because real blots cannot select a
+threshold either.
 
 **Human's ruling, verbatim:**
 
@@ -2424,6 +2776,11 @@ row profile or to keep the convention and state it as a documented limitation.
 
 ### The single-lane recovery-error impact is unquantified — Phase 3 to settle
 
+**Ruled at Phase 3 Gate 1** — see "Phase 3 Gate 1 — eval design sign-off" above. Gate 1 ruling 5 forecloses
+the route this item names: the gold set is not regenerated, so it will not gain single-lane images.
+Under Gate 1 ruling 3 the impact can only be observed on a real single-lane blot, never quantified against
+ground truth. The item stays open with a narrower route, not a closed one.
+
 The single-lane rule changes the band ROI a lane slice yields, and on the unit fixture that
 is a 15% narrower ROI excluding about 6 px of true band signal (recorded under the lane-ROI
 convention above). What that does to *recovery error* is unmeasured, because the committed
@@ -2452,6 +2809,16 @@ are answers to different questions, and a record that reports only one of them w
 the way the first draft of the Phase 2 PR body was.
 
 ### Phases 1 and 2 have already selected parameters on dev, which pre-empts Phase 3's Gate 1
+
+**Ruled at Phase 3 Gate 1** — see "Phase 3 Gate 1 — eval design sign-off" above. Rulings 1 and 2
+ratify the thirteen dev-selected parameters as a procedure rather than re-selecting them, and ratify
+`qc.shoulder_half_width_ratio = 1.5` separately as a fourteenth value — it is not one of the
+thirteen — carrying the weakest *justification* among shipped parameters, though not the weakest
+evidential basis, which is DEBT S3's pair. **Gate 1 ruling 3 supersedes this entry's
+other half** — the recorded requirement that "the clean-band selector needs a real-blot substitute
+in Phase 3" no longer stands, because no selection happens on real blots. Both Phase 2 thresholds this entry
+asks the human to take a position on are now ratified: `qc.shoulder_half_width_ratio` by Gate 1
+ruling 2, and `qc.saturated_min_clipped_pixels` by Gate 1 ruling 10.
 
 PLAN.md puts "Gate 1 (human): eval design sign-off **before parameter iteration begins**"
 ahead of "iterate detection/background parameters on the dev split to plateau". Phase 1
@@ -2525,6 +2892,10 @@ costs one regeneration of the record and a rewrite of the parameter entries; no 
 depends on the choice.
 
 ### The `doublet` cell renders one peak with a shoulder, not two peaks — needs a ruling
+
+**Ruled at Phase 3 Gate 1** — see "Phase 3 Gate 1 — eval design sign-off" above. Gate 1 ruling 5 settles
+the generator-side half: `synth/` stays frozen, `doublet_offset_sigma` is not raised, and the gold
+set is not regenerated.
 
 **Partly settled in Phase 1** — see "Doublet resolution" above: the Phase 1 detector
 reports one band per resolved maximum, which costs 46 dev bands. What is still open is

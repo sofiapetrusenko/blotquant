@@ -22,10 +22,15 @@ only formal severity; an entry may additionally note in prose where it sits *wit
 (S17 says low severity, P3 says minor), because a register that flattens a one-line branch-naming nit
 against an unvalidated generator is less useful, not more rigorous.
 
-**Snapshot.** Phase 2 of 5 complete. This register describes the repository at commit `59e18c4`
-(Phases 0–2 merged, plus the README). **Re-check every entry at each phase gate**: confirm the
-evidence still reproduces, close what the phase closed, and add what it introduced. A register
-without a snapshot goes stale invisibly.
+**Snapshot.** Phase 2 of 5 complete; **Phase 3 Gate 1 has ruled** (NOTES.md, "Phase 3 Gate 1 — eval
+design sign-off"), but no Phase 3 measurement has been run. This register describes the repository
+at commit `52200a5` (Phases 0–2 merged, plus the README and this register). **Re-check every entry
+at each phase gate**: confirm the evidence still reproduces, close what the phase closed, and add
+what it introduced. A register without a snapshot goes stale invisibly.
+
+Nine entries carry a **Ruled at Phase 3 Gate 1** paragraph alongside their original evidence — S2,
+S3, S4, S5, S7, S8, S10, S12 and S16 — plus a consequence recorded on S11. The Gate 1 ruling numbers 1–10 are this record's; the human described the first batch as seven and listed eight, then added two more. A ruled entry keeps its history — the measurement that made it debt
+is unchanged; what is added is the decision taken about it.
 
 ---
 
@@ -42,15 +47,19 @@ Three entries carry most of the consequence:
 - **E1** — nobody has ever followed the documented install-and-run path on another machine, so
   "it works" is untested outside one working tree.
 
-The rest divides three ways. **Nine entries are `Accepted` or `Permanent`** — known trade-offs and
-inherent limits, not unfinished work. **Two are one-line fixes** (E4's empty GitHub metadata, P3's
-branch naming). **The remaining `Open` entries are real and not minor**, and should not be read as
-accepted: S5 ships a QC flag that scores F1 0.000 and fires mostly on detection false positives, so
-it actively misinforms; S10 under-warns on a third of the low-dynamic-range images, which is the
-dangerous direction for a QC flag; S6 and S7 rest on inputs no real blot supplies; S12 selected 13
-of 20 parameters before the gate meant to precede selection. Most of those are owned by Phase 3,
-which is where the evidence to settle them comes from. The project is not broken; it is measured,
-and this file is the list of what the measurements do not yet cover.
+The rest divides three ways. **Fifteen of the 29 entries are `Accepted` or `Permanent`; 14 are
+`Open`.** Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
+(S2, S5, S7, S8, S10, S12), **two were already Accepted before it** (S4, S16), and **one stays
+Open** (S3). The remaining seven Accepted-or-Permanent entries (S9, S11, S13, E5, E9, P1, P2) were settled before Gate 1. Accepted does not mean fixed: S5's QC flag
+still scores F1 0.000 and S10's still under-warns on a third of the low-dynamic-range images; the
+gate decided to keep and disclose them rather than change them, and both keep their measurements.
+**Two are one-line fixes** (E4's empty GitHub metadata, P3's branch naming). **The remaining `Open`
+entries are real and not minor**: S6's housekeeping figure rests on an oracle no real blot supplies
+and Gate 1 explicitly did not settle it; S3's two parameters have no gold-set evidence and, after Gate 1 rulings 3 and 5, no route to any measurement against ground truth; S17 is a silent drop against a stated project rule; E1 means nobody
+has run this outside one working tree; and S2's comparability gap is open — now owned by
+Phase 3, conditional on a common subset existing — even though the denominator question above it is
+ruled. The project is not broken; it is measured, and this file is
+the list of what the measurements do not yet cover.
 
 ---
 
@@ -112,11 +121,30 @@ ratios, reported as `lane_denominator_not_positive`; the image's other three lan
 and it emits 7 ratios in total. Cause: the denominator integrates ~9000 px of
 full-height lane, accumulating background-estimator residual over an area far larger than any band.
 
-**Closes.** Phase 3 Gate 1, as a decision on the denominator — candidates recorded in NOTES.md are
-a baseline-corrected lane profile, a band-rows-only integral, or an explicit uncertainty. A
-common-subset comparison would settle the gap independently of that choice.
+**Closes.** Closed at Phase 3 Gate 1 — see below.
 
-**Status.** Open.
+**Ruled at Phase 3 Gate 1 (Gate 1 ruling 7).** **`total_protein` keeps the ROI pixel-sum denominator.** No
+alternative was shown to be better, and changing the measure would invalidate the recorded figures
+without evidence the replacement improves on them. What the ruling requires instead is disclosure,
+now in README's Limitations: that the 31.65% follows from integrating background-estimator residual
+over a full-height lane, and that **the claim of total-protein normalization being *better* than
+single-housekeeping is not supported by measurement** — only that it needs no oracle reference.
+
+**Still live after the ruling.** The gap between the two modes' errors remains unestablished — the
+route recorded before the gate, "a common-subset comparison would settle the gap independently of
+the denominator choice", was **not** carried out, and Gate 1 ruled without it. NOTES.md still says
+that comparison is worth producing. The ruling settles which denominator ships; it does not settle
+how much worse `total_protein` actually is.
+
+**Owner for the comparability gap.** **Phase 3, conditional on a common subset existing.** The two
+modes' errors are measured over different lane subsets, so settling the gap needs a set of lanes
+both modes score — which the ImageJ comparison will have to define anyway, since it must decide
+which lanes and ratios enter the correlation. If that work produces no usable common subset, the
+gap stays unmeasured and the register says so rather than inventing a comparison; but it is Phase 3
+work with a trigger, not an item without an owner.
+
+**Status.** Accepted for the denominator (Gate 1 ruling 7). The comparability gap is Open, owned by
+Phase 3.
 
 ### S3 — Two shipped parameters have zero evidence on the committed gold set
 
@@ -125,17 +153,35 @@ only when exactly one lane is detected. The committed gold set contains no singl
 no sweep can reach them.
 
 **Why it matters.** They can be neither confirmed nor refuted with current data. They ship on a
-consistency argument — they inherit the band extent rule's dev-selected values — which is weaker
-than every other parameter's basis.
+consistency argument — they inherit the band extent rule's dev-selected values.
+
+**This is the weakest *evidential basis* in the shipped set** — no sweep reaches these two at all.
+It is a different weakness from S12's `qc.shoulder_half_width_ratio`, which has the weakest
+*justification* (its criterion restates its value) but does have a recorded surface and is testable
+against the gold set. Phase 3 Gate 1 split the two rather than ranking one as simply "weakest", and
+judged **this pair the more serious**: a poor justification can be improved by argument, whereas
+absent evidence gives nothing to argue from. Under Gate 1 ruling 3 this pair can now only be falsified on
+a real single-lane image, never selected.
 
 **Evidence.** Lane counts in the dev split — the only split sweeps read — are 4, 5 and 6 at ten
 images each; across the whole 40-image gold set they are 4 (×14), 5 (×13), 6 (×13). Never 1. The
 single-lane path is covered by unit tests only; on the unit fixture the rule yields a 15% narrower
 band ROI excluding about 6 px of true band signal, and the effect on *recovery error* is unmeasured.
 
-**Closes.** A gold-set regeneration decision that adds single-lane images, or Phase 3.
+**Closes.** Originally: a gold-set regeneration decision that adds single-lane images, or Phase 3.
+The first is foreclosed (below). The second stands, but only in the narrow form Gate 1 ruling 3
+permits — observation on a real single-lane blot, never selection.
 
-**Status.** Open.
+**Ruled at Phase 3 Gate 1 (Gate 1 rulings 3 and 5).** The first of those routes is now **foreclosed** —
+Gate 1 ruling 5 keeps
+`synth/` frozen and the gold set unregenerated, so no single-lane image is coming. Gate 1 ruling 3 opens a
+different one: on a real single-lane image the two parameters can be **falsified**, or observed to
+pass, but never tuned. So the entry's substance is unchanged — still no gold-set evidence — while
+its route has narrowed to observation on data with no ground truth.
+
+**Status.** Open — no evidence from the gold set, and no route to *tuning* them. Gate 1 ruling 3 does
+permit pass/fail observation on a real single-lane blot, which is weak positive evidence at best;
+it is not a measurement against ground truth, because none exists for real images.
 
 ### S4 — Band recall is capped at 0.852 by design, regardless of parameters
 
@@ -155,7 +201,13 @@ shoulder-splitter must invent a second centre from an inflection and would be fi
 exactly the weak, high-noise cells where it matters — or by a generator-side ruling that the
 doublet cell should be resolvable (see S8).
 
-**Status.** Accepted, with the cost measured and recorded.
+**Ruled at Phase 3 Gate 1 (Gate 1 ruling 5).** The alternative route — a generator-side ruling that the
+doublet cell
+should be resolvable — was **declined**: `synth/` stays frozen and the gold set is not regenerated.
+The 0.852 ceiling is therefore a standing property of the shipped configuration, not a number
+awaiting correction.
+
+**Status.** Accepted, with the cost measured and recorded, and the alternative route now closed.
 
 ### S5 — The geometric `overlapping` flag currently misinforms
 
@@ -174,11 +226,15 @@ cause is structural: because unresolved doublets yield one ROI, there is usually
 with. `unresolved_shoulder` is the flag that answers the question a reader of "overlapping" is
 actually asking, and it separates the populations 0.596 against 0.022.
 
-**Closes.** Phase 3 keep / fix / retire decision. Options recorded: keep and publish the 0.000;
-raise the generator's `doublet_offset_sigma` past 2.55 and regenerate, which needs a frozen-`synth`
-ruling; or retire the flag.
+**Closes.** Closed at Phase 3 Gate 1 — see below.
 
-**Status.** Open.
+**Ruled at Phase 3 Gate 1 (Gate 1 ruling 6).** **The flag is retained as measured evidence, not as a working
+feature.** Retiring it would remove the evidence that a plausible-sounding QC flag can fail
+completely, which is a result worth keeping; `unresolved_shoulder` covers the real need. README
+states that it is kept as a recorded negative result rather than as functionality. Everything
+measured above stands — it is kept *because* those numbers are bad, not despite them.
+
+**Status.** Accepted — retained deliberately as a recorded negative result.
 
 ### S6 — Housekeeping normalization figures rest on an oracle that does not exist on a real blot
 
@@ -209,9 +265,18 @@ parameters were chosen cannot be re-applied outside the gold set.
 the generator's own ROI rule — re-scoring the aperture sweep against `true_total_intensity_dn`
 leaves the argmin at 0.05–0.06 — but that addresses circularity, not availability.
 
-**Closes.** Phase 3, alongside S6.
+**Closes.** Superseded — see the ruling below.
 
-**Status.** Open.
+**Ruled at Phase 3 Gate 1 (Gate 1 ruling 3).** **No substitute selector is needed, because no selection
+happens on
+real blots.** Real blots may falsify a parameter but never select one: `data/real/` is for
+measurement only — ImageJ agreement, and pass/fail observation of whether a code path produces
+sensible output. The weakness the entry records is real and unchanged — the criterion genuinely
+cannot be computed outside the gold set — but it is no longer a gap awaiting a replacement, because
+nothing downstream needs one. Note this decouples S7 from S6: the housekeeping **reference band**
+oracle is a measurement input rather than a parameter choice, and remains open.
+
+**Status.** Accepted — the selector stays synthetic-only by ruling, not by omission.
 
 ### S8 — Whether the `doublet` cell is meant to be resolvable is unruled
 
@@ -228,11 +293,16 @@ Raising the offset would need one regeneration and drops partner ROI IoU to 0.26
 above the generator's `overlap_iou_threshold` — though NOTES.md flags that range as "measured in
 memory, not written", so unlike most figures here it cannot be re-derived from the tree.
 
-**Closes.** A frozen-`synth` ruling: `synth/` is frozen after Phase 0, so changing it requires an
-explicit instruction, a `SYNTH_VERSION` bump, and a break marker — scores across the break are not
-comparable.
+**Closes.** Closed at Phase 3 Gate 1 — see below.
 
-**Status.** Open.
+**Ruled at Phase 3 Gate 1 (Gate 1 ruling 5).** **`synth/` stays frozen, `doublet_offset_sigma` is not
+raised, and
+the gold set is not regenerated.** The cost — a break in eval comparability, a `SYNTH_VERSION` bump
+and regeneration of every recorded figure — exceeds the benefit, and the recall ceiling the cell
+produces is already measured and disclosed (S4). The cell therefore stays as it is: one peak with a
+shoulder, scored as such.
+
+**Status.** Accepted — ruled, with the consequence carried by S4.
 
 ### S9 — Lane detection F1 measures horizontal lane-finding only
 
@@ -247,6 +317,11 @@ height_px`. Disclosed at the point of reporting in README.md and NOTES.md. Separ
 ROI reproduces three of the five properties `MODELS.md` §4a declares; the tilt widening is
 deliberately not reproduced, and tilted cells cap at IoU 0.7475 as a result (recorded in the
 `lane_roi_geometry` surface; an earlier PR body said ≈ 0.72, which is stale).
+
+**Not settled by Gate 1, though it looks adjacent.** Gate 1 ruling 7 froze the `total_protein`
+denominator, which is computed over exactly this full-height rectangle. It ruled on the
+denominator, **not** on the lane geometry: the vertical extent is still undetected and the lane F1
+is still structurally flattered.
 
 **Closes.** Phase 3.
 
@@ -269,11 +344,22 @@ tuning to an artifact only this generator produces. The three misses are the thr
 both `exposure: low` and `defect: scratch`; a scratch is additive contamination a peak measurement
 cannot distinguish from signal.
 
-**Closes.** Phase 3. The anti-circularity argument and the QC-asymmetry argument point in opposite
-directions here, and the whole disagreement is about a generator constant, so only a real-blot
-criterion can break the tie.
+**Closes.** Closed at Phase 3 Gate 1 — see below.
 
-**Status.** Open, threshold deliberately unchanged by human ruling.
+**Ruled at Phase 3 Gate 1 (Gate 1 ruling 4).** **The threshold stays at 0.25 and the question is closed on
+synthetic
+data.** Under Gate 1 ruling 3 it cannot be selected on real blots either, and the entire disagreement is
+about a generator constant, so waiting for real-blot evidence would defer the decision permanently.
+The measured curve above is unchanged and stays as the record of what was traded.
+
+**Still live after the ruling.** Gate 1 fixed the *threshold*. It did not rule on the route this
+entry's underlying NOTES item proposes — replacing the **measure** (a robust upper quantile of band
+peaks, or the lane-profile peak, instead of the brightest band's peak), which is what would address
+the additive-contamination cause rather than trade recall against it. That remains Phase 3 work.
+
+**Status.** Accepted for the threshold — a known limitation, not an open decision: the flag
+under-warns, missing 3 of the 10 low-dynamic-range dev images. The measure-replacement route is
+open.
 
 ### S11 — Absolute integrated intensities are convention-dependent
 
@@ -291,6 +377,10 @@ background. Mechanism: a tighter slice raises the column profile's
 the edge threshold.
 
 **Closes.** Not scheduled. Mitigation in force is disclosure, in README.md and NOTES.md.
+
+**Consequence recorded at Phase 3 Gate 1 (Gate 1 ruling 8).** This is why the ImageJ comparison is specified on
+**normalized ratios, not absolute intensities**: an absolute comparison across two tools with
+different aperture conventions would measure the conventions rather than the methods.
 
 **Status.** Accepted with disclosure. Revisit if export (Phase 5) makes cross-image comparison easy.
 
@@ -311,9 +401,37 @@ which sits at the widest separation on its recorded surface measured as a fold r
 `qc.saturated_min_clipped_pixels = 1`
 (already ruled, kept for ratification).
 
-**Closes.** Phase 3 Gate 1, by ratifying or redoing the selection.
+**Closes.** Closed at Phase 3 Gate 1 for 18 of 20 — rulings 1, 2, 4, 9 and 10. S3's pair is not
+ratified and stays with S3.
 
-**Status.** Open.
+**Ruled at Phase 3 Gate 1 (Gate 1 rulings 1 and 2).** The thirteen dev-selected parameters are ratified
+**as a procedure, not re-selected**: re-running selection on the same split with the same selector
+would produce the same values and change nothing epistemically.
+`qc.shoulder_half_width_ratio = 1.5` was ratified **separately, as a fourteenth value on its own
+terms** — it is one of the five QC parameters chosen from stated criteria, **not** one of the
+thirteen, so it is not a carve-out from them. It carries the **weakest justification** among the
+shipped parameters, because its criterion restates the value rather than deriving it. The evidence
+above is unchanged — what changed is that the gate has seen it and accepted it.
+
+**What each ruling covered.** Gate 1 ruling 1 covers the thirteen dev-selected parameters. Of the five QC
+parameters chosen from stated criteria, **two were taken up**: `qc.shoulder_half_width_ratio`
+(Gate 1 ruling 2) and `qc.dynamic_range_min_peak_fraction` (Gate 1 ruling 4, which fixed it at 0.25 — see S10).
+**The remaining three** — `qc.saturated_min_clipped_pixels`, `qc.overlap_iou_threshold` and
+`qc.shoulder_half_maximum_fraction` — were **ratified explicitly by Gate 1 ruling 10**, on their
+recorded criteria, which completes the five QC parameters rather than leaving three in an undefined
+state. It does **not** complete the twenty: S3's single-lane pair remains unratified. Ratification is of the criteria as recorded, not a claim that any of the three is optimal;
+none was selected on a surface.
+
+**Status.** Accepted — **18 of the 20 shipped numeric parameters are ratified**: the thirteen
+dev-selected as a procedure (Gate 1 ruling 1, with `background.local_median.window_px` re-examined
+on its merits within that set by Gate 1 ruling 9), plus all five QC parameters chosen from stated
+criteria — `qc.shoulder_half_width_ratio` (Gate 1 ruling 2), `qc.dynamic_range_min_peak_fraction`
+(Gate 1 ruling 4) and the remaining three (Gate 1 ruling 10). **The other two are not ratified**:
+DEBT S3's single-lane pair, which Gate 1 ruling 1's scope leaves "untouched" because there is no
+evidence to ratify. The "weakest" question is
+**split, not assigned**: this parameter has the weakest *justification* but is testable against the
+gold set; S3's pair has the weakest *evidential basis* and is not testable at all. S3's is the more
+serious — a poor justification can be improved by argument, absent evidence cannot.
 
 ### S13 — Chemiluminescence is not linear in protein amount
 
@@ -378,7 +496,11 @@ Declared in the Phase 2 PR body; the schema description was corrected to say so.
 
 **Closes.** Phase 3 Gate 1, alongside S2's denominator decision, or by amending PLAN.md's wording.
 
-**Status.** Accepted, declared deviation.
+**Ruled at Phase 3 Gate 1 (Gate 1 ruling 7).** Ratified. The pixel-sum denominator stays, so PLAN.md's
+"lane-profile integral" wording and the implementation remain different words for a deliberate
+choice rather than a discrepancy to reconcile in code.
+
+**Status.** Accepted — declared deviation, ratified at Phase 3 Gate 1.
 
 ### S17 — Detection can drop a peak without recording it
 
@@ -662,12 +784,12 @@ Phase 2 deviations list and (6) in the Phase 2 PR body.
 ### P3 — Branch naming has deviated from the phase convention for documentation work
 
 **What.** CLAUDE.md requires work on a branch named `phase-N-<short-name>`. The README landed on
-`docs/readme` and this register on `docs/debt`.
+`docs/readme`, this register on `docs/debt`, and the Gate 1 record on `docs/gate-1`.
 
-**Why it matters.** Minor, but the convention exists so that branch names map to phases. Two
-documentation branches now do not.
+**Why it matters.** Minor, but the convention exists so that branch names map to phases. Three
+documentation branches now do not, and the count grows with each docs task.
 
-**Evidence.** Both branches exist; the convention is stated in CLAUDE.md without exception.
+**Evidence.** All three branches exist; the convention is stated in CLAUDE.md without exception.
 
 **Closes.** By a ruling: either amend CLAUDE.md to allow non-phase documentation branches, or stop
 creating them.
