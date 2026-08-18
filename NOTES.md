@@ -2848,6 +2848,28 @@ parameter", because over HTTP they cannot.
   422; `LaneRoiError` reports a mistake in the request, and is a 400. Collapsing them would have
   made a typo in a rectangle indistinguishable from a blot with no findable lanes.
 
+### PR bodies are committed artefacts from here on, under `docs/pr/`
+
+**Because a claim that is not in the tree is not checked.** Phase 4a's PR body lived at
+`.git/PHASE4A_PR_BODY.md`, outside the repository, and two of the five defects cycle 8 found were in
+it — a stale deviation count and a retracted premise that had been hedged everywhere else. It now
+lives at `docs/pr/phase-4a.md`, byte-identical, with the copy outside the tree deleted rather than
+left to diverge, and `tools/check_claims.py` scans `docs/pr/*.md` so later phases are covered by
+adding a file rather than by editing a list.
+
+**Phases 1 and 2 are not retrofitted.** Their PR bodies remain at `.git/PHASE1_PR_BODY.md` and
+`.git/PHASE2_PR_BODY.md`, uncommitted, unchecked, and readable only on the machine that wrote them —
+which is worth knowing because DEBT.md P1 cites the first of them as evidence for a figure. Moving
+them would mean committing text nobody has re-verified against the tree they describe, so the
+convention starts here rather than being applied backwards.
+
+**This was forced by a CI failure the checker produced on its own first real run**, which is the
+strongest evidence for it: in the working tree every quantity had a site and the check passed, while
+in a clean clone the quantity "deviations this phase contributed to P2" matched nothing, because its
+only site was the uncommitted PR body. The blindness guard — a quantity matching no site is a failure
+— caught the checker's own misconfiguration rather than passing vacuously, which is exactly the
+outcome it was written for. The guard was kept and the file was moved, not the other way round.
+
 ### The review cap was extended to a sixth cycle, narrowed to the record
 
 **Human ruling, 2026-08-18: one review cycle past the cap, scoped to claim surfaces only.**

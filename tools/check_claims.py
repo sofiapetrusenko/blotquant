@@ -42,14 +42,21 @@ SCANNED = (
     "NOTES.md",
     "DEBT.md",
     "README.md",
-    ".git/PHASE4A_PR_BODY.md",
+    "docs/pr/*.md",
     "docs/review/phase-4a/README.md",
 )
-"""Files whose claims are checked.
+"""Files whose claims are checked. Entries containing ``*`` are globs.
 
-``.git/PHASE4A_PR_BODY.md`` is the PR body, which lives outside the tree because it is not
-committed; it is scanned when present and skipped silently when it is not, so this runs the
-same locally and on a fresh CI clone.
+``docs/pr/*.md`` holds the PR bodies. They are **committed artefacts**, and they are committed
+precisely so that their claims are checked: the PR body is where several of Phase 4a's stale
+claims lived, and while it sat outside the tree at ``.git/PHASE4A_PR_BODY.md`` it was scanned
+locally and invisible in CI. The glob rather than a per-phase literal so a later phase's PR
+body is covered by adding the file, not by editing this list.
+
+A missing file is skipped rather than an error, so this list may name a path that does not
+exist yet. That is safe only because a quantity matching *no* site anywhere is itself a
+failure -- see the blindness guard in :func:`check_numeric` -- which is what caught this
+file's own misplacement on its first CI run.
 """
 
 VERBATIM_GLOB = "docs/review/phase-4a/cycle-*.md"
@@ -254,10 +261,12 @@ def _read(path: Path) -> list[str] | None:
 def _targets() -> list[tuple[str, list[str], bool]]:
     """Return ``(display path, lines, is_verbatim_extract)`` for every scanned file."""
     out: list[tuple[str, list[str], bool]] = []
-    for rel in SCANNED:
-        lines = _read(REPO_ROOT / rel)
-        if lines is not None:
-            out.append((rel, lines, False))
+    for entry in SCANNED:
+        paths = sorted(REPO_ROOT.glob(entry)) if "*" in entry else [REPO_ROOT / entry]
+        for path in paths:
+            lines = _read(path)
+            if lines is not None:
+                out.append((str(path.relative_to(REPO_ROOT)), lines, False))
     for path in sorted(REPO_ROOT.glob(VERBATIM_GLOB)):
         lines = _read(path)
         if lines is not None:
