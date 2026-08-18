@@ -23,6 +23,17 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      # The claims surface -- NOTES.md, DEBT.md, README.md and the committed review record --
+      # is prose, and nothing mechanical covered it until Phase 4a. That phase ran eight review
+      # cycles: the code converged after three and the record never did, because a claim was
+      # fixed where a reviewer reported it while its duplicates elsewhere survived. A
+      # fresh-context reviewer cannot close that -- it reports only what it happened to read.
+      # This is the mechanism instead, and it is deliberately placed beside `ruff` rather than
+      # near the slow eval steps: it is stdlib-only and runs in well under a second, so a stale
+      # claim fails the build immediately rather than after nine minutes of sweeps.
+      - name: Claims are consistent and not stale
+        run: python tools/check_claims.py
+
       - name: Validate ground truth against schema
         run: |
           python - <<'EOF'

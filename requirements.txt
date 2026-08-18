@@ -16,3 +16,11 @@ jsonschema>=4.20             # Draft 2020-12 validation of ground truth in tests
 PyYAML>=6.0                  # parses configs/*.yaml, the pipeline's only source of parameters
 scikit-image>=0.22           # rolling-ball background (skimage.restoration.rolling_ball)
 scipy>=1.11                  # local-median background and 1D peak finding for detection
+
+# Added in Phase 4a, for api/. No imaging dependency is added: the display derivative is
+# encoded with opencv-python-headless, which is already here.
+fastapi>=0.110               # the HTTP layer: POST /analyze and GET /results/{id}
+uvicorn>=0.27                # ASGI server 'python -m api' runs the app on; Phase 4b deploys it
+python-multipart>=0.0.9      # multipart/form-data parsing, which FastAPI requires for UploadFile
+httpx>=0.27                  # TEST-ONLY: the transport starlette's TestClient runs on. CI
+                             # installs from this file and then runs pytest, so it belongs here.

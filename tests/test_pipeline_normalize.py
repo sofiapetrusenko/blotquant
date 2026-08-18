@@ -20,7 +20,7 @@ from pipeline.config import (
     TOTAL_PROTEIN,
     NormalizationConfig,
 )
-from pipeline.errors import NormalizationError
+from pipeline.errors import NormalizationError, ReferenceBandError
 from pipeline.normalize import (
     LANE_DENOMINATOR_NOT_POSITIVE,
     LANE_WITHOUT_REFERENCE_BAND,
@@ -339,7 +339,7 @@ def test_a_housekeeping_mode_without_reference_ids_raises(mode: str) -> None:
     """The pipeline never infers which band is the loading control (human ruling)."""
     bands = [_band("t", "L0", 1200.0), _band("hk", "L0", 400.0)]
 
-    with pytest.raises(NormalizationError, match="needs reference_band_ids"):
+    with pytest.raises(ReferenceBandError, match="needs reference_band_ids"):
         _normalize(bands, ["L0"], _config(mode))
 
 
@@ -347,7 +347,7 @@ def test_total_protein_refuses_reference_ids() -> None:
     """An input no mode of the run reads would be an unused quantity in the provenance."""
     bands = [_band("t", "L0", 1200.0)]
 
-    with pytest.raises(NormalizationError, match="has no reference band"):
+    with pytest.raises(ReferenceBandError, match="has no reference band"):
         _normalize(
             bands,
             ["L0"],
@@ -381,7 +381,7 @@ def test_an_unknown_reference_band_id_raises_and_names_the_bands_there_are() -> 
     """A reference that does not exist cannot be normalized against."""
     bands = [_band("t", "L0", 1200.0), _band("hk", "L0", 400.0)]
 
-    with pytest.raises(NormalizationError, match="name no measured band"):
+    with pytest.raises(ReferenceBandError, match="name no measured band"):
         _normalize(bands, ["L0"], _config(HOUSEKEEPING_SINGLE), reference_band_ids=["absent"])
 
 
@@ -389,7 +389,7 @@ def test_a_duplicated_reference_band_id_raises() -> None:
     """A band counted twice would weight itself twice in the geometric mean."""
     bands = [_band("t", "L0", 1200.0), _band("hk", "L0", 400.0)]
 
-    with pytest.raises(NormalizationError, match="more than once"):
+    with pytest.raises(ReferenceBandError, match="more than once"):
         _normalize(
             bands,
             ["L0"],
@@ -402,7 +402,7 @@ def test_single_mode_with_two_references_in_one_lane_raises() -> None:
     """The mode divides by exactly one band; two is a caller mistake, not a fallback."""
     bands = [_band("t", "L0", 1200.0), _band("a", "L0", 400.0), _band("b", "L0", 900.0)]
 
-    with pytest.raises(NormalizationError, match="divides by exactly one"):
+    with pytest.raises(ReferenceBandError, match="divides by exactly one"):
         _normalize(bands, ["L0"], _config(HOUSEKEEPING_SINGLE), reference_band_ids=["a", "b"])
 
 
@@ -410,7 +410,7 @@ def test_multi_mode_with_one_reference_in_a_lane_raises() -> None:
     """A geometric mean of one value is the value: it would be single mode without its warning."""
     bands = [_band("t", "L0", 1200.0), _band("a", "L0", 400.0)]
 
-    with pytest.raises(NormalizationError, match="at least two"):
+    with pytest.raises(ReferenceBandError, match="at least two"):
         _normalize(bands, ["L0"], _config(HOUSEKEEPING_MULTI), reference_band_ids=["a"])
 
 
@@ -471,3 +471,19 @@ def test_a_band_flag_outside_the_vocabulary_raises() -> None:
 
     with pytest.raises(NormalizationError, match="outside the band vocabulary"):
         _normalize(bands, ["L0"], _config(HOUSEKEEPING_SINGLE), reference_band_ids=["hk"])
+
+
+def test_an_invariant_break_is_not_reported_as_a_reference_band_mistake() -> None:
+    """The split is only worth anything if the internal half stays out of the caller's half.
+
+    A repeated band id is produced by detection, not by the request, so it must not arrive as
+    the class a layer above maps to "the caller's fault". The subclass direction is asserted
+    too: nothing that already caught ``NormalizationError`` stops catching either half.
+    """
+    bands = [_band("t", "L0", 1200.0), _band("t", "L0", 900.0), _band("hk", "L0", 400.0)]
+
+    with pytest.raises(NormalizationError) as raised:
+        _normalize(bands, ["L0"], _config(HOUSEKEEPING_SINGLE), reference_band_ids=["hk"])
+
+    assert not isinstance(raised.value, ReferenceBandError)
+    assert issubclass(ReferenceBandError, NormalizationError)

@@ -13,6 +13,7 @@ from pathlib import Path
 from pipeline import PIPELINE_VERSION
 from pipeline.analyze import analyze_image, write_result
 from pipeline.config import load_config
+from pipeline.detect import parse_lane_rois
 from pipeline.errors import PipelineError
 
 
@@ -38,6 +39,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="output directory; the result is written as <image stem>.json",
     )
     run.add_argument(
+        "--lane-roi",
+        dest="lane_rois",
+        action="append",
+        metavar="X,Y,W,H",
+        help=(
+            "lane rectangle in pixels, as four integers x,y,width,height; repeat once per "
+            "lane, in lane order. Supplying any of these switches lane detection off for "
+            "this image: the rectangles given are the lanes, band detection inside them is "
+            "unchanged, and each lane is recorded with roi_source 'caller' rather than "
+            "'detected'"
+        ),
+    )
+    run.add_argument(
         "--reference-band",
         dest="reference_band_ids",
         action="append",
@@ -57,8 +71,12 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         config = load_config(args.config)
+        lane_rois = parse_lane_rois(args.lane_rois) if args.lane_rois is not None else None
         result = analyze_image(
-            args.image, config, reference_band_ids=args.reference_band_ids
+            args.image,
+            config,
+            reference_band_ids=args.reference_band_ids,
+            lane_rois=lane_rois,
         )
         path = write_result(result, args.out, args.image.stem)
     except (PipelineError, FileNotFoundError) as error:
@@ -69,8 +87,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     normalization = result["normalization"]
+    lane_sources = sorted({lane["roi_source"] for lane in result["lanes"]})
     print(
-        f"{args.image}: {len(result['lanes'])} lane(s), {len(result['bands'])} band(s), "
+        f"{args.image}: {len(result['lanes'])} lane(s) [{', '.join(lane_sources)}], "
+        f"{len(result['bands'])} band(s), "
         f"background={result['provenance']['parameters']['background']['method']}, "
         f"normalization={normalization['mode']}"
     )

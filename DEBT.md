@@ -28,6 +28,29 @@ at commit `52200a5` (Phases 0–2 merged, plus the README and this register). **
 at each phase gate**: confirm the evidence still reproduces, close what the phase closed, and add
 what it introduced. A register without a snapshot goes stale invisibly.
 
+**Phase 4a is in progress** on branch `phase-4a-api`, under the human ruling of 2026-08-17 that
+runs Phase 4 before the remainder of Phase 3 (P2 entry 7). **Four entries have been updated for it,
+and only four:** P2 gains entries (7) and (8); **P1 is widened from numeric claims to claims
+generally**, restating its Phase 4a evidence and adding a second standing rule; **S18 and E10 are
+new**, both raised by Phase 4a review. The summary arithmetic in "Where the weight actually sits"
+moved with them (29 entries to 31, 14 Open to 16); no other entry's text changed. Every other entry still describes commit `52200a5` and is re-checked at the
+Phase 4a merge, not now — including the entries Phase 4a touches the neighbourhood of: E2 (still no
+packaging or release), and S9/S11, whose conventions the new caller-ROI input does not change.
+
+An earlier version of this paragraph said "only P2 has been updated" while the same diff also
+rewrote P1. It is corrected here rather than overwritten, because a snapshot that misstates its own
+scope is the failure P1 describes, occurring inside the entry that describes it — and review caught
+it, which is the third time in this phase that the record rather than the code was the defect.
+
+**S17 was not closed, and Phase 4a is arguably its trigger.** S17 closes at "whichever phase next
+touches the detection contract", and this phase edited `pipeline/detect.py` — it added caller lanes,
+a lane-provenance field and a minimum-extent bound. It did not surface the silent peak-drop count,
+because the phase brief's non-goals forbid changes to the detection algorithm and the phase read
+"touches the detection contract" as meaning a phase that revisits *how peaks are found*, which this
+is not. That reading is arguable, so it is recorded here rather than left to be noticed: if the
+human reads S17's trigger as already met, this phase missed it, and it is a schema field plus a
+counter away from being closed.
+
 Nine entries carry a **Ruled at Phase 3 Gate 1** paragraph alongside their original evidence — S2,
 S3, S4, S5, S7, S8, S10, S12 and S16 — plus a consequence recorded on S11. The Gate 1 ruling numbers 1–10 are this record's; the human described the first batch as seven and listed eight, then added two more. A ruled entry keeps its history — the measurement that made it debt
 is unchanged; what is added is the decision taken about it.
@@ -47,8 +70,8 @@ Three entries carry most of the consequence:
 - **E1** — nobody has ever followed the documented install-and-run path on another machine, so
   "it works" is untested outside one working tree.
 
-The rest divides three ways. **Fifteen of the 29 entries are `Accepted` or `Permanent`; 14 are
-`Open`.** Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
+The rest divides three ways. **Fifteen of the 31 entries are `Accepted` or `Permanent`; 16 are
+`Open`.** (29 through Phase 3; Phase 4a added S18 and E10, both `Open`.) Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
 (S2, S5, S7, S8, S10, S12), **two were already Accepted before it** (S4, S16), and **one stays
 Open** (S3). The remaining seven Accepted-or-Permanent entries (S9, S11, S13, E5, E9, P1, P2) were settled before Gate 1. Accepted does not mean fixed: S5's QC flag
 still scores F1 0.000 and S10's still under-warns on a third of the low-dynamic-range images; the
@@ -525,6 +548,67 @@ learns to ignore.
 
 **Status.** Open, low severity — a real gap against a stated project rule, currently unreachable.
 
+### S18 — A lane narrower than the smoothing window yields an understated noise sigma
+
+**What.** `profile_noise_sigma` returns `raw_sigma / sqrt(profile_smoothing_px)`, on the argument
+that each smoothed sample is the mean of that many **distinct** samples. `smooth_profile` pads by
+repeating the edge sample, so in a profile shorter than the window no sample anywhere averages that
+many distinct values — a length-`L` profile contains only `L` distinct values. The returned sigma
+then describes a profile that was never computed, and every sigma threshold compared against it is
+understated.
+
+**Why it matters.** It does not crash; it detects, against thresholds that are too low. That is the
+silent-wrong-answer direction, which for this project is the dangerous one. It is also the reason
+the bound exists at all: Phase 4a's caller-supplied lane rectangles made a too-short profile
+reachable from outside the process for the first time.
+
+**Where it is closed, and where it is not.** **Closed for caller-supplied lanes:**
+`validate_lane_rois` refuses any rectangle whose either side is below
+`max(NOISE_ESTIMATOR_MIN_SAMPLES, profile_smoothing_px)`, derived from the running config, with a
+message naming the rectangle. **Open for detected lanes**, and the two detection branches are not
+equally exposed:
+
+- The **multi-lane** branch takes each lane's width from `_lane_edges`, which partitions on the
+  median spacing of detected centres, and two centres cannot be nearer than
+  `detection.lane.min_separation_px = 12`. **The binding number is about half that, not 12.**
+  `_lane_edges` clamps the outer boundary to the image, so an edge lane whose centre sits within
+  half a pitch of the border gets roughly `min_separation_px / 2`. Measured through the ROI
+  construction in `detect_lanes` rather than through the edge positions alone: centres at columns 1
+  and 13 with a pitch of 12 give edges `[0, 7, 19]` and a first lane **7 px** wide, and a centre at
+  column 0 gives **6 px**. So the true margin against the shipped `profile_smoothing_px = 5` is
+  6-7 against 5, not 12 against 5. **That is a property of two parameter values, not a guarantee** —
+  nothing checks the relation, and the trigger to watch is therefore `min_separation_px` falling to
+  roughly `2 × profile_smoothing_px` or below, not to `profile_smoothing_px`. At
+  `min_separation_px = 10` an edge lane is already about 5 px and the headroom is gone; at 7 it
+  would be about 4 px and the guard would be silently reopened.
+
+  **An earlier version of this bullet said 8 px, and "about 8 against 5".** That was the edge
+  spacing, `edges[1] - edges[0] + 1`, rather than the ROI width `detect_lanes` actually builds,
+  which subtracts one from the right edge. The error ran in the unsafe direction — it overstated the
+  headroom — so the corrected figure is quoted together with the construction it was measured
+  through.
+- The **single-lane** branch derives its width from a measured column extent rather than from a
+  pitch, so it can emit a lane a few pixels wide with nothing to refuse it. This is the genuinely
+  unguarded path.
+
+Phase 4a did not change detection — PLAN.md forbids it in this phase — so neither is fixed here.
+
+**Evidence.** Derived from `smooth_profile` (`np.pad(..., mode="edge")`, `np.convolve(..., "valid")`)
+and `profile_noise_sigma` as written, and re-derived independently in Phase 4a review. The boundary
+is exact: at `L = profile_smoothing_px` the centre output sample covers padded positions
+`pad … pad+L-1`, which are precisely the original samples, so that one sample earns the divisor; one
+pixel shorter and no sample does. **No gold-set image reaches the detected-lane case** — lane counts
+across the whole set are 4, 5 and 6, never 1 — so no figure this project reports depends on it. That
+is the same unreachability S3 records for the two single-lane parameters, and this entry is the
+mechanism behind why that path is unmeasured rather than merely unswept.
+
+**Closes.** Whichever phase next touches the detection contract, by applying the same bound to
+detected lanes or by raising the sigma question properly. Related to S3 (the single-lane parameters
+with no gold-set evidence) and to S17 (the other place detection can go wrong with nothing recorded).
+
+**Status.** Open — closed on the caller path, open on the detected path, unreachable on committed
+data.
+
 ---
 
 ## Engineering
@@ -702,15 +786,122 @@ attempt after three failures, which is itself evidence the hazard is live.
 
 **Status.** Accepted, with the mitigation named.
 
+### E10 — The API is not deployment-ready: no upload cap, slow on real images, and an unstable `source.path`
+
+**What.** Three properties of `api/`, all acceptable for 4a and none acceptable in a deployment.
+
+1. **No upload size limit.** `POST /analyze` does `image.file.read()`, pulling the whole upload
+   into memory uncapped.
+2. **Synchronous processing is slow at real image sizes.** Measured on this branch with
+   `configs/default.yaml` on one arm64 developer machine, dimensions as width×height: **1.19 s** at
+   the gold set's 256×192, **4.05 s** at 512×384, **23.49 s** at 1360×1024 (1.4 MP). This same
+   machine under concurrent load measured 33.28 s for the 1.4 MP case, against 23.12-23.31 s
+   over three back-to-back runs when otherwise idle, so treat the magnitudes rather than the digits
+   as the finding. (An earlier version of this entry attributed the 33.28 s to "a second machine".  <!-- claims-check: allow-retracted -->
+   It was this one, busy — a figure restated from a report rather than read from the artefact, which
+   is P1's failure mode exactly.) PLAN.md permits synchronous processing
+   on the premise that "images are small"; a real gel-doc export is megapixels, and for those the
+   premise does not hold.
+3. **`source.path` is per-request and makes stored documents non-identical under one id.** The
+   upload is written to a `TemporaryDirectory`, joined to the client's own filename, and the
+   directory is deleted before the response is sent. `result_id` does not hash the path, so **two
+   POSTs of identical bytes under different filenames produce the same id and different documents,
+   and the second silently overwrites the first** — including a caller-supplied string rewriting the
+   stored provenance of an id another caller already holds.
+
+**Why it matters.** (1) is a denial-of-service surface the moment the service is reachable from
+outside a laptop. (2) means a 23-second request, which sits close to or beyond common proxy and
+browser timeouts, so the design decision recorded for 4a may not survive contact with 4b's deploy.
+(3) is the mildest but the least obvious: `GET /results/{id}` is documented as returning "a
+previously analysed result" and does not reliably return the one previously analysed. Nothing
+*measured* is affected — every ROI, intensity, ratio and QC flag is stable under one id, and
+`source.sha256` is the durable identity.
+
+**Evidence.** (1) and (3) are in the code as written; (3) was demonstrated by running two analyses
+of the same bytes under different filenames and comparing ids and documents. (2) is the measurement
+above, taken for this entry — it replaces an unmeasured "about two seconds" claim that had been
+written into `api/__init__.py`'s docstring and was wrong by roughly an order of magnitude for a real
+gel-doc image. **No load test has been run**, so no concurrency figure and no degradation point is
+known; the table above is single-request wall clock only. The temp-path behaviour is documented in
+`ANALYZE_DESCRIPTION`; **the size cap and the timing are not documented there**, and an earlier
+version of this entry wrongly claimed they were.
+
+**Closes.** Phase 4b, which deploys the service and therefore owns all three. (1) is the
+load-bearing one. (2) may force the queue-plus-polling design 4a declined, or a size limit low
+enough that synchronous stays honest. (3) may reasonably be answered by recording the client's
+filename alone, by recording no path for uploads, or by leaving it and documenting it — it is a
+decision about what provenance should record, which is why 4a did not take it unilaterally.
+
+**Status.** Open, owned by Phase 4b.
+
 ---
 
 ## Process
 
-### P1 — Numeric claims restated from memory have been wrong repeatedly
+### P1 — Claims restated from memory have been wrong repeatedly
 
-**What.** Across all three phases, figures written from memory or from an earlier report — rather
-than read from the artefact that produces them — have been wrong. Test counts, parameter counts,
-subset denominators, and threshold surfaces have all drifted this way.
+**What.** Across all four phases, claims written from memory or from an earlier report — rather than
+read from the artefact that produces them — have been wrong. Through Phase 3 every instance was a
+**figure**: test counts, parameter counts, subset denominators and threshold surfaces all drifted
+this way. Phase 4a produced instances of both kinds, which is why the entry is no longer scoped to
+numbers.
+
+**Widened in Phase 4a to cover claims generally, not only numeric ones.** The failure is not about
+numbers; it is about writing a record from intent rather than from the artefact. **Phase 4a is the
+worst phase on record for this**, and the count is stated with care because an earlier version of
+this paragraph said "three instances … none involving a figure" and was itself out of date within  <!-- claims-check: allow-retracted -->
+two review cycles:
+
+- **Nine of the 17 REQUIRED items** raised by review cycles 1-5 were wrong claims rather than wrong
+  behaviour — six in NOTES.md and DEBT.md, three in docstrings that justify a behaviour.
+- **Cycles 4 and 5 raised no new behaviour defect requiring a code change in this phase.** The
+  one behavioural issue either of them surfaced — cycle 4's item 3, the silent overwrite of a stored
+  result when identical bytes are posted under different filenames — was reported *as a false
+  docstring claim* rather than as a defect to fix, and is recorded as **E10 item 3** and deferred to
+  Phase 4b, where E10's `Status` line carries the ownership. "No behaviour defect at all" was the  <!-- claims-check: allow-retracted -->
+  earlier wording and it was too strong: the register cannot both say cycle 4 found nothing
+  behavioural and carry an open behavioural entry that exists because it did.
+- **Four more were caught by the author** applying the second standing rule below, and **a sixth
+  review cycle, narrowed to the record, found four more after that.**
+- **Several were figures**, so the "none of them was a figure" framing is withdrawn: an unmeasured  <!-- claims-check: allow-retracted -->
+  "about two seconds" stated as fact; the gold set's dimensions transposed to 192×256 when it is 256
+  wide × 192 tall; a quantization threshold given as 65279 when the measured value is 65407; a
+  display bin width given as 257 DN when the top bin is 129; an edge-lane width given as 8 px when
+  the ROI construction yields 7; and a timing attributed to "a second machine" that was this machine  <!-- claims-check: allow-retracted -->
+  under load.
+
+**The widening therefore rests on a different argument than it first did.** Not "the new failures
+are non-numeric" — some are numeric — but that **the record, not the code, was this phase's dominant
+defect surface**, and figures and prose failed there in the same way and for the same reason.
+
+The first three instances, each caught by a different early cycle:
+
+- **Cycle 1.** The NOTES.md Phase 4a section claimed a question was "carried as an open question"
+  when **no entry had been added to `## Open items`** — a carry-forward asserted and not performed.
+- **Cycle 2.** A NOTES.md "Small decisions" bullet documented an empty lane-ROI list as silently
+  meaning "none supplied", **describing behaviour that cycle 1 had already removed from the code**,
+  and justified it with a claim about FastAPI form handling that is independently false. The record
+  was written when it was true, the code changed underneath it, and the record was not re-read.
+- **Cycle 3.** This file's own Phase 4a snapshot said "only P2 has been updated" while the same diff
+  also rewrote **this entry**.
+
+The second is the most instructive: **a wrong design record is more dangerous than a wrong figure**,
+because `tests/test_recorded_figures.py` and `evals.sweep --check` cover figures and nothing covers
+prose. A reader reconstructing the contract from NOTES.md would have got the opposite of what ships,
+and a future implementer would have had written authority for a silent fallback. The third is the
+most embarrassing and the most useful: the entry describing the failure committed the failure, which
+is evidence that the standing rule below needs a mechanical support it does not have.
+
+**None of those three was caught by the author re-reading their own work.** All three were caught by
+a reviewer in a fresh context comparing the record against the diff. That is the control that
+actually works, and it is a process control, not a mechanism.
+
+**The second standing rule below was written in response, and it does work — partially.** Applying
+it caught four further stale claims that no reviewer had reached, three of them figures. But a narrowed sixth review cycle then found four more that the author's own pass had
+missed, including an arithmetic error in this file's S18 and a stale deviation count in the PR body.
+So the honest ordering is: **a fresh-context reviewer beats the author re-reading, and the author
+re-reading beats nothing.** Neither is a mechanism, and the record still has no equivalent of
+`evals.sweep --check`.
 
 **Why it matters.** This project's entire claim is that its numbers are defensible. A register of
 weaknesses is worthless if its own figures are unreliable, and the failure is systematic rather
@@ -726,6 +917,27 @@ re-measured.
   surface and says outright that an earlier version claimed it and was wrong.
 - **The outside-a-block taxonomy is on its fourth attempt after three failures** (E9), each failure
   being figures that fell outside a list claiming to be exhaustive.
+
+**The Phase 4a review record was not checkable from the tree, and now largely is.** The per-cycle
+tallies above, the classification of each cycle's items, and "reverting the bound left all 605 tests
+passing" existed in no committed artefact. That mattered most for **P2 entry (8)** — the deviation
+from PLAN.md's hard cap of five review cycles — whose stated justification is that no cycle-4 or
+cycle-5 item required a code change. `docs/review/phase-4a/` now carries all six cycles' verdicts
+verbatim, extracted from the session logs, so the tallies, the classifications and that justification
+are auditable.
+
+**The audit is what forced the hedge.** Read against `cycle-4.md`, the stronger form this entry used
+to quote — "cycles 4 and 5 found no behaviour defect" — does not survive, because cycle 4's item 3  <!-- claims-check: allow-retracted -->
+surfaced one. Committing the record therefore falsified a claim the record had been cited to support,
+which is the best argument in this file for committing it.
+
+**What is still not checkable, and should not be read as covered by it:** the human rulings of
+2026-08-17 and 2026-08-18, which were conversational and appear in no verdict; the *implementer* side
+of each cycle, since only the reviewers' verdicts were extracted; and the four claim defects the
+author caught between cycles, which no reviewer reported. The raw logs are retained locally and
+their sha256s are listed in that directory's README, but they are not committed — they hold private
+conversation beyond the review record — so a reader outside this machine is trusting the extraction
+rather than able to reproduce it.
 
 Reported in review but **not checkable from the tree** — no artefact records them, so a reader
 cannot verify these four and should treat them as reported only:
@@ -751,13 +963,47 @@ or from memory.* Two mechanical supports exist — `evals.sweep --check` re-meas
 `tests/test_recorded_figures.py` fails on a figure that is not the record's — but both are scoped
 (E5, E9), so the rule is the primary control, not a fallback.
 
-**Closes.** Never — it is a standing rule, not a task.
+**The second standing rule was replaced by a mechanism, because the rule failed twice.** Phase 4a
+first added a rule — *a claim about what the code does is subject to the same rule as a claim about a
+number, and a design record written mid-phase must be re-read against the diff before the phase
+closes.* It was written after cycle 3, applied conscientiously, and cycles 7 and 8 then found nine
+more claim defects anyway. Cycle 8 diagnosed why, and the diagnosis is not "insufficient care":
+
+> **a claim is fixed where a reviewer reported it, and its duplicates elsewhere survive.**
+
+The premise "cycles 4 and 5 found zero behaviour defects" lived in at least seven places across four  <!-- claims-check: allow-retracted -->
+documents; "there is no `api/` module" in three. A fresh-context reviewer cannot close that, because  <!-- claims-check: allow-retracted -->
+it reports only what it happened to read, and no reader — author or reviewer — reliably enumerates
+every site of a sentence. **A standing rule is a person promising to remember, which is precisely the
+control this entry exists to record the repeated failure of.**
+
+`tools/check_claims.py` is the mechanism, and it runs in CI beside `ruff`. Three checks: withdrawn
+phrases with their hedged replacements, so retracted wording cannot reappear anywhere; per-quantity
+numeric consistency, which reports *disagreement* between sites without hardcoding the right value,
+so it survives a number legitimately changing; and arithmetic written out in prose, including this
+register's own entry tally checked against the entries that actually exist. A deliberate quotation of
+withdrawn wording is allowed only behind an explicit `claims-check: allow-retracted` marker, and a
+quantity whose patterns stop matching anything **fails**, so the check cannot go quietly blind — the
+same guard `tests/test_recorded_figures.py` applies to sweep figures.
+
+**What it is worth, measured rather than asserted.** Run against the current tree it found **zero**
+live stale claims: cycles 7 and 8 had already fixed them, and its seven hits were all deliberate
+quotations, now marked. That number is not the argument. The argument is retrospective and was
+measured by re-injecting cycle 8's five findings verbatim: **the check catches four of the five.** It
+misses the fifth — a deviation count stated wrongly at a single site — because one site asserting a
+number alone has nothing to disagree with, and that is a real and permanent limitation: *this
+catches inconsistency between sites, not a claim that is uniformly wrong everywhere.* Every check was
+falsified before being trusted, each one confirmed to fail on an injected defect.
+
+**Closes.** Never for the underlying tendency — it is a permanent property of writing records by
+hand. But the *duplicate-survival* half is now mechanically covered, and that was the half that
+defeated two standing rules.
 
 **Status.** Permanent.
 
 ### P2 — Ratified deviations from PLAN.md
 
-**What.** Six deviations from PLAN.md have been made and recorded rather than folded in silently.
+**What.** **Eight numbered entries below record ten deviations** from PLAN.md, made and recorded rather than folded in silently. The two counts differ because entry (7) is a single human ruling covering three deviations; the entries are the unit of record, the deviations the unit of substance, and a reader comparing this figure against a PR body that counts deviations should know which is which.
 
 **Why it matters.** PLAN.md is the contract. A deviation that is not recorded becomes invisible
 drift; a deviation that is recorded stays auditable.
@@ -774,8 +1020,37 @@ PLAN.md's Phase 1 CLI contract does not have; it exists because Phase 2's human 
 pipeline from inferring a loading control, so a housekeeping mode needs the caller to name one.
 (6) **`evals/metrics.py` gained `flag_coincidence`** — purely additive, existing signatures and
 tests untouched — to report `unresolved_shoulder` as a coincidence rather than as an accuracy
-against a truth label that does not exist. (1)–(4) are recorded in NOTES.md; (5) is in NOTES.md's
-Phase 2 deviations list and (6) in the Phase 2 PR body.
+against a truth label that does not exist. (7) **Three deviations to the phase plan, ruled
+together by the human on 2026-08-17** and recorded as one entry because they are one ruling:
+**Phase 4 runs before the remainder of Phase 3** (Phase 4 has no technical dependency on it — the
+pipeline it consumes has existed since Phase 2, and the ImageJ agreement numbers land in the
+README, not in the interface — while the remainder of Phase 3 is blocked on Gate 2, a manual
+CC-BY image search of unknown duration); **draggable ROI edges are dropped** from Phase 4 in
+favour of the numeric nudge fields PLAN.md names in the same sentence, dragging moving to further
+work; and **deploy moves from Phase 5 into Phase 4b**, because a phase that is "done" with nothing
+to open is not done. (1)–(4) are recorded in NOTES.md; (5) is in NOTES.md's
+Phase 2 deviations list and (6) in the Phase 2 PR body; (7) is in NOTES.md's Phase 4a section and
+in the Phase 4a PR body. (8) **The Phase 4a review ran a sixth cycle, one past PLAN.md's hard cap of five**, narrowed to claim surfaces only — NOTES.md, DEBT.md, the PR body, docstrings that justify behaviour, and the OpenAPI descriptions — with behaviour explicitly out of scope. Human ruling of 2026-08-18. The reason is measured rather than general: of the 17 REQUIRED items the five capped cycles raised, nine were wrong claims rather than wrong behaviour, and **cycles 4 and 5 raised no new behaviour defect requiring a code change in this phase** — the code had converged and the record had not. The premise is stated in that hedged form deliberately: cycle 4's item 3 did surface a behavioural issue, the silent overwrite of a stored result when identical bytes are posted under different filenames, which it reported as a false docstring claim and which is recorded as E10 item 3 and deferred to Phase 4b rather than fixed here. What justifies the extension is that no cycle-4 or cycle-5 item required a code change, not that neither cycle saw anything behavioural. The cap exists to stop grinding on converged code, which is why a cycle aimed at a different surface is recorded as a deviation from it rather than as an exception within it. Recorded in NOTES.md, "The review cap was extended to a sixth cycle, narrowed to the record", which also states what the narrowing costs: it cannot re-assure behaviour. **Evidence for the premise is now in the tree**: `docs/review/phase-4a/` holds all six cycles' verdicts verbatim, and cycles 4 and 5 classify every one of their six items as a claim defect in their own words — "not in the measurement path" and "both in claim-text rather than behaviour" — both having reviewed the full diff with behaviour in scope.
+
+**Why (7) is not a licence to reorder further.** The reordering is about *when* Phase 4 runs, not
+about whether Phase 3 happens. Gate 2 is untouched, no real blot has been read, and the entries this
+register lists as `Open` **and** owned by Phase 3 — **S1, S3, S6, S15, E6 and E8** — all stay open,
+stay Phase 3's, and are now scheduled *after* a phase that used to follow it. Of those, **E8 is the
+one to watch**: `evals/history.md` still does not exist, and it is the file CLAUDE.md's freeze
+protocol requires a `synth/` break marker to be written into, so another invariant depends on a
+Phase 3 deliverable that deferral pushes further out.
+
+A first version of this paragraph listed "S1, S3, S6, S9, S10, S15, E5, E6". That was wrong in both
+directions and is corrected rather than quietly replaced: **S9, S10 and E5 are `Accepted`**, not
+open — the same status this file's own summary paragraph gives them — and **E8 was missing**.
+Phase 3 also carries work inside entries whose status is `Accepted`, which is what made the list
+easy to get wrong: S2's comparability gap and S10's measure-replacement route are both live and both
+Phase 3's, inside entries ruled `Accepted` on a different question. "Open entries" and "open work"
+are not the same set.
+
+The one thing to watch generally is that a deferred phase accumulates the appearance of being
+optional; it is not, and S1 in particular remains the largest threat to the meaning of every number
+here.
 
 **Closes.** Not applicable — each is settled. Phase 5's README supersedes the interim one.
 

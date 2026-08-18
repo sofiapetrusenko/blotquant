@@ -2540,6 +2540,377 @@ Recorded so they are not mistaken for ruled:
 
 ---
 
+## Phase 4a — caller-supplied ROIs, result API, display rendering
+
+PLAN.md's Phase 4 is "API + UI". It is split: **4a** is the pipeline's caller-ROI input, the
+FastAPI service and display rendering; **4b** is the Next.js UI and the deploy. This section
+records 4a. Nothing here changes the detection algorithm, background estimation, or any shipped
+parameter value; `synth/` stays frozen and `data/ground_truth/` is not written.
+
+### Three ratified deviations, from one human ruling on 2026-08-17
+
+Recorded here rather than folded in silently, in the same form as the sweep-harness and README
+deviations above, because PLAN.md is the contract. All three are also carried as DEBT.md P2
+entry (7).
+
+**1. Phase 4 runs before the remainder of Phase 3.** PLAN.md orders Phase 3 (full evals +
+real-blot cross-validation) before Phase 4. The stated reason for reordering: **Phase 4 has no
+technical dependency on Phase 3.** The pipeline Phase 4 consumes has existed since Phase 2, and
+the ImageJ agreement numbers Phase 3 produces land in the README, not in the interface — no
+signature, schema field or endpoint in this phase reads them. What Phase 3 *is* blocked on is
+Gate 2, a manual CC-BY image search of unknown duration, and blocking an independent phase behind
+a human search is idle time rather than sequencing.
+
+What this does **not** do is discharge any Phase 3 obligation. Gate 2 is untouched, no real blot
+has been read, and every open Phase 3 item below stays open and stays Phase 3's. The reordering
+is about *when*, not about *whether*.
+
+**2. Draggable ROI edges are dropped; numeric fields are the correction mechanism.** PLAN.md's
+Phase 4 asks for correction "via draggable ROI edges AND numeric nudge fields
+(keyboard-accessible)". Only the numeric fields ship. The reason: dragging is expensive and
+fiddly to build well, and PLAN.md already names the keyboard-accessible alternative in the same
+sentence — so the capability PLAN.md is actually specifying, *the user can correct a boundary the
+detector got wrong*, is delivered in full. Dragging moves to further work rather than being
+declared unnecessary.
+
+This is the deviation with a real cost, and it is worth naming: dragging is the faster gesture for
+a coarse correction, and PLAN.md's done-when is a time bound ("corrects one lane boundary … in
+under 2 minutes"). Numeric entry has to meet that bound on its own, and 4b measures it rather
+than assuming it.
+
+**3. Deploy moves from Phase 5 into Phase 4b.** PLAN.md schedules "Deploy: API on DigitalOcean,
+web on Vercel" in Phase 5. Reason: **a phase that is "done" with nothing to open is not done.**
+Phase 4's done-when is a scientist uploading a gel-doc export and getting a table back; verifying
+that against a localhost process tests the code and not the claim. Phase 5 keeps the rest of its
+list.
+
+**The trust feature is not affected by any of the above and is not negotiable.** PLAN.md's "click
+any number → its ROI highlights on the image + full parameter set shown" is 4b's, unchanged. It is
+the concrete form of what distinguishes this tool from ImageJ, not a decoration on top of the
+table, and 4a's job is to make it *possible* — which is why the result envelope carries the
+display derivative and why `roi_source` exists.
+
+### `roi_source` is the point of this phase, not a field on it
+
+A caller-supplied lane ROI is a region a human chose. A detected one is a region the detector
+measured. A document that reports the first as the second is a false provenance record — the exact
+class of thing this project exists to prevent, and the more dangerous for being invisible: the
+rectangle is the same shape either way, and nothing downstream could tell them apart.
+
+So every lane object carries `roi_source`, **always present**, on the same argument that puts
+`excluded_from_normalization` on every band even when false: an absent value is indistinguishable
+from a writer that does not record it. See the Phase 2 entry "The Phase 1 result is a strict
+subset of the result schema" for the original form of that argument.
+
+**Band ROIs are not supplyable in this phase**, so the band object gains no `roi_source`. The
+phase brief permitted either; scoping them out keeps the change to one contract instead of two,
+and a band object with a `roi_source` that could only ever read `"detected"` is a field a reader
+learns to ignore — the same objection Phase 2 raised against surfacing an always-zero drop count
+(DEBT S17). Carried as an open question rather than settled here: see "Whether band ROIs become
+caller-supplyable — Phase 4b to settle" under Open items below, which names what follows if 4b
+answers yes.
+
+### Schema edits, and why a *required* field is still an additive edit
+
+`RESULT_SCHEMA_VERSION` goes **1.1.0 → 1.2.0**, and `tests/test_schema.py` keeps the schema file's
+`const` and the constant pinned together, as it has since Phase 2. Three edits, and only three:
+
+1. **`lanes[]` gains `roi_source`**, `enum ["detected", "caller"]`, **and it is added to the lane
+   object's `required`.** The reason is the whole phase: lanes may now come from the caller, and
+   the document has to say which. Required rather than optional on the same argument that puts
+   `excluded_from_normalization` on every band — an absent value is indistinguishable from a
+   writer that does not record it — and the enum is closed because a lane's provenance is not free
+   text. Its `description` also states what the field does *not* cover: band detection inside a
+   caller-supplied lane is the same code with the same parameters, so `roi_source` describes the
+   lane's **boundary** only, not how its bands were found.
+2. **`schema_version`'s `const` 1.1.0 → 1.2.0**, mirrored by `pipeline.RESULT_SCHEMA_VERSION`. The
+   contract changed, so the declared version changes with it; Phase 1's lesson was that a document
+   declaring a version it does not satisfy is worse than no version at all.
+3. **The top-level `description` records edit 1**, in the same sentence-per-version form 1.1.0's
+   edits are recorded in, so the schema explains its own history without a reader having to come
+   here.
+
+**Adding a *required* field is additive, and the reason is the `const`.** Phase 2 refused a
+`uniqueItems` on `warnings` because it would have invalidated documents that were legal at 1.0.0 —
+a narrowing. This looks like the same thing and is not: `schema_version` is a `const`, so a 1.1.0
+document was never going to validate against the 1.2.0 schema whatever else changed. There is no
+population of existing documents this narrows. The precedent is exact — Phase 2 added a
+**required** `qc` block to `provenance.parameters` on the same reasoning.
+
+`schema/ground_truth.schema.json` was **not touched.** It is the frozen gold-set contract, and
+`synth/` stays frozen (Gate 1 ruling 5).
+
+### `NormalizationError` splits, because HTTP forced a distinction the CLI never had to make
+
+This is the one place Phase 4a changed Phase 2 code, and it is recorded here rather than in the
+Phase 2 section because Phase 2's reasoning was not wrong — it was answering a different question.
+
+Phase 2 gave `NormalizationError` a carefully drawn docstring: it is raised for *a mistake in the
+request*, never for an outcome of the data, and the two conditions that are outcomes (a lane with
+no designated reference, a non-positive denominator) are recorded on the result instead. That
+distinction is the right one for a library, and it held for a CLI, where the "caller" and the
+"service" are the same person at the same terminal.
+
+**Over HTTP they are not the same person, and the class turned out to be two classes.** Of its
+raise sites, six are genuinely the request's fault — a housekeeping mode called with no reference
+ids, ids supplied under `total_protein`, an id naming no measured band, a repeated id, and a lane
+holding the wrong *number* of references for its mode. The rest are invariants of the analysis: a
+band QC flag outside the vocabulary, the lane integrals missing or supplied against the mode, no
+total-protein signal for a detected lane, a repeated band id, a repeated lane id, a band naming an
+undetected lane. **Every input in that second group is produced by `analyze_image` itself and never
+crosses the wire.** Reported as a 400 — which is what a single class forces — a duplicate band id
+would tell a caller to fix a request they had got exactly right, while the actual defect sat in
+detection.
+
+So `ReferenceBandError(NormalizationError)` carries the caller half and maps to 400; the base class
+keeps the invariants and maps to 500. **A subclass rather than a new sibling**, so that anything
+already catching `NormalizationError` keeps catching both — nothing in `evals/` does today, but the
+class is public and Phase 2's docstring advertises it as the one a consumer catches. The status
+table is ordered specific-first for the same reason, and says so, because a base-class-first table
+would silently send every reference mistake to 500.
+
+`NormalizationError`'s docstring keeps its "what does **not** raise" half verbatim, since that half
+is what Phase 2's NOTES entry points at, and gains the caller/internal split above it.
+
+**What this does not change:** no ratio, no denominator, no exclusion and no warning. It is a
+reclassification of failures, not a change to any number, which is why no recorded figure moves and
+`--check` still reproduces.
+
+### A supplied lane has a minimum size, and the bound is derived rather than picked
+
+The first cut validated a caller's rectangle for bounds, extent and overlap. A 1-px-tall rectangle
+passed all three, and then died inside the detector with a message written for a different
+condition: it named no rectangle, called a one-*row* lane a one-*column* one, and told the caller to
+raise `detection.lane.min_separation_px` — a parameter that does not govern a supplied ROI at all,
+and that an HTTP caller cannot change in any case, because configs are selected by name. A new input
+surface had inherited an internal error's message.
+
+`validate_lane_rois` now checks a minimum extent alongside the other three conditions, on **both**
+dimensions, because both of a lane's sides become a 1D profile: the rows become the row profile
+bands are found in, the columns become the column profile each band's width is measured from. So
+the requirement is a property of *a profile*, and two things constrain its length:
+
+1. **The estimator needs two samples**, because `profile_noise_sigma` measures through `np.diff`
+   and one difference requires two values. That is a property of the estimator rather than a
+   parameter, so it is the named constant `NOISE_ESTIMATOR_MIN_SAMPLES`, read both by the
+   estimator's own guard and by the bound, so the two cannot drift apart.
+2. **The profile must be at least as long as the smoothing window** — and this is the half that
+   would not have crashed. `profile_noise_sigma` returns `raw_sigma / sqrt(smoothing_px)`,
+   justified by each smoothed sample being the mean of `smoothing_px` *distinct* samples. But
+   `smooth_profile` pads by repeating the edge sample, so in a profile shorter than the window
+   **no** sample anywhere averages that many distinct values — a length-`L` profile contains only
+   `L` distinct values to begin with. The returned sigma then describes a profile that was never
+   computed, and every sigma threshold downstream is understated. A 3-px lane under the shipped
+   5-px window does not fail; it silently detects against thresholds that are too low.
+
+The bound is `max(NOISE_ESTIMATOR_MIN_SAMPLES, profile_smoothing_px)` — 5 px under both shipped
+configs — and is **derived from the config actually running** rather than fixed, so it moves with
+the parameter set.
+
+**How it is tested, and why the obvious way was not enough.** `minimum_lane_extent_px(config)` is
+public, and the first cut of the tests took their rectangle sizes from it. That is tautological:
+review demonstrated it by replacing the bound with `NOISE_ESTIMATOR_MIN_SAMPLES` — deleting the
+smoothing half entirely — and the **whole suite still passed**, because every test recomputed its
+expectations from the weakened bound. The half with the silent failure mode had no coverage at all.
+
+What pins it now is the *reason* rather than the number: the smoothing operator's weight matrix is
+recovered by pushing unit impulses through `smooth_profile` itself (a black-box impulse response,
+not a re-derivation of the padding logic), and from that matrix the tests assert that no sample in a
+sub-window profile averages a full window of distinct pixels and that the claimed `1/window`
+variance reduction is unreachable — cross-checked against a Monte-Carlo measurement of the noise
+actually left. The same deletion now fails five tests. **A test that takes its expected value from
+the function under test proves only that the function equals itself**, which is the general form of
+what was wrong.
+
+**Why the boundary sits *at* `profile_smoothing_px` and not one above it.** With
+`pad = smoothing_px // 2`, the padded profile is `[v0]*pad + v + [v_last]*pad`, and output sample
+`i` averages padded positions `i … i + smoothing_px - 1`. At exactly `L = smoothing_px` the centre
+output sample covers padded positions `pad … pad + L - 1`, which are precisely the original
+samples — so that one sample does average `smoothing_px` distinct values, and the divisor is earned
+somewhere in the profile. One pixel shorter and it is earned nowhere.
+
+The message names the position, the coordinates, the side at fault, the minimum, where the minimum
+comes from, and a remedy the caller can actually apply: supply a larger rectangle. Not "change a
+parameter", because over HTTP they cannot.
+
+### Small decisions that would otherwise have to be reverse-engineered
+
+- **`result_id` hashes four inputs, not three.** Phase 2 made it three for exactly this reason —
+  the caller's reference band ids change the document while image and config stay identical, so on
+  a two-input id they would have collided. Supplied lane ROIs are the same kind of input and a
+  stronger case: they replace the lanes outright, so every ROI, every intensity and every ratio
+  moves. They are hashed **in order** (the order *is* the lane order) and JSON-encoded rather than
+  joined, so no id is forgeable through a separator, and `null` encodes distinctly from any list so
+  "detection ran" can never hash like "the caller supplied lanes". **Consequence, stated because
+  Phase 2 stated its own: an id computed before this change does not reproduce after it.** Nothing
+  is persisted anywhere, so nothing broke — but `GET /results/{id}` now makes ids externally
+  visible for the first time, so this is the last phase in which that sentence is free.
+- **An empty ROI list raises; only `None` means "not supplying lanes".** One behaviour, at every
+  layer: `None` is a caller who wants detection, `[]` is a caller who switched detection off and
+  then named nothing to replace it with, and the second raises `LaneRoiError`. **This bullet
+  previously recorded the opposite**, and the correction is worth keeping rather than overwriting
+  silently, because it is the failure mode this project is most exposed to. The first cut collapsed
+  a falsy `lane_rois` to `None` inside `analyze_image`, which made the guard in `validate_lane_rois`
+  unreachable from every shipped entry point — a check that could not fire, with a message
+  describing behaviour the system did not have — and this record then documented that collapse as a
+  deliberate decision, justified by a claim about FastAPI that is also false: an absent form field
+  arrives as `None`, not as `[]`, so the HTTP shape never required it. Both the code and the record
+  were wrong in the same direction, which is what makes it worth naming: a silent fallback is
+  easiest to keep when the design record has already explained why it is fine. The in-process
+  caller is 4b — a UI that hands over an empty list when the user deletes their last rectangle now
+  gets the error, not a full re-detection returning different numbers under the same request.
+- **The response is an envelope, and the schema forced it.** `{"result": …, "display": …}`. The
+  result schema is `additionalProperties: false` at top level, so the display derivative *cannot*
+  live inside the document — and should not, because the PNG is a rendering and the document is the
+  measurement. The document travels byte-for-byte as the pipeline wrote it.
+- **One display mapping ships: linear full-scale, `out = round(px * 255 / max_value)`.** It never
+  clips and a saturated source pixel maps to 255. A percentile or window mode was deliberately
+  refused: windowing maps the brightest pixel *present* to 255, so an image peaking at 40% of full
+  scale renders with pure white bands — and a viewer comparing that white against the *absence* of
+  a `saturated` flag would conclude the flag had missed something. For a tool whose premise is that
+  saturation must be visible and honest, a display mode that manufactures apparent saturation is a
+  defect, not a convenience. The accepted cost: a faint blot renders faint, which is what it is.
+- **The mapping is recorded in the response, not just applied.** Name, formula, source and output
+  maxima, the two facts a viewer needs — that it scales and that it does not clip — and
+  `source_dn_per_output_level`, the quantization. The renderer *checks* the no-clipping claim rather
+  than asserting it, and raises if a pixel ever exceeded the full scale its own bit depth declares,
+  because a record saying "clips: false" that could be false is worse than no record.
+
+  The quantization field is there for one specific false inference. Reducing 16 bits to 8 bins 257
+  source values into each output value, so at 16 bits **every source value from 65407 up renders as
+  255 — 129 distinct values, only one of which is saturation.** (Measured, not derived: the top bin
+  is half-width because the mapping rounds rather than floors, so 65406 renders as 254 and 65407 as
+  255.) **A 255 in the PNG is therefore not a saturated pixel**, and the 4b trust feature, which
+  puts the picture next to the QC badges, is exactly where someone would conclude otherwise. That is
+  the same hazard the percentile-mode refusal above is written against, arriving by a different
+  route, so the record closes it rather than leaving it to the reader.
+- **Config is selected by name from `configs/`; a posted config is refused.** Two structural
+  reasons. A posted config widens the input surface from "one of a handful of reviewed parameter
+  sets" to "any mapping the loader accepts", with every parameter in it reaching image processing.
+  And `provenance.config_digest` is only worth something if the digest traces back to a file
+  someone can read — a posted config digests something that exists nowhere and can never be looked
+  up again. Consequence for the error mapping: a `ConfigError` that survives name resolution means
+  a *shipped* file is broken, which is a 500 and not the caller's fault.
+- **`GET /results/{id}` implies storage, and it is a filesystem store rooted at a directory the app
+  is constructed with** — never a module constant, so a test points it at `tmp_path` and a
+  deployment points it wherever it likes. The root passes
+  `pipeline.analyze.require_writable_destination`, the same guard the CLI's `--out` passes, at
+  construction time: PLAN.md's first key invariant has to hold for every writer, not only the one
+  it was written for, and a server configured to write into the gold set should fail at start-up
+  rather than on its first upload.
+- **A stored document is re-validated on the way out, not trusted.** So a result written under an
+  older contract is refused loudly instead of being served as though it satisfied the version this
+  service declares. The cost is real and is named as an open question: a schema bump orphans stored
+  results, and 4b will need to say what happens to them.
+- **Processing is synchronous, and the handlers are `def` rather than `async def`.** PLAN.md allows
+  synchronous for the MVP. The alternative — a job queue plus a polling endpoint — adds a second
+  source of truth for "what has this image been analysed as" without changing a single number.
+  Declaring the handlers `def` puts them on Starlette's threadpool, so one long analysis does not
+  block the event loop for everyone else.
+
+  **But PLAN.md allows it "because the images are small", and that premise was never checked until
+  this phase checked it.** Measured (`configs/default.yaml`, one arm64 machine, width×height):
+  1.19 s at the gold set's 256×192, 4.05 s at 512×384, **23.49 s at 1360×1024** — and 1.4 MP is a
+  small gel-doc export, not a large one. So the decision ships for 4a, where the caller is a test
+  client or a developer, and it ships with the measurement rather than with the assumption. Whether
+  it survives 4b's deploy is an open question carried in DEBT.md E10, not something this phase
+  settled. An earlier version of `api/__init__.py` asserted "about two seconds" having measured
+  nothing; that claim was wrong by roughly an order of magnitude for a real image and is one of the
+  instances behind P1's widening.
+- **Every pipeline exception leaves through one handler that keeps the message verbatim.** The
+  messages are the actionable part — they name the offending rectangle, the config, the band id,
+  the pixel type — and an HTTP layer that replaced them with "Bad Request" would discard the only
+  half a caller can act on. The class name travels beside the message so a machine consumer can
+  branch without parsing prose; the traceback does not travel. An unmapped `PipelineError` subclass
+  defaults to **500, not 400**: an unclassified failure mode is one this service has not thought
+  about, and blaming the caller for it would be a guess.
+- **A damaged store is detected, never repaired.** `_read_json` decodes stored bytes **strictly**.
+  The first cut used `errors="replace"`, which for one class of damage does the opposite of what
+  the module is for: bytes corrupted inside a JSON string become U+FFFD, the document parses, and
+  it is served as a 200 with a band id or a note silently rewritten. The result schema cannot catch
+  that — a mangled string is still a string — so nothing downstream would notice. Repairing a
+  damaged store is the opposite of detecting one.
+- **`GET` re-checks the display record's labelling, which no schema covers.** The result document is
+  re-validated against `result.schema.json` on the way out; the display block has no schema, and it
+  is the half of the envelope carrying the derivative's warning label. A `display.json` damaged into
+  `{}` parses, and without the check a `GET` would answer with a PNG carrying no `is_derivative`,
+  no `note` and no `mapping` — an unlabelled rendering of measured data, which is the one outcome
+  the display boundary exists to prevent. **The check is presence, not values**, and the limit is
+  stated on the function rather than implied: a record that kept its shape and lost its meaning —
+  `{"is_derivative": false, "note": "", "mapping": {}}` — passes. It catches a record that has lost
+  its shape, not one that has been hollowed out.
+- **A missing config directory fails at construction, not per request.** A mistyped `--config-dir`
+  made `names()` return nothing, so every request answered 400 "unknown config" — blaming the caller
+  for a config that does exist, which is the exact inversion the `ConfigError` → 500 mapping is
+  reasoned from. It is now a startup failure, on the same argument that checks `storage_root` there.
+- **`LaneRoiError` is its own class, separate from `DetectionError`.** The two say different things
+  to whoever is on the other end: `DetectionError` reports what the pixels do not contain, and is a
+  422; `LaneRoiError` reports a mistake in the request, and is a 400. Collapsing them would have
+  made a typo in a rectangle indistinguishable from a blot with no findable lanes.
+
+### PR bodies are committed artefacts from here on, under `docs/pr/`
+
+**Because a claim that is not in the tree is not checked.** Phase 4a's PR body lived at
+`.git/PHASE4A_PR_BODY.md`, outside the repository, and two of the five defects cycle 8 found were in
+it — a stale deviation count and a retracted premise that had been hedged everywhere else. It now
+lives at `docs/pr/phase-4a.md`, byte-identical, with the copy outside the tree deleted rather than
+left to diverge, and `tools/check_claims.py` scans `docs/pr/*.md` so later phases are covered by
+adding a file rather than by editing a list.
+
+**Phases 1 and 2 are not retrofitted.** Their PR bodies remain at `.git/PHASE1_PR_BODY.md` and
+`.git/PHASE2_PR_BODY.md`, uncommitted, unchecked, and readable only on the machine that wrote them —
+which is worth knowing because DEBT.md P1 cites the first of them as evidence for a figure. Moving
+them would mean committing text nobody has re-verified against the tree they describe, so the
+convention starts here rather than being applied backwards.
+
+**This was forced by a CI failure the checker produced on its own first real run**, which is the
+strongest evidence for it: in the working tree every quantity had a site and the check passed, while
+in a clean clone the quantity "deviations this phase contributed to P2" matched nothing, because its
+only site was the uncommitted PR body. The blindness guard — a quantity matching no site is a failure
+— caught the checker's own misconfiguration rather than passing vacuously, which is exactly the
+outcome it was written for. The guard was kept and the file was moved, not the other way round.
+
+### The review cap was extended to a sixth cycle, narrowed to the record
+
+**Human ruling, 2026-08-18: one review cycle past the cap, scoped to claim surfaces only.**
+PLAN.md's loop protocol sets a hard cap — "Hard cap: 5 review cycles; if not converged, stop and
+report the unresolved items instead of grinding" — and five had run. So this is a deviation from
+PLAN.md and is recorded rather than folded in, in the same form as the three ratified deviations
+above. It is also carried as a line on DEBT.md P2.
+
+**Why the cap did not fit this phase's failure mode.** The cap exists to stop *grinding*: cycles
+that re-examine converged code and find progressively less. That is not what the last two cycles
+were doing. Across the five cycles, 17 REQUIRED items were raised and **nine of them were wrong
+claims rather than wrong behaviour** — six in NOTES.md and DEBT.md, three in docstrings that
+justify a behaviour. **Cycles 4 and 5 raised no new behaviour defect requiring a code change in this phase.** Stated in
+that hedged form on purpose. Cycle 4's item 3 did surface a behavioural issue — the silent overwrite
+of a stored result when identical bytes are posted under different filenames — but reported it as a
+false docstring claim rather than as a defect to fix, and it is recorded as DEBT E10 item 3 and
+deferred to Phase 4b, whose `Status` line carries the ownership. The cap extension rests on no
+cycle-4 or cycle-5 item requiring a code change, not on neither cycle having seen anything
+behavioural. The
+code had converged; the record had not, and a full sixth cycle would have spent most of its effort
+re-reading code that two consecutive reviewers had already passed.
+
+So the sixth cycle is not a sixth attempt at the same review. It is a different review, on the
+surface where defects were still being found: NOTES.md, DEBT.md, the PR body, docstrings that
+justify behaviour, and the OpenAPI descriptions — each claim checked against the final
+`git diff main`, with behaviour explicitly out of scope.
+
+**The honest cost of the extension.** A narrowed cycle cannot report that behaviour is still clean;
+it can only report that the claims are supported. The behaviour assurance for this phase remains
+what cycles 1–5 produced, and nothing after cycle 5 re-examined it. Two things partly cover that
+gap and neither is a substitute: the cycle-5 fixes and the post-cycle-5 record fixes were all
+claim-text, and `ruff`, the 627 tests and `evals.sweep --check` were re-run green after every one
+of them.
+
+**What this does not license.** The cap stands for phases whose *code* has not converged. The
+argument here rests on a measured property of this phase — two consecutive cycles raising no item
+that required a code change — and not on a general claim that six is better than five. Note the
+property carefully: it is *no item requiring a code change*, not *nothing behavioural seen*. Cycle 4
+saw something behavioural and reported it as a claim defect, which is the hedge the paragraph above
+sets out.
+
 ## Open items
 
 Unresolved questions carried out of a phase. Not decisions — each one names the phase
@@ -2550,6 +2921,30 @@ together with the ones recorded only in PR bodies, groups them by whether they a
 meaning of the numbers, the usability of the tool, or the trustworthiness of the record, and
 carries the evidence for each. This section stays the per-phase narrative; DEBT.md is the
 index.
+
+### Whether band ROIs become caller-supplyable — Phase 4b to settle
+
+Phase 4a made **lane** rectangles supplyable and left band ROIs detector-only, so the band object
+gains no `roi_source`. The phase brief permitted either and asked for the question to be raised
+rather than decided.
+
+**What is actually undecided.** PLAN.md's Phase 4 asks for correction "via draggable ROI edges AND
+numeric nudge fields", and its done-when names one action: *"a scientist … corrects one lane
+boundary"*. So lane correction is specified and band correction is not — 4a implemented what
+PLAN.md commits to. What 4b will discover is whether a user who can fix a lane but not a band
+finds the tool usable, because a mis-drawn band ROI is the error that changes an
+`integrated_intensity` directly, where a mis-drawn lane changes it only through the slice the band
+extent is walked in.
+
+**If 4b answers yes, three things follow and none of them is free.** The band object needs its own
+`roi_source` and another minor schema bump; `result_id` needs a fifth hashed input on the same
+argument as the fourth; and — the one worth flagging now — a caller-supplied band ROI is the first
+input that would let a user choose the aperture a number is integrated over, which is the quantity
+DEBT S11 already records as convention-dependent and not comparable across images. A supplied band
+ROI makes that per-*band* rather than per-image. Whatever 4b decides, it should decide that part
+explicitly rather than inherit it.
+
+**Phase 4b settles it.** If the answer is no, this entry closes and the band object stays as it is.
 
 ### The housekeeping reference is an oracle and needs a real-blot substitute — Phase 3 to settle
 

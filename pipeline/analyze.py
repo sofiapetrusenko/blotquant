@@ -26,7 +26,7 @@ from typing import Any
 from pipeline import PIPELINE_VERSION, RESULT_SCHEMA_VERSION
 from pipeline.background import correct_background
 from pipeline.config import TOTAL_PROTEIN, PipelineConfig
-from pipeline.detect import DetectedLane, detect
+from pipeline.detect import DetectedLane, Roi, detect
 from pipeline.errors import PipelineError
 from pipeline.load import load_image
 from pipeline.normalize import NormalizationBand, normalize
@@ -38,14 +38,17 @@ RESULT_ID_HEX_DIGITS = 16
 
 
 def _result_id(
-    source_sha256: str, config_digest: str, reference_band_ids: Sequence[str] | None
+    source_sha256: str,
+    config_digest: str,
+    reference_band_ids: Sequence[str] | None,
+    lane_rois: Sequence[Roi] | None,
 ) -> str:
     """Return a deterministic id for every input that can change the document.
 
     Derived from content rather than from the file path or the clock, so re-analysing the
     same image with the same inputs reproduces the same id on any machine.
 
-    All **three** inputs are hashed, not two. The reference band ids are a per-image input no
+    All **four** inputs are hashed, not two. The reference band ids are a per-image input no
     parameter set can carry -- ``NormalizationConfig`` deliberately does not -- and they change
     the denominators, the ratios and the exclusions, so hashing only the image and the config
     would give two genuinely different documents the same id, and PLAN.md's Phase 4
@@ -53,9 +56,20 @@ def _result_id(
     the order is recorded on the result and reappears in each ratio's ``denominator_band_ids``,
     and it is JSON-encoded rather than joined so that no id can be forged through a separator
     inside a band id.
+
+    The caller-supplied lane ROIs are the fourth input, for the same reason: they replace the
+    detected lanes outright, so they change every ROI, every intensity and every ratio in the
+    document while the image bytes and the config digest stay identical. They too are hashed
+    *in order* -- the order is the lane order -- and JSON-encoded, and ``null`` is encoded
+    distinctly from any list, so "detection ran" and "the caller supplied lanes" can never
+    hash alike.
     """
     references = json.dumps(list(reference_band_ids or ()), separators=(",", ":"))
-    payload = f"{source_sha256}|{config_digest}|{references}".encode()
+    rois = json.dumps(
+        None if lane_rois is None else [roi.as_dict() for roi in lane_rois],
+        separators=(",", ":"),
+    )
+    payload = f"{source_sha256}|{config_digest}|{references}|{rois}".encode()
     return hashlib.sha256(payload).hexdigest()[:RESULT_ID_HEX_DIGITS]
 
 
@@ -92,11 +106,18 @@ def _band_document(
 
 
 def _lane_document(lane: DetectedLane, total_protein: float | None) -> dict[str, Any]:
-    """Return one ``lanes[]`` entry, carrying its total-protein signal only if it was used."""
+    """Return one ``lanes[]`` entry, carrying its total-protein signal only if it was used.
+
+    ``roi_source`` is always present, whatever its value, for the same reason
+    ``excluded_from_normalization`` is always present on a band: an absent value would be
+    indistinguishable from a writer that does not record it, and a document that reported a
+    caller-chosen region as a detector output would be a false record.
+    """
     document: dict[str, Any] = {
         "lane_id": lane.lane_id,
         "lane_index": lane.lane_index,
         "roi": lane.roi.as_dict(),
+        "roi_source": lane.roi_source,
     }
     if total_protein is not None:
         document["total_protein_signal"] = total_protein
@@ -108,14 +129,30 @@ def analyze_image(
     config: PipelineConfig,
     ground_truth_image_id: str | None = None,
     reference_band_ids: Sequence[str] | None = None,
+    *,
+    lane_rois: Sequence[Roi] | None = None,
 ) -> dict[str, Any]:
     """Analyse one image end to end and return its result document.
 
     Load, background-correct, detect, quantify, QC, normalize -- in that order, because QC
     needs the measured ROIs and normalization needs the QC flags.
 
-    Deterministic: for a fixed image, config and reference list, every field except
+    Deterministic: for a fixed image, config, reference list and lane ROIs, every field except
     ``provenance.created_at`` is reproduced exactly on every run.
+
+    ``lane_rois`` replaces lane detection. When rectangles are supplied,
+    :func:`pipeline.detect.detect_lanes` does not run and they are the lanes, in the order
+    given, each recorded as ``roi_source: "caller"``; band detection inside them is
+    unchanged. ``None`` and an *empty* sequence are different requests: ``None`` is "I am not
+    supplying lanes", and detection runs; an empty sequence is a caller who switched detection
+    off and then named nothing to replace it with, and
+    :func:`pipeline.detect.validate_lane_rois` raises
+    :class:`pipeline.errors.LaneRoiError` for it. Quietly re-detecting there would answer a
+    UI that has just had its last rectangle deleted with a different set of numbers instead
+    of an error. The same function raises :class:`pipeline.errors.LaneRoiError` for a
+    rectangle outside the image, one overlapping another, or one whose sides are shorter
+    than ``config`` can run a profile over
+    (:func:`pipeline.detect.minimum_lane_extent_px`).
 
     ``ground_truth_image_id`` is recorded verbatim when the caller supplies one (the
     eval harness does, to join results to ground truth). Nothing in the analysis reads
@@ -127,9 +164,10 @@ def analyze_image(
     (human ruling, NOTES.md Phase 2). Band ids come from a previous run of this function on
     the same image, or from a user correcting the detection.
     """
+    supplied_lane_rois = None if lane_rois is None else tuple(lane_rois)
     loaded = load_image(image_path)
     correction = correct_background(loaded.pixels, config.background)
-    detection = detect(correction.corrected, config.detection)
+    detection = detect(correction.corrected, config.detection, supplied_lane_rois)
     measurements = quantify_bands(
         correction.corrected, correction.background, detection.bands, config.quantification
     )
@@ -176,7 +214,9 @@ def analyze_image(
     totals = normalization.lane_total_protein
     return {
         "schema_version": RESULT_SCHEMA_VERSION,
-        "result_id": _result_id(loaded.sha256, config.digest(), reference_band_ids),
+        "result_id": _result_id(
+            loaded.sha256, config.digest(), reference_band_ids, supplied_lane_rois
+        ),
         "source": loaded.as_source(ground_truth_image_id),
         "provenance": {
             "software_version": PIPELINE_VERSION,
