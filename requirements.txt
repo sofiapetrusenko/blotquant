@@ -24,3 +24,8 @@ uvicorn>=0.27                # ASGI server 'python -m api' runs the app on; Phas
 python-multipart>=0.0.9      # multipart/form-data parsing, which FastAPI requires for UploadFile
 httpx>=0.27                  # TEST-ONLY: the transport starlette's TestClient runs on. CI
                              # installs from this file and then runs pytest, so it belongs here.
+
+# Added in Phase 3 (Gate 2 artefacts), for tools/gate2/refetch_sources.py only.
+certifi>=2024.2               # CA bundle for verifying PMC over a TLS-intercepting network, where
+                              # the system store rejects the middlebox CA; imported optionally and
+                              # fallen back from, never used to disable verification
