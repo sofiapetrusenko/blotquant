@@ -20,10 +20,17 @@ Nothing here assumes how many lanes or bands exist, that lanes are evenly spaced
 bands are the same size, that band rows are shared between lanes, or any particular
 peak shape. Those would be assumptions about the synthetic generator (``synth/MODELS.md``,
 "What counts as special-casing") rather than about gel-doc images.
+
+Lanes may also be supplied by the caller instead of detected (:func:`detect`'s
+``lane_rois``). Band detection inside them is the same code, with the same parameters:
+the supplied rectangles replace :func:`detect_lanes`'s output and nothing else. Which of
+the two produced a lane is recorded on it as :attr:`DetectedLane.roi_source` and travels
+into the result document, so a caller-chosen region is never reported as a detector output.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,13 +38,34 @@ import numpy as np
 from scipy.signal import find_peaks
 
 from pipeline.config import DetectionConfig
-from pipeline.errors import DetectionError
+from pipeline.errors import DetectionError, LaneRoiError
+
+ROI_SOURCE_DETECTED = "detected"
+"""``roi_source`` of a lane this module located from the image's own column profile."""
+
+ROI_SOURCE_CALLER = "caller"
+"""``roi_source`` of a lane the caller supplied as a rectangle."""
+
+ROI_SOURCES: tuple[str, ...] = (ROI_SOURCE_DETECTED, ROI_SOURCE_CALLER)
+"""The closed vocabulary of lane ROI provenance, mirrored by the result schema's enum."""
+
+LANE_ROI_FIELDS: tuple[str, ...] = ("x", "y", "width", "height")
+"""The four integers a caller-supplied lane rectangle is written as, in order."""
 
 GAUSSIAN_MAD_TO_SIGMA = 1.4826
 """Median-absolute-deviation to standard deviation, for Gaussian data: ``1/Phi^-1(0.75)``."""
 
 DIFFERENCE_VARIANCE_FACTOR = 2.0
 """Variance multiplier introduced by taking first differences of independent samples."""
+
+NOISE_ESTIMATOR_MIN_SAMPLES = 2
+"""Samples :func:`profile_noise_sigma` needs to return anything at all.
+
+It measures a profile through its *first differences*, and a difference needs two samples.
+A property of the estimator rather than a tunable value, which is why the guard inside
+:func:`profile_noise_sigma` and the lane-extent bound in :func:`minimum_lane_extent_px`
+both read it here and cannot drift apart.
+"""
 
 
 @dataclass(frozen=True)
@@ -81,12 +109,32 @@ class Roi:
 
 @dataclass(frozen=True)
 class DetectedLane:
-    """One detected lane: its identity, its measured centre column, and its rectangle."""
+    """One lane: its identity, its centre column, its rectangle, and where the rectangle came from.
+
+    ``roi_source`` is one of :data:`ROI_SOURCES`. It is a required field rather than an
+    optional annotation because a document that reported a caller-chosen region as a
+    detector output would be exactly the kind of false record this project exists to
+    prevent, and an absent value would be indistinguishable from a writer that does not
+    record it.
+
+    ``center_px`` is the column the lane is centred on: the detected peak's column for a
+    detected lane, and the rectangle's own centre for a caller-supplied one.
+    """
 
     lane_id: str
     lane_index: int
     center_px: float
     roi: Roi
+    roi_source: str
+
+    def __post_init__(self) -> None:
+        """Reject a lane whose ``roi_source`` is outside the closed vocabulary."""
+        if self.roi_source not in ROI_SOURCES:
+            raise ValueError(
+                f"lane {self.lane_id!r} has roi_source {self.roi_source!r}; it must be one "
+                f"of {list(ROI_SOURCES)}, because the result schema's enum is closed and a "
+                f"lane's provenance is not free text"
+            )
 
 
 @dataclass(frozen=True)
@@ -166,6 +214,186 @@ class Detection:
     bands: tuple[DetectedBand, ...]
 
 
+def _describe(roi: Roi) -> str:
+    """Return a rectangle's coordinates in the form every lane-ROI message quotes them."""
+    return f"x={roi.x}, y={roi.y}, width={roi.width}, height={roi.height}"
+
+
+def parse_lane_roi(text: str, position: int) -> Roi:
+    """Parse one caller-supplied ``x,y,w,h`` rectangle, at 1-based ``position``.
+
+    Guarantees that the four values were written as integers and were not coerced: a float,
+    a blank field, a wrong number of fields or a non-positive extent raises
+    :class:`LaneRoiError` naming ``position`` and the text, rather than being rounded,
+    padded or dropped. The returned :class:`Roi` is inside no particular image and under no
+    particular parameter set; bounds, minimum extent and overlap are checked by
+    :func:`validate_lane_rois`, which knows both the image size and the detection config.
+    """
+    fields = [field.strip() for field in text.split(",")]
+    if len(fields) != len(LANE_ROI_FIELDS):
+        raise LaneRoiError(
+            f"lane ROI {position} ({text!r}) has {len(fields)} comma-separated value(s); "
+            f"a lane rectangle is written as {','.join(LANE_ROI_FIELDS)}, four integers, "
+            f"for example 10,0,60,240"
+        )
+    values: list[int] = []
+    for name, field in zip(LANE_ROI_FIELDS, fields, strict=True):
+        try:
+            values.append(int(field))
+        except ValueError as error:
+            raise LaneRoiError(
+                f"lane ROI {position} ({text!r}) has {name}={field!r}, which is not an "
+                f"integer number of pixels; all four of {','.join(LANE_ROI_FIELDS)} are "
+                f"whole pixels and none of them is rounded for you"
+            ) from error
+    x, y, width, height = values
+    if width < 1 or height < 1:
+        raise LaneRoiError(
+            f"lane ROI {position} (x={x}, y={y}, width={width}, height={height}) has a "
+            f"non-positive extent; width and height are pixel counts and must both be >= 1"
+        )
+    if x < 0 or y < 0:
+        raise LaneRoiError(
+            f"lane ROI {position} (x={x}, y={y}, width={width}, height={height}) starts "
+            f"outside the image; x and y are pixel indices and must both be >= 0"
+        )
+    return Roi(x=x, y=y, width=width, height=height)
+
+
+def parse_lane_rois(texts: Sequence[str]) -> tuple[Roi, ...]:
+    """Parse caller-supplied ``x,y,w,h`` rectangles, in the order they were given.
+
+    The order is the lane order: :func:`detect` numbers the supplied lanes ``L0``, ``L1``,
+    ... as they arrive, so it is preserved rather than sorted.
+    """
+    return tuple(parse_lane_roi(text, position) for position, text in enumerate(texts, start=1))
+
+
+def _overlap(first: Roi, second: Roi) -> tuple[int, int]:
+    """Return the ``(width, height)`` of two rectangles' intersection, ``(0, 0)`` if disjoint."""
+    width = min(first.x + first.width, second.x + second.width) - max(first.x, second.x)
+    height = min(first.y + first.height, second.y + second.height) - max(first.y, second.y)
+    if width <= 0 or height <= 0:
+        return (0, 0)
+    return (width, height)
+
+
+def minimum_lane_extent_px(config: DetectionConfig) -> int:
+    """Return the smallest side, in pixels, a lane rectangle can carry band detection over.
+
+    The same bound applies to both sides, because both become a 1D profile with one sample
+    per pixel: the lane's rows become the row profile bands are found in, and its columns
+    become the column profile each band's width is measured from
+    (:func:`_detect_bands_in_lane`). Two requirements of that profile machinery set it, and
+    the bound is the larger so that both hold:
+
+    * :func:`profile_noise_sigma` measures the profile through its first differences, so the
+      profile must carry :data:`NOISE_ESTIMATOR_MIN_SAMPLES` samples for a single difference
+      to exist. Below that it raises, because returning 0.0 would turn every sigma threshold
+      into a no-op.
+    * That estimate is reported for the *smoothed* profile: it is divided by
+      ``sqrt(profile_smoothing_px)`` on the grounds that each smoothed sample is a mean of
+      that many distinct samples. :func:`smooth_profile` pads the ends by repeating the edge
+      sample, so in a profile shorter than the window *no* sample averages
+      ``profile_smoothing_px`` distinct pixels, and the sigma every detection threshold is
+      compared against would describe a profile that was never computed. At exactly
+      ``profile_smoothing_px`` samples the centre sample does, which is what makes that
+      length the boundary rather than one above it.
+
+    Derived from ``config`` rather than fixed here: ``profile_smoothing_px`` is a parameter,
+    so the bound moves with the parameter set that is actually running.
+    """
+    return max(NOISE_ESTIMATOR_MIN_SAMPLES, config.profile_smoothing_px)
+
+
+def validate_lane_rois(
+    rois: Sequence[Roi], width_px: int, height_px: int, config: DetectionConfig
+) -> None:
+    """Raise :class:`LaneRoiError` unless every supplied rectangle is usable on this image.
+
+    Four conditions, each reported against the 1-based position the caller supplied the
+    rectangle at, because that is the only handle the caller has on it:
+
+    * at least one rectangle -- an empty supplied list is a caller who meant to suppress
+      detection and then named nothing to replace it with;
+    * every rectangle wholly inside the image, whose dimensions the message states;
+    * every rectangle at least :func:`minimum_lane_extent_px` pixels on each side, naming
+      the side at fault -- below that the lane has no profile band detection can run over,
+      and the failure would otherwise surface from inside the noise estimator as a
+      :class:`DetectionError` about a condition the caller cannot see;
+    * no two rectangles overlapping, naming *both* positions -- overlapping lanes would
+      count the shared pixels into two lanes' total-protein integrals.
+    """
+    if not rois:
+        raise LaneRoiError(
+            "no lane ROI was supplied, but supplying lane ROIs is what switches lane "
+            "detection off; supply at least one rectangle or supply none at all and let "
+            "detection run"
+        )
+    for position, roi in enumerate(rois, start=1):
+        if roi.x + roi.width > width_px or roi.y + roi.height > height_px:
+            raise LaneRoiError(
+                f"lane ROI {position} ({_describe(roi)}) is not wholly inside the image, "
+                f"which is {width_px}x{height_px} px: it reaches column "
+                f"{roi.x + roi.width - 1} and row {roi.y + roi.height - 1}, and the last "
+                f"addressable pixel is column {width_px - 1}, row {height_px - 1}"
+            )
+    minimum_px = minimum_lane_extent_px(config)
+    for position, roi in enumerate(rois, start=1):
+        for side, extent_px, remedy, profile in (
+            ("height", roi.height, "taller", "row"),
+            ("width", roi.width, "wider", "column"),
+        ):
+            if extent_px < minimum_px:
+                raise LaneRoiError(
+                    f"lane ROI {position} ({_describe(roi)}) has {side}={extent_px} px, "
+                    f"below the {minimum_px} px a lane needs on each side: band detection "
+                    f"reduces that side to a {profile} profile of one sample per pixel, "
+                    f"which must be long enough to hold the noise estimator's first "
+                    f"difference ({NOISE_ESTIMATOR_MIN_SAMPLES} samples) and to give one "
+                    f"smoothed sample an average of "
+                    f"detection.profile_smoothing_px={config.profile_smoothing_px} distinct "
+                    f"pixels. Supply a {remedy} rectangle: the minimum is fixed by the "
+                    f"config this run selected and no parameter in it can be changed for a "
+                    f"single request"
+                )
+    for first_position, first in enumerate(rois, start=1):
+        for second_position, second in enumerate(rois[first_position:], start=first_position + 1):
+            overlap_width, overlap_height = _overlap(first, second)
+            if overlap_width and overlap_height:
+                raise LaneRoiError(
+                    f"lane ROI {first_position} ({_describe(first)}) and lane ROI "
+                    f"{second_position} ({_describe(second)}) overlap over "
+                    f"{overlap_width}x{overlap_height} px; lanes must be disjoint, because "
+                    f"pixels shared between two lanes would be counted into both lanes' "
+                    f"total-protein integrals"
+                )
+
+
+def caller_lanes(
+    rois: Sequence[Roi], width_px: int, height_px: int, config: DetectionConfig
+) -> tuple[DetectedLane, ...]:
+    """Return the supplied rectangles as lanes, in the order given, marked ``caller``.
+
+    Validates them first (:func:`validate_lane_rois`), which is why ``config`` is here: one
+    of the four conditions is the minimum lane extent, and that follows from
+    ``detection.profile_smoothing_px``. Lane ids and indices follow the supplied order, and
+    ``center_px`` is the rectangle's own centre column -- the mean of its first and last
+    column index, which is the same quantity a detected lane's peak column is.
+    """
+    validate_lane_rois(rois, width_px, height_px, config)
+    return tuple(
+        DetectedLane(
+            lane_id=f"L{index}",
+            lane_index=index,
+            center_px=roi.x + 0.5 * (roi.width - 1),
+            roi=roi,
+            roi_source=ROI_SOURCE_CALLER,
+        )
+        for index, roi in enumerate(rois)
+    )
+
+
 def smooth_profile(profile: np.ndarray, window_px: int) -> np.ndarray:
     """Return ``profile`` smoothed by a centred moving average of ``window_px`` samples.
 
@@ -202,12 +430,15 @@ def profile_noise_sigma(raw_profile: np.ndarray, smoothing_px: int) -> float:
     if smoothing_px < 1:
         raise ValueError(f"smoothing window must be positive, got {smoothing_px}")
     profile = np.asarray(raw_profile, dtype=np.float64)
-    if profile.size < 2:
+    if profile.size < NOISE_ESTIMATOR_MIN_SAMPLES:
         raise DetectionError(
             f"noise cannot be estimated from {profile.size} sample(s): the estimator needs "
-            f"at least one difference. Returning 0.0 would turn every sigma threshold into "
-            f"a no-op instead of reporting that the profile is too short. A one-column lane "
-            f"reaches this; raise detection.lane.min_separation_px"
+            f"at least {NOISE_ESTIMATOR_MIN_SAMPLES} for one difference. Returning 0.0 "
+            f"would turn every sigma threshold into a no-op instead of reporting that the "
+            f"profile is too short. A one-column *detected* lane reaches this; raise "
+            f"detection.lane.min_separation_px. A supplied lane rectangle cannot: "
+            f"validate_lane_rois refuses one below minimum_lane_extent_px first, and says "
+            f"so in terms of the rectangle"
         )
     differences = np.diff(profile)
     deviation = float(np.median(np.abs(differences - np.median(differences))))
@@ -260,6 +491,13 @@ def _lane_edges(centers: np.ndarray, pitch_px: float, width_px: int) -> np.ndarr
     return np.concatenate(([first], interior, [last]))
 
 
+def _image_shape(corrected: np.ndarray) -> tuple[int, int]:
+    """Return ``(height_px, width_px)``, raising :class:`DetectionError` for a non-2D image."""
+    if corrected.ndim != 2:
+        raise DetectionError(f"lane detection needs a 2D image, got shape {corrected.shape}")
+    return int(corrected.shape[0]), int(corrected.shape[1])
+
+
 def detect_lanes(corrected: np.ndarray, config: DetectionConfig) -> tuple[DetectedLane, ...]:
     """Return the lanes of a background-corrected image, left to right.
 
@@ -279,9 +517,7 @@ def detect_lanes(corrected: np.ndarray, config: DetectionConfig) -> tuple[Detect
       rectangle is then centred on the detected centre with that measured width, so an
       off-centre single lane gets an off-centre rectangle rather than the whole canvas.
     """
-    if corrected.ndim != 2:
-        raise DetectionError(f"lane detection needs a 2D image, got shape {corrected.shape}")
-    height_px, width_px = corrected.shape
+    height_px, width_px = _image_shape(corrected)
     raw_profile = corrected.mean(axis=0)
     profile = smooth_profile(raw_profile, config.profile_smoothing_px)
     percentile = config.lane.robust_range_percentile
@@ -336,6 +572,7 @@ def detect_lanes(corrected: np.ndarray, config: DetectionConfig) -> tuple[Detect
                 lane_index=index,
                 center_px=float(peaks[index]),
                 roi=Roi(x=left, y=0, width=right - left + 1, height=int(height_px)),
+                roi_source=ROI_SOURCE_DETECTED,
             )
         )
     return tuple(lanes)
@@ -544,15 +781,31 @@ def _detect_bands_in_lane(
     return bands
 
 
-def detect(corrected: np.ndarray, config: DetectionConfig) -> Detection:
+def detect(
+    corrected: np.ndarray, config: DetectionConfig, lane_rois: Sequence[Roi] | None = None
+) -> Detection:
     """Detect lanes and then bands within each lane.
 
     Guarantees that every returned band's ROI lies inside its lane's ROI, that band ids
     are unique, and that bands are ordered by lane and then top to bottom. Raises
     :class:`DetectionError` when no lane can be located; a lane with no band above
     threshold simply contributes no bands.
+
+    When ``lane_rois`` is given, :func:`detect_lanes` **does not run**: the supplied
+    rectangles are the lanes, in the order given, and they carry
+    ``roi_source="caller"``. Band detection inside them is unchanged -- the same code, the
+    same configured parameters -- so a caller correcting a lane boundary changes which
+    pixels are searched and nothing else. Raises :class:`LaneRoiError` for a rectangle this
+    image cannot carry, or one too small for ``config``'s profile machinery to run over
+    (:func:`validate_lane_rois`).
     """
-    lanes = detect_lanes(corrected, config)
+    if lane_rois is None:
+        lanes = detect_lanes(corrected, config)
+    else:
+        height_px, width_px = _image_shape(corrected)
+        lanes = caller_lanes(
+            lane_rois, width_px=width_px, height_px=height_px, config=config
+        )
     bands: list[DetectedBand] = []
     for lane in lanes:
         bands.extend(_detect_bands_in_lane(corrected, lane, config))

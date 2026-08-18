@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/blotquant/schema/result.schema.json",
   "title": "blotquant analysis result",
-  "description": "One file per analysed image, written by the pipeline. This schema is the source of truth for the result contract. Every reported number is traceable to an ROI, a parameter set and a software version, and every value carries its QC flags rather than being dropped. Version 1.1.0 is the first version a produced document validates against: Phase 2 added the unresolved_shoulder band flag, the warnings that name which flag a normalization reference carries, the per-ratio reference-flagged record, the multi-reference denominator list, and the qc parameter block. All additive; NOTES.md's Phase 2 section records each edit and its reason.",
+  "description": "One file per analysed image, written by the pipeline. This schema is the source of truth for the result contract. Every reported number is traceable to an ROI, a parameter set and a software version, and every value carries its QC flags rather than being dropped. Version 1.1.0 is the first version a produced document validates against: Phase 2 added the unresolved_shoulder band flag, the warnings that name which flag a normalization reference carries, the per-ratio reference-flagged record, the multi-reference denominator list, and the qc parameter block. Version 1.2.0 adds the required lanes[].roi_source, because lanes may now be supplied by the caller instead of detected and the document must say which. All edits additive; NOTES.md records each one and its reason.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,7 @@
     "schema_version": {
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
-      "const": "1.1.0",
+      "const": "1.2.0",
       "description": "The version of this contract the document was written against. A const, mirroring ground_truth.schema.json, so the schema file and pipeline.RESULT_SCHEMA_VERSION cannot drift apart; tests/test_schema.py pins the two together."
     },
     "result_id": { "type": "string", "minLength": 1 },
@@ -95,11 +95,15 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["lane_id", "roi"],
+        "required": ["lane_id", "roi", "roi_source"],
         "properties": {
           "lane_id": { "type": "string", "minLength": 1 },
           "lane_index": { "type": "integer", "minimum": 0 },
           "roi": { "$ref": "#/$defs/roi" },
+          "roi_source": {
+            "enum": ["detected", "caller"],
+            "description": "Where this lane rectangle came from: `detected` means the pipeline located it from the image's own column profile, `caller` means the caller supplied it and lane detection did not run for this image. Required, and emitted on every lane whatever its value, because an absent value would be indistinguishable from a writer that does not record it -- and a document that reported a caller-chosen region as a detector output would be a false provenance record. Band detection inside a caller-supplied lane is the same code with the same parameters, so this field describes the lane's boundary only, not how its bands were found."
+          },
           "total_protein_signal": {
             "type": "number",
             "description": "The sum of the background-corrected pixels inside this lane's ROI, in DN of the source bit depth -- the denominator total_protein normalization divides by, and present only when that mode was used. Not a mean-column-profile integral: it is an ROI pixel sum, which is the profile integral multiplied by the lane's width, so the two differ between lanes of unequal width. The pixel sum is the comparable quantity, because a band's integrated_intensity is a pixel sum over the same image."

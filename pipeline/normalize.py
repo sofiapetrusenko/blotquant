@@ -12,8 +12,9 @@ Three rules the whole module exists to keep:
 
 * **A reference is designated by the caller, never inferred.** Which band is the loading
   control is not visible in the pixels, and a pipeline that guessed would put a guess
-  inside a provenance record. A housekeeping mode without ``reference_band_ids`` raises;
-  so does an id that names no band (human ruling, NOTES.md Phase 2).
+  inside a provenance record. A housekeeping mode without ``reference_band_ids`` raises
+  :class:`pipeline.errors.ReferenceBandError`; so does an id that names no band (human
+  ruling, NOTES.md Phase 2).
 * **QC annotates, never drops.** A flagged band's ratio is still computed and still
   reported -- marked ``excluded`` with a reason when ``exclude_qc_flagged`` is set, which
   is the default. Setting that false is an explicit override and is recorded as a warning.
@@ -39,7 +40,7 @@ from pipeline.config import (
     TOTAL_PROTEIN,
     NormalizationConfig,
 )
-from pipeline.errors import NormalizationError
+from pipeline.errors import NormalizationError, ReferenceBandError
 from pipeline.qc import BAND_QC_FLAGS, LOSSY_FORMAT
 
 SINGLE_HOUSEKEEPING_REFERENCE = "single_housekeeping_reference"
@@ -214,7 +215,8 @@ class _LaneProblem:
     failing the whole image over it would discard the lanes that measured fine. It is
     recorded three times over instead -- the warning, the absence of ratios, and every band
     in the lane carrying ``excluded_from_normalization`` with this reason -- so nothing is
-    dropped silently. Caller mistakes, by contrast, do raise: see :func:`_resolve_references`.
+    dropped silently. Caller mistakes, by contrast, do raise: see :func:`_resolve_references`,
+    every branch of which is a :class:`pipeline.errors.ReferenceBandError`.
     """
 
     warning: str
@@ -224,17 +226,22 @@ class _LaneProblem:
 def _resolve_references(
     bands: Sequence[NormalizationBand], reference_band_ids: Sequence[str] | None, mode: str
 ) -> tuple[str, ...]:
-    """Return the validated reference ids for ``mode``, raising on anything ambiguous."""
+    """Return the validated reference ids for ``mode``, raising on anything ambiguous.
+
+    Every raise here is a :class:`ReferenceBandError`: the reference designation is the part
+    of normalization's input that comes from the caller, so these are the failures the caller
+    is the one who can fix.
+    """
     if mode not in HOUSEKEEPING_MODES:
         if reference_band_ids:
-            raise NormalizationError(
+            raise ReferenceBandError(
                 f"reference_band_ids was given for mode {mode!r}, which has no reference "
                 f"band: its denominator is the lane's own signal integral. Passing ids that "
                 f"nothing reads would put an unused input into the provenance record"
             )
         return ()
     if not reference_band_ids:
-        raise NormalizationError(
+        raise ReferenceBandError(
             f"mode {mode!r} needs reference_band_ids: which band is the loading control is "
             f"not visible in the pixels, so the pipeline will not infer it and will not fall "
             f"back to another mode. Pass the reference band ids explicitly, or use "
@@ -243,14 +250,14 @@ def _resolve_references(
     known = {band.band_id for band in bands}
     unknown = [band_id for band_id in reference_band_ids if band_id not in known]
     if unknown:
-        raise NormalizationError(
+        raise ReferenceBandError(
             f"reference band id(s) {unknown} name no measured band; the bands in this image "
             f"are {sorted(known)}. A reference that does not exist cannot be normalized "
             f"against"
         )
     duplicates = sorted({i for i in reference_band_ids if list(reference_band_ids).count(i) > 1})
     if duplicates:
-        raise NormalizationError(
+        raise ReferenceBandError(
             f"reference band id(s) {duplicates} appear more than once; a band counted twice "
             f"would weight itself twice in the geometric mean"
         )
@@ -297,16 +304,19 @@ def _lane_denominator(
 ) -> _Denominator | _LaneProblem:
     """Return one lane's denominator, or why the lane has none that could be divided by.
 
-    Raises :class:`NormalizationError` only for a caller mistake -- a lane holding the wrong
-    *number* of designated references for the mode. A denominator that measured non-positive
-    is data, and comes back as a :class:`_LaneProblem`.
+    Raises :class:`ReferenceBandError` for a caller mistake -- a lane holding the wrong
+    *number* of designated references for the mode -- and :class:`NormalizationError` for a
+    detected lane the lane-integral map does not cover, which this package builds and the
+    caller never supplies. A denominator that measured non-positive is neither: it is data,
+    and comes back as a :class:`_LaneProblem`.
     """
     if mode == TOTAL_PROTEIN:
         if lane_id not in lane_total_protein:
             raise NormalizationError(
                 f"no total-protein signal was supplied for lane {lane_id!r}; mode "
-                f"{TOTAL_PROTEIN!r} integrates every detected lane ROI, so a missing lane is "
-                f"a caller error rather than an unnormalizable lane"
+                f"{TOTAL_PROTEIN!r} integrates every detected lane ROI and this package "
+                f"builds that map itself from the lanes, so a lane missing from it is a "
+                f"defect here rather than an unnormalizable lane"
             )
         total = float(lane_total_protein[lane_id])
         if total <= 0.0:
@@ -314,7 +324,7 @@ def _lane_denominator(
         return _Denominator(value=total, band_ids=(), flags=())
     if mode == HOUSEKEEPING_SINGLE:
         if len(references) != 1:
-            raise NormalizationError(
+            raise ReferenceBandError(
                 f"lane {lane_id!r} has {len(references)} designated reference bands, but mode "
                 f"{HOUSEKEEPING_SINGLE!r} divides by exactly one. Use "
                 f"{HOUSEKEEPING_MULTI!r} to combine several references, or designate one band "
@@ -332,7 +342,7 @@ def _lane_denominator(
             flags=_ordered_flags(reference.qc_flags),
         )
     if len(references) < 2:
-        raise NormalizationError(
+        raise ReferenceBandError(
             f"lane {lane_id!r} has {len(references)} designated reference band(s), but mode "
             f"{HOUSEKEEPING_MULTI!r} takes the geometric mean of at least two. Designate "
             f"more references in that lane, or use {HOUSEKEEPING_SINGLE!r}"
@@ -383,12 +393,20 @@ def normalize(
       of its bands and a warning on the result;
     * deterministic ordering and a warning list in :data:`WARNING_ORDER`.
 
-    Raises :class:`pipeline.errors.NormalizationError` for a caller mistake, never for an
-    outcome of the data: a housekeeping mode without reference ids, reference ids under
-    ``total_protein``, lane integrals under a housekeeping mode or missing under
-    ``total_protein``, an unknown or duplicated reference id, a repeated band or lane id, a band
-    naming an undetected lane, a lane holding the wrong number of designated references for the
-    mode, or a band flag outside the band vocabulary.
+    Raises for a broken input, never for an outcome of the data, and the class says whose
+    input it was:
+
+    * :class:`pipeline.errors.ReferenceBandError` for the caller's reference designation -- a
+      housekeeping mode without reference ids, reference ids under ``total_protein``, an
+      unknown or duplicated reference id, or a lane holding the wrong number of designated
+      references for the mode;
+    * :class:`pipeline.errors.NormalizationError` for an invariant of the analysis that
+      produced the bands -- lane integrals under a housekeeping mode or missing under
+      ``total_protein``, a repeated band or lane id, a band naming an undetected lane, or a
+      band flag outside the band vocabulary.
+
+    The first is a subclass of the second, so one ``except NormalizationError`` still catches
+    everything this function raises.
     """
     band_ids = [band.band_id for band in bands]
     repeated = sorted({band_id for band_id in band_ids if band_ids.count(band_id) > 1})

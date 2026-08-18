@@ -16,6 +16,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from pipeline import RESULT_SCHEMA_VERSION
+from pipeline.detect import ROI_SOURCES
 from synth import GROUND_TRUTH_SCHEMA_VERSION
 
 GROUND_TRUTH_SCHEMA = Path("schema/ground_truth.schema.json")
@@ -81,7 +82,13 @@ def valid_result() -> dict[str, Any]:
                 "normalization": {"mode": "housekeeping_single", "exclude_qc_flagged": True},
             },
         },
-        "lanes": [{"lane_id": "L0", "roi": {"x": 0, "y": 0, "width": 40, "height": 192}}],
+        "lanes": [
+            {
+                "lane_id": "L0",
+                "roi": {"x": 0, "y": 0, "width": 40, "height": 192},
+                "roi_source": "detected",
+            }
+        ],
         "bands": [
             {
                 "band_id": "L0_target",
@@ -136,6 +143,24 @@ def test_result_schema_file_and_pipeline_constant_declare_the_same_version(
     """
     schema = json.loads((repo_root / RESULT_SCHEMA).read_text(encoding="utf-8"))
     assert schema["properties"]["schema_version"]["const"] == RESULT_SCHEMA_VERSION
+
+
+def test_result_schema_and_detection_declare_the_same_roi_source_vocabulary(
+    repo_root: Path,
+) -> None:
+    """The lane-provenance vocabulary is written twice and must stay one vocabulary.
+
+    :data:`pipeline.detect.ROI_SOURCES` says it is "mirrored by the result schema's enum", and
+    the two are enforced independently -- the tuple by ``DetectedLane.__post_init__`` in
+    process, the enum by the schema on the document. A third value added to one and not the
+    other would be accepted by the writer and refused by the contract, or the reverse. Same
+    spirit as the version check above, and order matters: the enum is the vocabulary as
+    written, not a set.
+    """
+    schema = json.loads((repo_root / RESULT_SCHEMA).read_text(encoding="utf-8"))
+    enum = schema["properties"]["lanes"]["items"]["properties"]["roi_source"]["enum"]
+
+    assert tuple(enum) == ROI_SOURCES
 
 
 def test_result_schema_rejects_another_schema_version(
@@ -271,6 +296,30 @@ def test_result_schema_rejects_an_unknown_normalization_mode(
     document = valid_result()
     document["normalization"]["mode"] = "vibes"
     errors = list(result_validator.iter_errors(document))
+    assert any("is not one of" in error.message for error in errors)
+
+
+def test_result_schema_requires_every_lane_to_say_where_its_roi_came_from(
+    result_validator: Draft202012Validator,
+) -> None:
+    """A lane without ``roi_source`` cannot be told from one a writer never recorded it on."""
+    document = valid_result()
+    del document["lanes"][0]["roi_source"]
+
+    errors = list(result_validator.iter_errors(document))
+
+    assert any("'roi_source' is a required property" in error.message for error in errors)
+
+
+def test_result_schema_rejects_an_invented_lane_roi_source(
+    result_validator: Draft202012Validator,
+) -> None:
+    """The provenance vocabulary is closed: a lane is detected or supplied, nothing else."""
+    document = valid_result()
+    document["lanes"][0]["roi_source"] = "probably_detected"
+
+    errors = list(result_validator.iter_errors(document))
+
     assert any("is not one of" in error.message for error in errors)
 
 

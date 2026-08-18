@@ -4,10 +4,10 @@ QC-first western blot densitometry with a measured evaluation harness.
 
 blotquant quantifies protein bands in single-channel gel-doc images and attaches a quality-control verdict, an explicit parameter set, and full provenance to every number it reports. It is for molecular biologists who need densitometry numbers they can defend in review, and for reviewers who need to see what a number was measured from. It is a command-line tool at present, aimed at people willing to run `python -m pipeline run` on an exported image.
 
-- **Status: Phase 2 of 5** — CLI pipeline, QC and normalization complete; no API, UI, export, or real-blot validation yet.
+- **Status: Phase 2 of 5 merged; Phase 4a in review** — CLI pipeline, QC and normalization are merged. An HTTP API (`POST /analyze`, `GET /results/{id}`) and caller-supplied lane ROIs are built and staged on `phase-4a-api`, not yet merged. No UI, no deploy, no export, and no real-blot validation.
 - **Band detection F1 0.851**; intensity recovery **7.05% mean / 4.60% median** on clean bands — synthetic dev split only.
 - The held-out test split has never been scored or tuned on, and **nothing has been measured on a real blot**.
-- **529 tests**; CI enforces lint, schema validity, and re-measurement of every recorded figure.
+- **529 tests** on `main`, 627 on the unmerged `phase-4a-api` branch; CI enforces lint, schema validity, and re-measurement of every recorded figure.
 - MIT licensed.
 
 ## Why it exists
@@ -99,12 +99,12 @@ as absent.
 | 1 — core pipeline (CLI) + eval loop | complete |
 | 2 — QC + normalization + provenance | complete |
 | 3 — full evals + real-blot cross-validation | **not started** |
-| 4 — API + UI | **not started** |
+| 4 — API + UI | **4a built, unmerged** (`phase-4a-api`); 4b (UI, deploy) not started |
 | 5 — export + polish + deploy | **not started** |
 
 **What does not exist yet:**
 
-- **No HTTP API.** There is no `api/` module and no `POST /analyze`.
+- **No HTTP API on `main`.** `POST /analyze` and `GET /results/{id}` are built and staged on the unmerged `phase-4a-api` branch; nothing described in this section is available from a clone of `main`.
 - **No user interface.** There is no `web/` module, no upload page, no ROI editing, no overlay. The tool is CLI-only, so this README has no screenshots.
 - **No export.** No CSV, no XLSX, no charts, no generated methods paragraph.
 - **No real-blot validation.** No ImageJ cross-comparison has been run. `data/real/` does not exist. **Every number in this README comes from synthetic images.**

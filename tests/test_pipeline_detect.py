@@ -74,7 +74,7 @@ def test_profile_noise_sigma_refuses_a_profile_too_short_to_estimate_from() -> N
     reaches this through a legal config and the CLI has to report it as an error rather
     than a traceback.
     """
-    with pytest.raises(DetectionError, match="at least one difference"):
+    with pytest.raises(DetectionError, match="at least 2 for one difference"):
         profile_noise_sigma(np.array([5.0]), 5)
 
 
@@ -271,7 +271,9 @@ def test_a_peak_whose_lane_has_no_horizontal_spread_yields_no_band(
     """
     stripe = np.zeros((60, 40))
     stripe[25:35, :] = 500.0
-    lane = DetectedLane(lane_id="L0", lane_index=0, center_px=20.0, roi=Roi(0, 0, 40, 60))
+    lane = DetectedLane(
+        lane_id="L0", lane_index=0, center_px=20.0, roi=Roi(0, 0, 40, 60), roi_source="detected"
+    )
 
     assert _detect_bands_in_lane(stripe, lane, detection) == []
     # The same stripe with any column-to-column variation does produce a band.
@@ -284,7 +286,11 @@ def test_band_rois_are_offset_by_their_lane_origin(detection: DetectionConfig) -
     stripe = np.zeros((60, 40))
     stripe[25:35, 15:25] = 500.0
     offset_lane = DetectedLane(
-        lane_id="L0", lane_index=0, center_px=20.0, roi=Roi(x=5, y=20, width=30, height=30)
+        lane_id="L0",
+        lane_index=0,
+        center_px=20.0,
+        roi=Roi(x=5, y=20, width=30, height=30),
+        roi_source="detected",
     )
 
     bands = _detect_bands_in_lane(stripe, offset_lane, detection)
