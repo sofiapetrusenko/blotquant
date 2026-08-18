@@ -28,6 +28,14 @@ at commit `52200a5` (Phases 0–2 merged, plus the README and this register). **
 at each phase gate**: confirm the evidence still reproduces, close what the phase closed, and add
 what it introduced. A register without a snapshot goes stale invisibly.
 
+**Phase 3 Gate 2 artefacts landed on 2026-08-18** (branch `phase-3-gate2-artefacts`): `data/real/`
+now holds the frozen pre-registration, 19 crops, 13 of 21 source figures, and the provenance and
+manifest tables. **No entry below has been re-checked against them, and no real blot has been
+measured**, so S1 — the generator has never been validated against a real blot — is unchanged: the
+data to close it now exists in the tree, and the measurement that would close it does not. S6, S15
+and E6 likewise still stand. The one thing that did change mechanically: `tools/check_claims.py`
+verifies every crop and committed parent against its recorded digest on each CI run.
+
 **Phase 4a is in progress** on branch `phase-4a-api`, under the human ruling of 2026-08-17 that
 runs Phase 4 before the remainder of Phase 3 (P2 entry 7). **Four entries have been updated for it,
 and only four:** P2 gains entries (7) and (8); **P1 is widened from numeric claims to claims

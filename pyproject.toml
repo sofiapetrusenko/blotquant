@@ -1,6 +1,18 @@
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# The four archived Gate 2 acquisition scripts are excluded deliberately. They are a record of
+# what was actually executed to produce data/real/, not maintained code: reformatting them would
+# make the committed script differ from the one that downloaded the figures and wrote the
+# digests, which is the same class of error as editing the frozen pre-registration beside them.
+# tools/gate2/refetch_sources.py is NOT excluded -- it was written for this repository, is
+# stdlib-only, and is linted like everything else.
+exclude = [
+    "tools/gate2/gate2_epmc.py",
+    "tools/gate2/refilter.py",
+    "tools/gate2/fetch_v2.py",
+    "tools/gate2/log_crops.py",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ANN"]

@@ -2911,6 +2911,76 @@ property carefully: it is *no item requiring a code change*, not *nothing behavi
 saw something behavioural and reported it as a claim defect, which is the hedge the paragraph above
 sets out.
 
+## Phase 3 — Gate 2 artefacts
+
+Gate 2 approved the real-image list on 2026-08-18. This section records where the artefacts
+landed and what was decided about them; **no real blot has been measured yet**, so nothing here
+changes a figure.
+
+### The pre-registration is imported byte-identical, not restated
+
+`data/real/DECISION_unit_of_analysis.md` — 11 sections plus one amendment — was written outside
+this repository and frozen before any measurement, and its digest is cited:
+
+```
+sha256 = 994acc30daf82011acfe957adff2866f824b05aa3b39bade118e539f4cfd88d0
+```
+
+**So it is committed unchanged rather than folded into this file.** NOTES.md records decisions in
+its own voice; rewriting a pre-registration into that voice would destroy the single property
+that makes it one, and any edit — including tidying — invalidates a hash that is quoted in three
+places. This file points at it and deliberately does not paraphrase it. `tools/check_claims.py`
+pins the digest, so an edit fails CI rather than being noticed later.
+
+One consequence worth surfacing here, because a reader of §11 alone would get it wrong: §11a
+re-cropped `PMC13135388_Figure4__E-Vinculin` after §11 was written, so §11's stated
+colour-fraction maximum of 0.0158 describes a **superseded** crop. The current set maximum is
+0.0068, and `crop_log.csv` holds the current crop's digest.
+
+### A source figure is committed if and only if a measured artefact derives from it
+
+19 crops are committed without argument: they are the measured artefacts, and §9 requires ImageJ
+to run on the same crop file byte-identical, so a comparison whose crops are not fixed in the
+tree is not reproducible at all.
+
+Of the 21 source figures, **13 are committed and 8 are not** — the 13 being exactly those a crop
+derives from. The rule is a column (`committed`) in `data/real/sources.csv` rather than a
+convention someone has to remember.
+
+**The brief's premise was that sources are "recoverable from the recorded URLs and sha256s", and
+as recorded they were not.** Checking it before relying on it: `provenance.md` carries
+**truncated** 16-hex digests and **no URL at all**, and the shortlist's `graphic_href` is a bare
+filename, not a link. PMC serves figures from a CDN path containing an opaque per-blob hash that
+cannot be derived from anything recorded, so a URL has to be re-read from the live article page
+every time. Recovery therefore depended on data that existed nowhere in the tree.
+
+That is now fixed in the direction that makes the premise true: `sources.csv` carries the **full**
+64-hex digest, the DOI, the licence, the article URL and the CDN graphic name for all 21, and
+`tools/gate2/refetch_sources.py` performs the recovery — it re-resolves each figure's CDN URL
+from its article page, downloads it, and verifies against the recorded digest, failing loudly if
+upstream has been re-rendered. Runnable, not described.
+
+**Committing the 13 anyway is the deliberate belt-and-braces**, on the same argument that commits
+`data/images/`: recovery depends on someone else's website continuing to serve byte-identical
+bytes, and a measured claim has to stay auditable when it does not. 2.5 MB against that is cheap.
+
+**Recovery was subsequently verified live: 21 of 21** — see the closed open item below. The first
+run failed on all 8 for a TLS-interception reason unrelated to PMC, which is why
+`refetch_sources.py` now builds its TLS context from `certifi`.
+
+### The digest chain is now checked mechanically, because it already caught two real failures
+
+Cropping was done by hand in Preview, whose Cmd+S writes back to the *open* file rather than
+exporting, silently re-encoding the JPEG. **Twice during Gate 2 a parent figure's digest stopped
+matching what `fetch_v2.py` recorded at download**, which is the only reason either overwrite was
+noticed: the pixels look identical and nothing else would have flagged it.
+
+`tools/check_claims.py` now re-verifies both halves of that chain on every CI run — every crop
+against `crop_sha256`, and every committed parent against `parent_sha256` — so a re-saved
+artefact fails the build rather than being measured. Each failure mode was falsified before being
+trusted: a re-saved crop, a missing crop, a re-encoded parent and an edited pre-registration all
+produce the expected failure.
+
 ## Open items
 
 Unresolved questions carried out of a phase. Not decisions — each one names the phase
@@ -2921,6 +2991,47 @@ together with the ones recorded only in PR bodies, groups them by whether they a
 meaning of the numbers, the usability of the tool, or the trustworthiness of the record, and
 carries the evidence for each. This section stays the per-phase narrative; DEBT.md is the
 index.
+
+### ~~Recovery of the 8 uncommitted Gate 2 sources is untested end to end~~ — CLOSED, 21 of 21 verified live
+
+**Closed 2026-08-18. The recovery works, and the first run found a defect in the tool rather than
+in the record.**
+
+The first networked run failed on all 8 with `CERTIFICATE_VERIFY_FAILED: self signed certificate
+in certificate chain` on every article URL. That is **TLS interception on the operator's network**
+— a middlebox re-signing traffic with a CA the Python default store does not carry — and not a PMC
+failure: the same URLs return 200 when the context is built from certifi's bundle. The tool now
+builds its `SSLContext` from certifi when importable and falls back to the system store with a
+logged note. **Verification is not disabled and will not be**: every fetched byte is checked
+against a recorded sha256, and hashing bytes from a connection nobody authenticated would prove
+only that they match what *someone* served, which is the question the digest exists to answer.
+
+With that fixed, the live result:
+
+- **8 of 8 uncommitted sources recovered**, each matching its recorded sha256.
+- **13 of 13 committed sources re-verified against upstream**, and each byte-identical to the
+  copy in this tree.
+
+So all 21 are recoverable today, and the 13 committed parents are confirmed to be what PMC still
+serves. **This does not retire the argument for committing them** — it confirms the premise held
+on one day, against one set of publishers, and the reason for committing was always that the
+premise can stop holding without notice.
+
+**The run also exposed a defect in the tool, which mattered more than the failure.** It reported
+`0 of 8 verified` and the exit status was read as 0. The status was in fact 1 — the 0 came from
+`$?` after a shell pipe, which reports the last command in the pipeline, not the tool. But the
+episode is why the exit contract is now pinned by `tests/test_refetch_sources.py` rather than
+assumed: the count printed and the status returned are derived from one counter, so they cannot
+disagree, and four tests fail if that is reverted. One genuine defect of the same family was found
+and fixed while looking: a source whose upstream matched the record but whose *committed copy*
+differed was printed as `ok <name>: … COMMITTED COPY DIFFERS` and counted toward the total. A line
+beginning `ok` is what a reader skims past — the same defect as a success exit code, in smaller
+type. It is now a `FAIL` line and excluded from the count.
+
+**Two archived scripts have the same shape and were deliberately not fixed**, since editing them
+would make them differ from what produced `data/real/`: `fetch_v2.py` exits 0 after reporting
+failed downloads, and `log_crops.py` exits 0 after skipping a crop whose parent it could not
+match. Both are recorded in `tools/gate2/README.md` with the controls that now cover them.
 
 ### Whether band ROIs become caller-supplyable — Phase 4b to settle
 

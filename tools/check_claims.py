@@ -31,6 +31,8 @@ Exit code 0 when every check passes, 1 on any hit, 2 if a scanned file is unread
 
 from __future__ import annotations
 
+import csv
+import hashlib
 import re
 import sys
 from dataclasses import dataclass, field
@@ -44,6 +46,8 @@ SCANNED = (
     "README.md",
     "docs/pr/*.md",
     "docs/review/phase-4a/README.md",
+    "data/real/README.md",
+    "tools/gate2/README.md",
 )
 """Files whose claims are checked. Entries containing ``*`` are globs.
 
@@ -138,6 +142,11 @@ RETRACTED: tuple[Retracted, ...] = (
         "same reason; this is the PR body's form of it",
     ),
     Retracted(
+        "recovery of the 8 is untested end to end",
+        "verified live on 2026-08-18: 21 of 21 recovered and matched",
+        "the live run happened and succeeded; the untested caveat is retired",
+    ),
+    Retracted(
         "a second machine",
         "this same machine under concurrent load",
         "the 33.28 s reading came from this machine while busy, not a second machine",
@@ -207,6 +216,26 @@ QUANTITIES: tuple[Quantity, ...] = (
             r"recording six → (\w+) deviations",
         ),
         "deviations, not entries",
+    ),
+    Quantity(
+        "committed Gate 2 source figures",
+        (
+            r"\*\*(\d+) of the 21 source figures are committed",
+            r"source figures a crop derives from \| `images/` \| (\d+) \|",
+            r"only the (\d+) figures a measured crop derives from",
+            r"only the (\d+) that matter for measurement",
+        ),
+        "a source is committed iff a measured artefact derives from it",
+    ),
+    Quantity(
+        "Gate 2 crops",
+        (
+            r"cropped blot panels[^|]*\| `crops/` \| (\d+) \|",
+            r"per-crop sha256[^|]*\| (\d+) rows \|",
+            r"\bThe (\d+) crops are committed\b",
+            r"colour fraction measured on all (\d+) crops",
+        ),
+        "",
     ),
     Quantity(
         "deviations this phase contributed to P2",
@@ -415,6 +444,87 @@ def _check_register_composition() -> list[Hit]:
     return hits
 
 
+CROP_LOG = Path("data/real/crops/crop_log.csv")
+"""The Gate 2 crop manifest: one row per measured artefact, with its parent's digest."""
+
+DECISION_PATH = Path("data/real/DECISION_unit_of_analysis.md")
+DECISION_SHA256 = "994acc30daf82011acfe957adff2866f824b05aa3b39bade118e539f4cfd88d0"
+"""The frozen Gate 2 pre-registration and the digest cited for it.
+
+Pinned here so that editing the pre-registration fails the build. It was frozen before any
+measurement and its hash is quoted in ``data/real/README.md`` and NOTES.md; a pre-registration
+that can be revised after the fact is not one.
+"""
+
+
+def check_gate2_integrity() -> list[Hit]:
+    """Verify the Gate 2 artefacts byte-for-byte against their recorded digests.
+
+    This is the half of the claims surface that is not prose. Three things are checked, and the
+    reason is recorded in ``tools/gate2/README.md``: cropping was done by hand in Preview, whose
+    Cmd+S writes back to the *open* file, and twice during Gate 2 that silently re-encoded a
+    source figure. The pixels look identical; only the digest chain notices. So:
+
+    * every crop in ``crop_log.csv`` exists and hashes to its recorded ``crop_sha256`` -- a
+      corrupted or re-saved crop must fail CI rather than be measured;
+    * every parent named by a crop, when it is committed, hashes to the recorded
+      ``parent_sha256``, which is the link that caught the overwrite both times;
+    * the pre-registration still hashes to the value cited for it.
+
+    A missing crop file is an error, not a skip. A parent that is *not* committed is skipped
+    with no complaint -- only the 13 parents a crop derives from are in the tree, by the rule in
+    ``data/real/README.md``, and ``sources.csv`` records the rest.
+    """
+    hits: list[Hit] = []
+    decision = REPO_ROOT / DECISION_PATH
+    if not decision.is_file():
+        hits.append(Hit(str(DECISION_PATH), 0, "gate2-integrity",
+                        "the frozen Gate 2 pre-registration is missing"))
+    else:
+        digest = hashlib.sha256(decision.read_bytes()).hexdigest()
+        if digest != DECISION_SHA256:
+            hits.append(Hit(str(DECISION_PATH), 0, "gate2-integrity",
+                            f"the pre-registration hashes {digest} but is cited as "
+                            f"{DECISION_SHA256}. It was frozen before any measurement; if it "
+                            f"genuinely must change, that is an amendment with its own section "
+                            f"and a new digest recorded everywhere the old one is quoted"))
+    log = REPO_ROOT / CROP_LOG
+    if not log.is_file():
+        hits.append(Hit(str(CROP_LOG), 0, "gate2-integrity", "the crop manifest is missing"))
+        return hits
+    rows = list(csv.DictReader(log.open(encoding="utf-8")))
+    if not rows:
+        hits.append(Hit(str(CROP_LOG), 0, "gate2-integrity",
+                        "the crop manifest has no rows, so this check would pass vacuously"))
+        return hits
+    for number, row in enumerate(rows, start=2):
+        crop = REPO_ROOT / CROP_LOG.parent / row["crop"]
+        if not crop.is_file():
+            hits.append(Hit(str(CROP_LOG), number, "gate2-integrity",
+                            f"{row['crop']} is recorded but not on disk; the measured artefact "
+                            f"is missing"))
+            continue
+        digest = hashlib.sha256(crop.read_bytes()).hexdigest()
+        if digest != row["crop_sha256"]:
+            hits.append(Hit(str(CROP_LOG), number, "gate2-integrity",
+                            f"{row['crop']} hashes {digest[:16]}… but is recorded as "
+                            f"{row['crop_sha256'][:16]}…. It has been re-saved or corrupted "
+                            f"since Gate 2 closed; measuring it would measure a different "
+                            f"artefact from the one the record approves"))
+    parents = {(r["parent"], r["parent_sha256"]) for r in rows}
+    for name, recorded in sorted(parents):
+        parent = REPO_ROOT / "data" / "real" / "images" / name
+        if not parent.is_file():
+            continue
+        digest = hashlib.sha256(parent.read_bytes()).hexdigest()
+        if digest != recorded:
+            hits.append(Hit(f"data/real/images/{name}", 0, "gate2-integrity",
+                            f"hashes {digest[:16]}… but crop_log.csv records {recorded[:16]}…. "
+                            f"This is the exact failure the parent-sha256 column exists to "
+                            f"catch: a source figure re-encoded after its crops were taken"))
+    return hits
+
+
 def main() -> int:
     """Run every check and report. Returns 0 when clean, 1 on any hit."""
     targets = _targets()
@@ -424,7 +534,12 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    hits = check_retracted(targets) + check_numeric(targets) + check_arithmetic(targets)
+    hits = (
+        check_retracted(targets)
+        + check_numeric(targets)
+        + check_arithmetic(targets)
+        + check_gate2_integrity()
+    )
     scanned = ", ".join(rel for rel, _, _ in targets)
     if not hits:
         print(f"OK: claims check passed over {len(targets)} file(s): {scanned}")
