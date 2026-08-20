@@ -11,17 +11,27 @@ standing rules against it and both failed, because a standing rule is a person p
 remember. This is the mechanism instead. `evals.sweep --check` does the same job for measured
 figures; nothing did it for prose until now.
 
-Three checks, all of which name file and line and exit non-zero:
+The checks below all name file and line and exit non-zero. No count of them is given here:
+this module exists because a number restated away from its source goes stale, and a tally in
+its own docstring is the first thing to prove the point -- as this one did, reading "three"
+through the addition of a fourth, a fifth and a sixth.
 
-1. **Retracted phrases.** Wording that has been withdrawn or hedged, with its replacement.
-   Any occurrence is an error.
-2. **Numeric consistency.** Each named quantity is extracted everywhere it is asserted; if one
-   quantity is asserted with two different values, every site is reported. The correct value is
-   never hardcoded -- the check reports *disagreement*, so it stays true when a number
-   legitimately changes and both sites are updated together.
-3. **Arithmetic.** Sums written out in the prose (`a + b = c`, `n S + n E + n P = n`) are
-   evaluated, and the register's stated composition is checked against the entries that
-   actually exist.
+- **Retracted phrases.** Wording that has been withdrawn or hedged, with its replacement.
+  Any occurrence is an error.
+- **Numeric consistency.** Each named quantity is extracted everywhere it is asserted; if one
+  quantity is asserted with two different values, every site is reported. The correct value is
+  never hardcoded -- the check reports *disagreement*, so it stays true when a number
+  legitimately changes and both sites are updated together.
+- **Arithmetic.** Sums written out in the prose (`a + b = c`, `n S + n E + n P = n`) are
+  evaluated, and the register's stated composition is checked against the entries that
+  actually exist.
+- **Gate 2 integrity.** The pre-registration's digest, and every crop and committed parent
+  against its recorded sha256.
+- **Ratified amendments.** Each amendment in force, against its recorded digest: once ratified
+  it is frozen on the same terms as the pre-registration it amends.
+- **Amendment figures.** Every figure the 2026-08-19 amendment quotes, against the row and
+  column of `tools/stats/rs_power_expected.txt` it was read from -- plus the
+  no-figures-in-prose rule and the verbatim-quotation rule on its implementer's note.
 
 Stdlib only, by design: this runs in CI beside `ruff` and `pytest`, and a claims checker that
 needed its own dependency tree would be the first thing dropped from a slow build.
@@ -456,6 +466,59 @@ Pinned here so that editing the pre-registration fails the build. It was frozen 
 measurement and its hash is quoted in ``data/real/README.md`` and NOTES.md; a pre-registration
 that can be revised after the fact is not one.
 """
+
+
+RATIFIED_AMENDMENTS = {
+    "data/real/AMENDMENT_2026-08-19_delta_and_power.md":
+        "163915c54fafd45c79767da00f0fe89b79d71598b0ea9b42e453e0a95fe7f134",
+    "data/real/AMENDMENT_2026-08-19_channel_collapse.md":
+        "285a06e9f133bace1176a2eac467d09b8fe9997e47a72002fb57288f11b35a63",
+}
+"""Ratified amendments to the pre-registration, and the digest cited for each.
+
+A ratified amendment is in force, so it is frozen on the same terms as the document it amends:
+:data:`DECISION_SHA256` makes editing the pre-registration fail the build, and these do the same
+for the amendments that supersede parts of it. An amendment revisable after ratification is worth
+no more than a pre-registration revisable after the fact.
+
+**Only ratified amendments belong here.** A DRAFT is still being written, and pinning one would
+fail the build on every edit; each amendment's status section carries the sequence that moves it
+between the two states, and adding its digest here is step three of that sequence. Both entries
+were added on 2026-08-20, *after* the phase PR merged with that step skipped -- which is the
+argument for the pin rather than against it.
+"""
+
+
+def check_ratified_amendments() -> list[Hit]:
+    """Verify each ratified amendment against its digest, and that it still says it is ratified.
+
+    Two failure directions, because the pin has two halves that can drift apart. A changed file
+    with an unchanged pin is an edit to a document in force. A file reverted to DRAFT while the
+    pin remains says the opposite of what the pin asserts, and would otherwise pass on the digest
+    alone if it were reverted and re-pinned in one move.
+    """
+    hits: list[Hit] = []
+    for name, expected in sorted(RATIFIED_AMENDMENTS.items()):
+        path = REPO_ROOT / name
+        if not path.is_file():
+            hits.append(Hit(name, 0, "ratified-amendment",
+                            "a ratified amendment is pinned here but is not in the tree; if it "
+                            "was renamed, update RATIFIED_AMENDMENTS and AMENDMENT_PATH in the "
+                            "same commit"))
+            continue
+        text = path.read_text(encoding="utf-8")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if digest != expected:
+            hits.append(Hit(name, 0, "ratified-amendment",
+                            f"this ratified amendment hashes {digest} but is pinned as "
+                            f"{expected}. It is in force and therefore frozen: a change to it is "
+                            f"a further amendment with its own date and digest, not a revision"))
+        if "**Status: RATIFIED" not in text:
+            hits.append(Hit(name, 0, "ratified-amendment",
+                            "this file is pinned as ratified but its Status line does not say "
+                            "RATIFIED; either it went back to DRAFT, in which case remove the "
+                            "pin, or the status line changed without the digest being redone"))
+    return hits
 
 
 def check_gate2_integrity() -> list[Hit]:
@@ -1043,6 +1106,7 @@ def main() -> int:
         + check_numeric(targets)
         + check_arithmetic(targets)
         + check_gate2_integrity()
+        + check_ratified_amendments()
         + check_amendment_figures()
     )
     scanned = ", ".join(rel for rel, _, _ in targets)
