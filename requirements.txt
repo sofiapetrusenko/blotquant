@@ -15,7 +15,14 @@ jsonschema>=4.20             # Draft 2020-12 validation of ground truth in tests
 # Added in Phase 1, for pipeline/ and its config.
 PyYAML>=6.0                  # parses configs/*.yaml, the pipeline's only source of parameters
 scikit-image>=0.22           # rolling-ball background (skimage.restoration.rolling_ball)
-scipy>=1.11                  # local-median background and 1D peak finding for detection
+scipy>=1.11                  # local-median background and 1D peak finding for detection, and --
+                             # added in Phase 3b-0 -- the ranking behind tools/stats/rs_power.py,
+                             # whose stdout is committed and diffed byte-for-byte in CI. It is
+                             # deliberately NOT pinned exactly the way numpy is: numpy's pin
+                             # protects a frozen gold set of pixels, while this artefact is
+                             # regenerable and a scipy release that moved a printed digit is a
+                             # finding worth seeing rather than one worth suppressing. If that
+                             # step goes red with no change in this repository, this is why.
 
 # Added in Phase 4a, for api/. No imaging dependency is added: the display derivative is
 # encoded with opencv-python-headless, which is already here.
