@@ -39,11 +39,11 @@ verifies every crop and committed parent against its recorded digest on each CI 
 **Phase 3b-0 is in progress** on branch `phase-3b0-realdata`. **One entry is updated and one is
 added, and no others.** Updated: **E1** — its *What*, *Why it matters*, *Evidence*, *Closes* and
 *Status* all change; its heading does not, because the path still has not been followed on another
-machine. E1 stays `Open`. Added: **S19**, the channel collapse the 2026-08-19 §7 amendment rules
-and this branch deliberately does not implement. The summary arithmetic moves with S19 and with
-nothing else — the register goes from 31 entries to 32 and from 16 `Open` to 17, the
-Accepted-or-Permanent count is unchanged, and the E1 summary bullet and the "Where the weight
-actually sits" clause were updated alongside.
+machine, and **E1 moves from `Open` to `Accepted`**, closed by verification once `install-path`
+ran green. Added: **S19**, the channel collapse the 2026-08-19 §7 amendment rules
+and this branch deliberately does not implement. The summary arithmetic moves with both — the register goes from 31 entries
+to 32 with S19, and E1 closing leaves 16 `Open` and 16 Accepted-or-Permanent. The E1 summary
+bullet and the "Where the weight actually sits" clause were updated alongside.
 
 *Review cap.* PLAN.md caps the reviewer loop at five cycles. Phase 3b-0 ran **a sixth and a
 seventh**, both on explicit human instruction and both **scoped to verifying named fixes rather
@@ -115,12 +115,12 @@ Three entries carry most of the consequence:
 - **S2** — `total_protein`, one of the four things PLAN.md claims distinguishes this tool from
   ImageJ, currently measures worse than the mode it is meant to improve on, and produces a negative
   denominator on one lane. The differentiating claim is not yet supported by its own measurement.
-- **E1** — until Phase 3b-0 nobody had ever followed the documented install-and-run path
-  outside the author's working tree. It has now been run from a clean clone into a fresh
-  virtualenv on macOS and needed no correction; the clean-container half is wired as the
-  `install-path` CI job and has not run yet.
+- ~~**E1**~~ — **closed in Phase 3b-0.** Until this phase nobody had ever followed the documented
+  install-and-run path outside the author's working tree. It has now been run from a clean clone on
+  macOS *and* on a clean `ubuntu-latest` container by the `install-path` CI job, which passed in
+  32 s on this branch's first push. The README needed no correction.
 
-The rest divides three ways. **Fifteen of the 32 entries are `Accepted` or `Permanent`; 17 are
+The rest divides three ways. **Sixteen of the 32 entries are `Accepted` or `Permanent`; 16 are
 `Open`.** (29 through Phase 3; Phase 4a added S18 and E10, and Phase 3b-0 added S19, all `Open`.) Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
 (S2, S5, S7, S8, S10, S12), **two were already Accepted before it** (S4, S16), and **one stays
 Open** (S3). The remaining seven Accepted-or-Permanent entries (S9, S11, S13, E5, E9, P1, P2) were settled before Gate 1. Accepted does not mean fixed: S5's QC flag
@@ -128,9 +128,8 @@ still scores F1 0.000 and S10's still under-warns on a third of the low-dynamic-
 gate decided to keep and disclose them rather than change them, and both keep their measurements.
 **Two are one-line fixes** (E4's empty GitHub metadata, P3's branch naming). **The remaining `Open`
 entries are real and not minor**: S6's housekeeping figure rests on an oracle no real blot supplies
-and Gate 1 explicitly did not settle it; S3's two parameters have no gold-set evidence and, after Gate 1 rulings 3 and 5, no route to any measurement against ground truth; S17 is a silent drop against a stated project rule; E1 is now half-answered — the documented
-path runs from a clean clone on one platform, and has still never run on a machine that is not
-the author's; and S2's comparability gap is open — now owned by
+and Gate 1 explicitly did not settle it; S3's two parameters have no gold-set evidence and, after Gate 1 rulings 3 and 5, no route to any measurement against ground truth; S17 is a silent drop against a stated project rule; E1 is closed, having run
+on a clean container as well as a clean clone; and S2's comparability gap is open — now owned by
 Phase 3, conditional on a common subset existing — even though the denominator question above it is
 ruled. The project is not broken; it is measured, and this file is
 the list of what the measurements do not yet cover.
@@ -696,7 +695,7 @@ amendment, not selected.
 
 ## Engineering
 
-### E1 — The documented install-and-run path has never been followed on another machine
+### E1 — ~~The documented install-and-run path has never been followed on another machine~~ — CLOSED, verified on a clean container
 
 **What.** Until 2026-08-19 every run had happened in the author's working tree, in one
 pre-existing virtualenv, with no clone-install-run anywhere. Phase 3b-0 ran it from a clean clone
@@ -739,11 +738,13 @@ be the same sequence of commands, so drift on either side fails the job rather t
 leaving it testing a path nobody is told to type. A subset test would not do: it would pass an
 *added* README command, which is the likeliest future edit.
 
-**Status.** Open — narrowed, not closed. The clean-clone half is verified on macOS as above; the
-clean-container half is wired but **has not run yet**, because nothing has been pushed. The
-workflow triggers on `push` and `pull_request`, so `install-path` first executes on the first push
-of this branch — before any merge, and its result is available to the review of this change rather
-than only after it. Move to Accepted when it passes, citing the job by name.
+**Status.** Accepted — closed by verification, 2026-08-20. `install-path` ran on the first push of
+this branch and **passed in 32 s** (GitHub Actions run `32351508541`, commit `1e812b3`, job
+`install-path`, conclusion `success`). Both halves are now covered: the clean clone on macOS, and a
+clean `ubuntu-latest` container that had never seen this repository, each running README.md's three
+commands and validating the resulting document against `schema/result.schema.json`. The README
+needed no correction on either. `Accepted` is the register's settled status rather than a "closed"
+one; here it means verified and closed, not acknowledged-and-kept.
 
 ### E2 — No packaging, no version tag, no release
 
