@@ -47,6 +47,7 @@ SCANNED = (
     "docs/pr/*.md",
     "docs/review/phase-4a/README.md",
     "data/real/README.md",
+    "data/real/AMENDMENT_*.md",
     "tools/gate2/README.md",
 )
 """Files whose claims are checked. Entries containing ``*`` are globs.
@@ -525,6 +526,509 @@ def check_gate2_integrity() -> list[Hit]:
     return hits
 
 
+AMENDMENT_PATH = "data/real/AMENDMENT_2026-08-19_delta_and_power.md"
+"""The one amendment :data:`QUOTED_FIGURES` describes.
+
+Named exactly rather than globbed. Every entry in ``QUOTED_FIGURES`` is a figure *this*
+amendment quotes, so applying them to any file matching ``AMENDMENT_*.md`` would demand every
+one of them from an unrelated later amendment and turn CI red the day one is written. A second
+amendment brings its own pins; it does not inherit these. No count of the entries is restated
+here: a number in this docstring would be one more thing to keep in step with the tuple below,
+which is the failure this whole module exists to catch.
+"""
+
+RS_POWER_EXPECTED = "tools/stats/rs_power_expected.txt"
+"""The committed output of ``python -m tools.stats.rs_power``, pinned by diff in CI."""
+
+
+@dataclass(frozen=True)
+class QuotedFigure:
+    """One figure the amendment quotes, located in the reference by section and regex.
+
+    ``pattern`` must pin the value to its **column**, not merely to its row. Matching a value
+    anywhere in the located line is not enough: table E's ``  30 |`` row carries three quoted
+    figures, so a row-level substring test passes when two of them are transposed -- and
+    transposing the true-0.70 and true-0.80 cells inverts the amendment's central safety
+    claim. Each pattern below therefore counts the fields before its value, or anchors on the
+    label that names it.
+    """
+
+    in_amendment: str
+    section: str
+    row: str
+    pattern: str
+    what: str
+    region: str = "rulings"
+
+
+def _e_row(column: int, value: str) -> str:
+    """Return a pattern pinning ``value`` to the ``column``-th value of table E's N = 30 row.
+
+    ``column`` is 1-based over the true-rho columns: 1 = true 0.60 … 6 = true 0.95.
+    """
+    skipped = r"(?:\s+\S+)" * (column - 1)
+    return r"^\s*30 \|" + skipped + r"\s+" + re.escape(value) + r"(?:\s|$)"
+
+
+QUOTED_FIGURES: tuple[QuotedFigure, ...] = (
+    QuotedFigure(
+        "N ≥ 18", "=== B.", r"observed r_s = 0\.90", r"observed r_s = 0\.90\s+->\s+N >= 18$",
+        "0.90 vs 0.70",
+    ),
+    QuotedFigure(
+        "N ≥ 38", "=== B.", r"observed r_s = 0\.85", r"observed r_s = 0\.85\s+->\s+N >= 38$",
+        "0.85 vs 0.70",
+    ),
+    QuotedFigure(
+        "≈ 27 of nominal 30", "=== D.", r"10 blots x 3, ICC 0\.5",
+        r"10 blots x 3, ICC 0\.5\s+30\s+\S+\s+26\.8\s", "N_eff, ICC 0.5",
+    ),
+    QuotedFigure(
+        "at ICC 0.7, ≈ 20", "=== D.", r"10 blots x 3, ICC 0\.7",
+        r"10 blots x 3, ICC 0\.7\s+30\s+\S+\s+19\.8\s", "N_eff, ICC 0.7",
+    ),
+    QuotedFigure(
+        "~0.3% at true 0.70", "=== E.", r"^\s*30 \|", _e_row(2, "0.003"), "declares, true 0.70"
+    ),
+    QuotedFigure(
+        "~3.5% at true 0.80", "=== E.", r"^\s*30 \|", _e_row(3, "0.035"), "declares, true 0.80"
+    ),
+    QuotedFigure(
+        "~42% of the time (0.417)", "=== E.", r"^\s*30 \|", _e_row(5, "0.417"),
+        "declares, true 0.90",
+    ),
+    QuotedFigure(
+        "mean observed r_s 0.884", "=== C.", r"^\s*N= 30\s", r"N= 30\s+mean r_s 0\.884\s",
+        "mean r_s at N=30",
+    ),
+    QuotedFigure(
+        "0.59 vs analytic 0.45", "=== C.", r"^\s*N= 10\s", r"N= 10.*sd\(z\) 0\.592\s",
+        "observed sd(z), N=10",
+    ),
+    QuotedFigure(
+        "sd(z) observed 0.59 vs analytic 0.45 at N = 10", "=== C.", r"^\s*N= 10\s",
+        r"N= 10.*\(analytic 0\.448\)", "analytic sd(z), N=10",
+    ),
+    QuotedFigure(
+        "effective N ≈ 16", "=== D.", r"6 blots x 3, ICC 0\.5",
+        r"6 blots x 3, ICC 0\.5\s+18\s+\S+\s+15\.9\s", "headline 2, N_eff 6 blots",
+    ),
+    # --- figures the implementer's note records, one table row each ---
+    QuotedFigure(
+        "`0.417`, so ~42%", "=== E.", r"^\s*30 \|", _e_row(5, "0.417"),
+        "note (A), corrected declaration rate", region="note",
+    ),
+    QuotedFigure(
+        "`0.884`, and it is a **mean**", "=== C.", r"^\s*N= 30\s",
+        r"N= 30\s+mean r_s 0\.884\s", "note (A), corrected central tendency", region="note",
+    ),
+    QuotedFigure(
+        "`0.035`, so ~3.5%", "=== E.", r"^\s*30 \|", _e_row(3, "0.035"),
+        "note (A), corrected false-claim rate", region="note",
+    ),
+    QuotedFigure(
+        "row `15`, column `lower` | `0.665`", "=== A.", r"^\s*15\s", r"^\s*15\s+0\.665\s",
+        "note table, CI lower bound at the floor", region="note",
+    ),
+    QuotedFigure(
+        "row `observed r_s = 0.90` | `N >= 18`", "=== B.", r"observed r_s = 0\.90",
+        r"observed r_s = 0\.90\s+->\s+N >= 18$", "note table, N needed at agreement",
+        region="note",
+    ),
+    QuotedFigure(
+        "row `N= 10`, column `sd(z)` | `0.592`", "=== C.", r"^\s*N= 10\s",
+        r"N= 10.*sd\(z\) 0\.592\s", "note table, observed sd(z) at smallest N", region="note",
+    ),
+    QuotedFigure(
+        "row `N= 10`, column `(analytic)` | `0.448`", "=== C.", r"^\s*N= 10\s",
+        r"N= 10.*\(analytic 0\.448\)", "note table, analytic sd(z) at smallest N",
+        region="note",
+    ),
+    QuotedFigure(
+        "row `N= 15`, column `sd(z)` | `0.321`", "=== C.", r"^\s*N= 15\s",
+        r"N= 15.*sd\(z\) 0\.321\s", "note table, observed sd(z) at next N", region="note",
+    ),
+    QuotedFigure(
+        "row `N= 15`, column `(analytic)` | `0.342`", "=== C.", r"^\s*N= 15\s",
+        r"N= 15.*\(analytic 0\.342\)", "note table, analytic sd(z) at next N", region="note",
+    ),
+    QuotedFigure(
+        "ICC 0.0`, column `N_eff` | `34.0`", "=== D.", r"10 blots x 3, ICC 0\.0",
+        r"10 blots x 3, ICC 0\.0\s+30\s+\S+\s+34\.0\s", "note table, ICC-zero control",
+        region="note",
+    ),
+    QuotedFigure(
+        "ICC 0.5`, column `N_eff` | `26.8`", "=== D.", r"10 blots x 3, ICC 0\.5",
+        r"10 blots x 3, ICC 0\.5\s+30\s+\S+\s+26\.8\s", "note table, N_eff at middle ICC",
+        region="note",
+    ),
+    QuotedFigure(
+        "`6 blots x 3, ICC 0.5`, column `N_eff` | `15.9`", "=== D.",
+        r"6 blots x 3, ICC 0\.5", r"6 blots x 3, ICC 0\.5\s+18\s+\S+\s+15\.9\s",
+        "note table, N_eff few blots", region="note",
+    ),
+    QuotedFigure(
+        "`8 blots x 4, ICC 0.5`, column `N_eff` | `26.0`", "=== D.",
+        r"8 blots x 4, ICC 0\.5", r"8 blots x 4, ICC 0\.5\s+32\s+\S+\s+26\.0\s",
+        "note table, N_eff more ratios fewer blots", region="note",
+    ),
+    QuotedFigure(
+        "`12 blots x 3, ICC 0.5`, column `N_eff` | `31.5`", "=== D.",
+        r"12 blots x 3, ICC 0\.5", r"12 blots x 3, ICC 0\.5\s+36\s+\S+\s+31\.5\s",
+        "note table, N_eff more blots", region="note",
+    ),
+)
+"""Every figure the amendment reads out of a cell of the reference output.
+
+**What this check does.** Each entry names the half of the amendment it belongs to --
+``region="rulings"`` or ``region="note"``, split at :data:`AMENDMENT_RULINGS_MARKER` -- and the
+check requires (a) that half to contain the figure as written, **exactly once**, and (b) the
+reference to carry the value in the row and column it was read from. Both halves are covered:
+the note quotes figures of its own, and leaving them unpinned was itself a review finding.
+
+The exactly-once rules, on both sides, are load-bearing rather than tidiness. A second copy of
+a figure in the same half lets an edited one hide behind an unedited one. A duplicated row in
+the reference does the same, which is why row identity (:attr:`QuotedFigure.row`) and cell
+value (:attr:`QuotedFigure.pattern`) are separate patterns: counting only the rows that still
+carry the value cannot see a duplicate, because corrupting one copy leaves the other matching
+exactly once.
+
+**What it does not do.** It does not verify the rounding of a pinned value into the prose that
+reports it -- whether an effective N was fairly reported as an approximation was a human
+judgement made once against the output. It does not cover the arithmetic the amendment *derives*
+rather than reads: the retention percentages, the ratio of clustered to unclustered effective N,
+and the comparison between the N an observed correlation needs and the stop rule's floor are
+review findings, not build failures. No figure is restated in this docstring, for the reason the
+module docstring gives. It does not cover figures quoted from anywhere other than this reference,
+and it cannot tell whether a figure is paired with the *right* row -- a crossed pairing passes,
+and one was found by test rather than by this check. Claims about this check elsewhere in the
+repository must not say more than this docstring does.
+"""
+
+AMENDMENT_NOTE_START = "<!-- implementer-note-start -->"
+AMENDMENT_RULINGS_MARKER = "<!-- implementer-note-end -->"
+"""The implementer's note is delimited by these two markers.
+
+Two reasons for delimiting it rather than splitting the file at one point. First, the note
+records every figure it verified, and searching the whole file for a rulings figure would let
+the note's copy satisfy the presence check while the ruling itself had been edited -- the
+figure would be "present" in a sentence that only says it was once checked. Second, the
+digits rule below applies to the note and to nothing else: the author's preamble above it is
+not the implementer's to reformat.
+"""
+
+DIGIT = re.compile(r"\d")
+"""Any digit. The note may not contain one outside the exemptions below."""
+
+NOTE_DIGIT_EXEMPT_LINES = (
+    re.compile(r"^\s*\|"),
+    re.compile(r"^\s*>"),
+)
+"""Whole lines the digits rule does not apply to: table rows, and quoted blocks.
+
+A table row is where figures are *required* to live. A quoted block is another document's
+words -- §5's own text, NOTES.md's own text -- and paraphrasing a frozen document to avoid a
+digit would damage the thing being quoted to satisfy a rule about the thing quoting it. Both
+are structurally obvious to a reader, which is what makes them safe: a figure hidden in prose
+looks like an assertion, and a figure in a table row or a blockquote does not.
+"""
+
+NOTE_DIGIT_EXEMPT_PATTERNS = (
+    re.compile(r"§\d+[a-z]?(\([a-z]\))?"),
+    re.compile(r"\d{4}-\d{2}-\d{2}"),
+    re.compile(r"\b[0-9a-f]{64}\b"),
+    re.compile(r"\bsha256\b"),
+    re.compile(r"\b(Gate|Phase|Ruling|ruling)\s\d[a-z]?(-\d)?\b"),
+    re.compile(r"\bW\d\b"),
+    re.compile(r"\bR\d\b"),
+)
+"""Digit-bearing spans the note may contain, each declared and matched by pattern.
+
+In order: a section mark (§5, §8(c), §11a); an ISO date; a sha256 digest and the word itself; a
+gate, phase or ruling reference (Gate 1, Phase 3b-0, Ruling 2); a workpackage name (W0); a
+human-gate ruling id (R3, as numbered in NOTES.md's "Phase 3b-0 rulings"). Nothing else. These
+are removed from a line before it is tested, so a digit that survives is a figure sitting in
+prose.
+
+Every pattern here must be exercised by the note as written. Two earlier entries -- a
+debt-register id (``S6``, ``E10``) and a JSON Schema draft name -- were removed on review
+because the note contains neither, while ``\b[SEP]\d{1,2}\b`` would have exempted any small
+figure written ``E34``. An exemption that exempts nothing real and something unreal is a
+loophole, not a narrow exception; add one only with a line in the note that needs it.
+"""
+
+
+def _section_rows(reference: list[str], figure: QuotedFigure) -> list[str]:
+    """Return the rows of the figure's section that identify its row.
+
+    Row identity and value are separate patterns on purpose. Counting only the rows that
+    still carry the *value* cannot see a duplicated row: corrupt one copy and the intact one
+    matches exactly once, which reads as healthy. Identifying the row independently makes the
+    duplicate itself the failure, whatever the corrupted copy now says.
+    """
+    rows = []
+    in_section = False
+    for line in reference:
+        if line.startswith("==="):
+            in_section = line.startswith(figure.section)
+            continue
+        if in_section and re.search(figure.row, line):
+            rows.append(line)
+    return rows
+
+
+def _note_region(text: str) -> tuple[str, str] | None:
+    """Return (note, rulings) for an amendment, or None if the markers are not both present."""
+    if AMENDMENT_NOTE_START not in text or AMENDMENT_RULINGS_MARKER not in text:
+        return None
+    after_start = text.split(AMENDMENT_NOTE_START, 1)[1]
+    if AMENDMENT_RULINGS_MARKER not in after_start:
+        return None
+    note, rulings = after_start.split(AMENDMENT_RULINGS_MARKER, 1)
+    return note, rulings
+
+
+def check_note_has_no_figures_in_prose(path: str, note: str, first_line: int) -> list[Hit]:
+    """Fail on any digit in the implementer's note outside a table, a quote or an exemption.
+
+    The rule the human ratified after three review cycles. Each cycle repaired figure-staleness
+    at the sites a reviewer named, and each time an unpinned copy of the same figure survived
+    somewhere else in the same note -- because prose is where a figure can sit without anyone
+    thinking to pin it. Confining figures to table rows **narrows the search space; it does not
+    pin anything** -- pinning is :func:`check_amendment_figures`' job, and a table row with no
+    ``QuotedFigure`` entry is as unchecked as prose ever was.
+
+    The exemptions are deliberately not "numbers that look like references": they are patterns,
+    declared above, and anything they do not match fails. A new kind of reference is a
+    deliberate addition here, not a judgement call at the keyboard.
+
+    **Known ways past this check**, found by adversarial review and recorded rather than
+    silently tolerated. A figure spelled out in words (``short by three``); a prose line that
+    begins with ``|`` or ``>``, since both exemptions are whole-line; text trailing a genuine
+    table row on the same line; a figure written with Unicode superscript digits, which ``\d``
+    does not match; a section mark of any length, since ``§\d+`` accepts ``§18``; and prose
+    placed after the end marker, which leaves the note region altogether. Each is a hole in a
+    floor, not in a ceiling: the rule makes the common accident loud, and none of these is an
+    accident.
+    """
+    hits: list[Hit] = []
+    for number, line in enumerate(note.splitlines(), start=first_line):
+        if any(pattern.search(line) for pattern in NOTE_DIGIT_EXEMPT_LINES):
+            continue
+        residue = line
+        for pattern in NOTE_DIGIT_EXEMPT_PATTERNS:
+            residue = pattern.sub("", residue)
+        if DIGIT.search(residue):
+            hits.append(
+                Hit(
+                    path,
+                    number,
+                    "amendment-note-digits",
+                    f"a digit appears in the implementer's note outside a table row, a quoted "
+                    f"block, or a declared exemption: {residue.strip()!r}. Figures in this "
+                    f"note live in tables; prose references them by tag. Move the figure into "
+                    f"a table and reference its tag, or -- if this is a new kind of reference "
+                    f"rather than a figure -- add a pattern to NOTE_DIGIT_EXEMPT_PATTERNS.",
+                )
+            )
+    return hits
+
+
+NOTE_QUOTATION_SOURCES = ("data/real/DECISION_unit_of_analysis.md", "NOTES.md")
+"""Documents the implementer's note quotes, besides the amendment's own rulings.
+
+The note's blockquotes are exempt from the digits rule, because paraphrasing a frozen document
+to avoid a digit would damage the quotation to satisfy a rule about the text quoting it. That
+exemption is only safe if a blockquote really is a quotation, which is what the check below
+establishes: an unverified exemption is a hole shaped like a rule.
+"""
+
+ELISION = "…"
+"""Marks omitted words inside a quotation. Each side is required to appear, in order."""
+
+
+def _blockquotes(note: str) -> list[tuple[int, str]]:
+    """Return (line number within the note, joined text) for each blockquote block."""
+    blocks: list[tuple[int, str]] = []
+    current: list[str] = []
+    start = 0
+    for number, line in enumerate(note.splitlines(), start=1):
+        if line.lstrip().startswith(">"):
+            if not current:
+                start = number
+            current.append(line.lstrip()[1:].strip())
+        elif current:
+            blocks.append((start, " ".join(current)))
+            current = []
+    if current:
+        blocks.append((start, " ".join(current)))
+    return blocks
+
+
+def _contains_in_order(source: str, fragments: list[str]) -> bool:
+    """Return True when every fragment appears in ``source``, in the order given."""
+    cursor = 0
+    for fragment in fragments:
+        found = source.find(fragment, cursor)
+        if found < 0:
+            return False
+        cursor = found + len(fragment)
+    return True
+
+
+def check_note_quotations_are_verbatim(
+    path: str, note: str, rulings: str, first_line: int
+) -> list[Hit]:
+    """Fail unless every blockquote in the implementer's note is verbatim in a cited source.
+
+    The same discipline ``tools/phase3/run_real.py`` applies to the three pre-registration
+    passages it prints. A quotation that has drifted from its source is worse than a paraphrase,
+    because it still looks like evidence -- and these particular quotations carry the note's
+    conflict findings, which are the part the human gate acts on.
+
+    Whitespace is normalised on both sides, because both wrap; an elision marker splits the
+    quotation into fragments that must appear in one source in order. Nothing else is
+    normalised, so a changed word, digit or emphasis marker fails.
+    """
+    sources = {name: (REPO_ROOT / name).read_text() for name in NOTE_QUOTATION_SOURCES}
+    sources["the amendment's own rulings"] = rulings
+    normalised = {name: " ".join(text.split()) for name, text in sources.items()}
+
+    hits: list[Hit] = []
+    for number, quote in _blockquotes(note):
+        fragments = [" ".join(part.split()) for part in quote.split(ELISION)]
+        fragments = [fragment for fragment in fragments if fragment]
+        if any(_contains_in_order(text, fragments) for text in normalised.values()):
+            continue
+        hits.append(
+            Hit(
+                path,
+                first_line + number - 1,
+                "amendment-note-quotations",
+                f"this blockquote is not verbatim in any of "
+                f"{', '.join(normalised)}: {quote[:80]!r}... A blockquote is exempt from the "
+                f"no-figures-in-prose rule because it is another document's words; if it is "
+                f"not, it is prose wearing a quotation's exemption.",
+            )
+        )
+    return hits
+
+
+def check_amendment_figures() -> list[Hit]:
+    """Check every figure the amendment quotes against the committed reference output."""
+    # Resolved through REPO_ROOT, like every other check in this file. A CWD-relative glob
+    # returns nothing from any other directory, and "nothing to check" would then print a
+    # green OK it has not earned -- the vacuous pass _targets() and the crop manifest check
+    # both refuse by name.
+    expected = REPO_ROOT / RS_POWER_EXPECTED
+    amendment = REPO_ROOT / AMENDMENT_PATH
+    if not amendment.exists():
+        return []
+    amendments = [amendment]  # a list of one, so the loop below reads the same as before
+    if not expected.exists():
+        return [
+            Hit(
+                RS_POWER_EXPECTED,
+                0,
+                "amendment-figures",
+                f"{RS_POWER_EXPECTED} is missing, but {AMENDMENT_PATH} quotes figures from "
+                f"it. Regenerate it with "
+                f"'python -m tools.stats.rs_power > {RS_POWER_EXPECTED}'.",
+            )
+        ]
+
+    reference = expected.read_text().splitlines()
+    hits: list[Hit] = []
+    for amendment in amendments:
+        whole = amendment.read_text()
+        regions = _note_region(whole)
+        if regions is None:
+            hits.append(
+                Hit(
+                    str(amendment.relative_to(REPO_ROOT)),
+                    0,
+                    "amendment-figures",
+                    f"'{AMENDMENT_NOTE_START}' and '{AMENDMENT_RULINGS_MARKER}' must both be "
+                    f"present, in that order: without them the implementer's note cannot be "
+                    f"separated from the rulings, a figure could hide behind the note's own "
+                    f"copy of itself, and the note's no-figures-in-prose rule has no region "
+                    f"to apply to. Restore the markers.",
+                )
+            )
+            continue
+        note, rulings = regions
+        # The note's own line numbers are useless to a reader with the file open, so they are
+        # offset by where the note starts. The start marker's own line is line one of `note`.
+        first_line = whole[: whole.index(AMENDMENT_NOTE_START)].count("\n") + 1
+        relative = str(amendment.relative_to(REPO_ROOT))
+        hits += check_note_has_no_figures_in_prose(relative, note, first_line)
+        hits += check_note_quotations_are_verbatim(relative, note, rulings, first_line)
+        for figure in QUOTED_FIGURES:
+            text = note if figure.region == "note" else rulings
+            occurrences = text.count(figure.in_amendment)
+            if occurrences > 1:
+                hits.append(
+                    Hit(
+                        str(amendment.relative_to(REPO_ROOT)),
+                        0,
+                        "amendment-figures",
+                        f"the {figure.what} figure '{figure.in_amendment}' appears "
+                        f"{occurrences} times in the {figure.region}; this check can only "
+                        f"pin a "
+                        f"figure that appears once. Make the quoted string specific to one "
+                        f"site, or drop the duplicate.",
+                    )
+                )
+            if occurrences == 0:
+                hits.append(
+                    Hit(
+                        str(amendment.relative_to(REPO_ROOT)),
+                        0,
+                        "amendment-figures",
+                        f"the {figure.what} figure '{figure.in_amendment}' is no longer in "
+                        f"the {figure.region} half of this file. Either it was edited "
+                        f"without updating tools/check_claims.py, or it was dropped.",
+                    )
+                )
+            rows = _section_rows(reference, figure)
+            if len(rows) > 1:
+                hits.append(
+                    Hit(
+                        RS_POWER_EXPECTED,
+                        0,
+                        "amendment-figures",
+                        f"{len(rows)} rows under section '{figure.section}' match "
+                        f"/{figure.row}/, the row the {figure.what} figure is read from. A "
+                        f"duplicated row would let a corrupted value hide behind an intact "
+                        f"copy of itself, so this is refused.",
+                    )
+                )
+            elif not rows:
+                hits.append(
+                    Hit(
+                        RS_POWER_EXPECTED,
+                        0,
+                        "amendment-figures",
+                        f"no row matching /{figure.row}/ under section '{figure.section}', "
+                        f"so the {figure.what} cell the amendment quotes "
+                        f"'{figure.in_amendment}' from no longer exists.",
+                    )
+                )
+            elif not re.search(figure.pattern, rows[0]):
+                hits.append(
+                    Hit(
+                        RS_POWER_EXPECTED,
+                        0,
+                        "amendment-figures",
+                        f"the {figure.what} row now reads '{rows[0].strip()}', which does not "
+                        f"match /{figure.pattern}/ -- but the amendment still quotes "
+                        f"'{figure.in_amendment}' from it. Either the value changed, or it "
+                        f"moved to a different column. The amendment is now stale.",
+                    )
+                )
+    return hits
+
+
 def main() -> int:
     """Run every check and report. Returns 0 when clean, 1 on any hit."""
     targets = _targets()
@@ -539,6 +1043,7 @@ def main() -> int:
         + check_numeric(targets)
         + check_arithmetic(targets)
         + check_gate2_integrity()
+        + check_amendment_figures()
     )
     scanned = ", ".join(rel for rel, _, _ in targets)
     if not hits:

@@ -6,3 +6,15 @@ __pycache__/
 .DS_Store
 results/
 .review-sources/
+
+# Phase 3b-0 measurement outputs. `runs/<tag>/` holds one real-data run's result documents,
+# its REPORT.md and its DEBT drafts. They are regenerable from the committed crops by
+# `python -m tools.phase3.run_real`, and a result document is a measurement artifact rather
+# than a record: committing one would put a number in the tree that no CI step re-measures,
+# which is the class of stale claim tools/check_claims.py exists to catch. What survives a
+# run is the DEBT entry the human promotes out of it.
+runs/
+
+# Session working file: the human's task specification for this session, not project
+# content. It describes what to build; the tree records what was built.
+kickoff_3b0.md

@@ -34,6 +34,40 @@ jobs:
       - name: Claims are consistent and not stale
         run: python tools/check_claims.py
 
+      # This step pins the SCRIPT to the REFERENCE FILE: it re-runs tools/stats/rs_power.py
+      # and requires stdout to be byte-identical to the committed
+      # tools/stats/rs_power_expected.txt. It does not read the amendment and makes no claim
+      # about it -- the amendment's figures are checked by check_amendment_figures() in the
+      # step above, which requires each figure the amendment reads out of a CELL of this
+      # output to still be in that cell. Two steps, two halves: this one catches "the numbers
+      # moved", that one catches "the numbers moved and the prose did not". Neither checks
+      # the amendment's rounding or its derived arithmetic -- see that function's docstring
+      # for the exact boundary, and do not describe it as more than it says.
+      #
+      # The script is seeded (20260819) and its random numbers come from numpy's Generator,
+      # whose stream is fixed by the exact numpy pin in requirements.txt. Its ranking comes
+      # from scipy.stats.spearmanr, and scipy is lower-bounded rather than pinned -- so a
+      # scipy release is a way this step can go red without anything in this repository
+      # changing. That is the intended behaviour (a figure whose value depends on the
+      # dependency version should say so out loud), but it is why the failure message to
+      # expect is a one-digit diff, not a corrupted file.
+      #
+      # One thing this step is asserting for the first time and has never been demonstrated:
+      # the committed reference was generated on macOS arm64 and is diffed here on
+      # ubuntu-latest x86_64. Cross-platform byte-identity is expected -- the Generator stream
+      # is platform-independent and every printed value is rounded to 2-3 decimals -- but it
+      # is expected, not shown. The first run of this step is the demonstration. If it fails
+      # on a value rather than on a version bump, that is the finding.
+      #
+      # ~25 s, which is why it sits with the fast checks rather than the sweeps.
+      #
+      # No pipe: `diff` must be the step's exit status. Piping it anywhere would report the
+      # exit code of whatever came last instead.
+      - name: Operating-characteristics table still reproduces
+        run: |
+          python -m tools.stats.rs_power > "${RUNNER_TEMP}/rs_power_actual.txt"
+          diff -u tools/stats/rs_power_expected.txt "${RUNNER_TEMP}/rs_power_actual.txt"
+
       - name: Validate ground truth against schema
         run: |
           python - <<'EOF'
@@ -94,3 +128,149 @@ jobs:
       # reproducing.
       - name: Recorded dev-split figures still reproduce
         run: python -m evals.sweep --check
+
+  # DEBT E1: "nobody has ever followed the documented install-and-run path on another
+  # machine". This job is that path, on a runner that has never seen this repository.
+  #
+  # It is deliberately a SEPARATE job rather than a step in `checks`. `checks` installs with
+  # `pip install -r requirements.txt` into the runner's system Python plus `pip install ruff
+  # pytest jsonschema` on top -- a working environment assembled by CI, which is not what a
+  # reader of README.md types. E1 is about the README path specifically, so this job runs the
+  # README's commands and nothing else, in a fresh workspace, and does not inherit `checks`'s
+  # environment.
+  #
+  # The one substitution: README.md's run example says `path/to/blot.tif`, a placeholder. It is
+  # replaced with a committed dev-split image -- the same one README.md's "What a result
+  # document looks like" section says its example output came from. Every other command is
+  # copied character for character from README.md's "Running it locally". If a better install
+  # path exists, it is not run here: substituting one would test the better path and leave the
+  # documented one unverified, which is the whole of E1.
+  install-path:
+    runs-on: ubuntu-latest
+    steps:
+      # A fresh clone into an empty workspace: no cached venv, no prior artifacts.
+      - uses: actions/checkout@v4
+
+      # README.md's "Running it locally" opens with "Python 3.11." -- a stated prerequisite,
+      # so supplying it is following the README rather than substituting for it. Nothing here
+      # installs a dependency; that is the next step's job, from requirements.txt.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # The job's install-and-run step is a transcription of README.md, and a transcription
+      # goes stale the first time either side is edited -- silently, because the job would
+      # keep passing on the old commands while DEBT E1's evidence line claims the
+      # *documented* path is verified. This step is the coupling, and it reads BOTH sides
+      # from disk: README.md's first two fenced blocks under "Running it locally", and this
+      # workflow's own "Install and run exactly as README.md states" step. Neither side is
+      # restated here as a literal, so drift in either one fails.
+      #
+      # Comparison is by EXACT SEQUENCE, not "are they still in there somewhere". A subset
+      # test would pass an *added* line -- `pip install -e .` alongside the existing install,
+      # say, which is the likeliest future edit and would leave this job running a path the
+      # README no longer documents.
+      #
+      # Scope, stated so it is not over-read: the first two blocks are the install and the
+      # run. Later blocks in the same README section (the housekeeping example) are not part
+      # of the path E1 is about and are not compared. The one permitted difference is
+      # README's `path/to/blot.tif` placeholder, which the job replaces with a committed dev
+      # image; the check normalises exactly that one substitution and nothing else.
+      - name: README.md and this job still give the same commands
+        run: |
+          python - <<'EOF'
+          import re
+          import sys
+          from pathlib import Path
+
+          PLACEHOLDER = "path/to/blot.tif"
+          IMAGE = "data/images/dev_02.png"
+
+          # Anchored to the YAML step line -- six spaces, "- name:", newline. A bare
+          # substring would match this very script, which quotes the step's name.
+          STEP = "\n      - name: Install and run exactly as README.md states\n"
+          workflow = Path(".github/workflows/ci.yml").read_text()
+          if workflow.count(STEP) != 1:
+              sys.exit(
+                  f"FAIL: found {workflow.count(STEP)} steps named 'Install and run exactly "
+                  f"as README.md states'; expected exactly 1."
+              )
+          block = workflow.split(STEP, 1)[1].split("run: |", 1)[1]
+          job = []
+          for raw in block.splitlines()[1:]:
+              if raw.strip() and not raw.startswith(" " * 10):
+                  break
+              if raw.strip():
+                  job.append(raw.strip())
+
+          readme = Path("README.md").read_text()
+          start = readme.index("## Running it locally")
+          section = readme[start : readme.index("\n## ", start + 1)]
+          blocks = re.findall(r"```bash\n(.*?)```", section, re.DOTALL)[:2]
+          if len(blocks) != 2:
+              sys.exit(
+                  f"FAIL: expected 2 bash blocks under 'Running it locally', found "
+                  f"{len(blocks)}. README.md's structure changed; update this job."
+              )
+          documented = [
+              line.strip().replace(PLACEHOLDER, IMAGE)
+              for block in blocks
+              for line in block.strip().splitlines()
+              if line.strip()
+          ]
+
+          if job != documented:
+              print("FAIL: this job and README.md no longer give the same commands.")
+              print(f"  README.md says: {documented}")
+              print(f"  this job runs:  {job}")
+              sys.exit(
+                  "Update whichever side is wrong. If the job is changed to a better install "
+                  "path without the README, DEBT E1's evidence stops being about the "
+                  "documented path; if the README is changed without the job, the job is "
+                  "verifying commands nobody is told to type."
+              )
+          print(f"OK: this job runs exactly README.md's {len(job)} documented commands")
+          EOF
+
+      # Copied from README.md. The venv must be created, activated, installed into and run
+      # from within ONE step: `activate` sets environment variables, and each `run:` block is a
+      # new shell, so splitting these would silently run the pipeline outside the venv the
+      # README told the reader to make -- and would then be testing the runner's environment
+      # rather than the documented one. A non-zero exit from any line fails the step: the
+      # shell runs under `bash -e`, so the "assert exit 0" is the step's own success.
+      - name: Install and run exactly as README.md states
+        run: |
+          python -m venv .venv && . .venv/bin/activate
+          pip install -r requirements.txt
+          python -m pipeline run data/images/dev_02.png --config configs/default.yaml --out results/
+
+      # The result document is the deliverable of that path, so the path is not verified until
+      # the document is. Validated against the committed schema with the jsonschema that
+      # requirements.txt installed into the venv -- installing a validator here would be
+      # testing an environment the README does not describe.
+      - name: Result validates against schema/result.schema.json
+        run: |
+          . .venv/bin/activate
+          python - <<'EOF'
+          import json
+          import sys
+          from pathlib import Path
+
+          from jsonschema import Draft202012Validator
+
+          result_path = Path("results/dev_02.json")
+          if not result_path.exists():
+              sys.exit(
+                  f"FAIL: {result_path} was not written. The README install-and-run path "
+                  f"exited 0 without producing the result document it documents."
+              )
+
+          schema = json.loads(Path("schema/result.schema.json").read_text())
+          errors = list(Draft202012Validator(schema).iter_errors(json.loads(result_path.read_text())))
+          if errors:
+              print(f"FAIL {result_path}")
+              for error in errors:
+                  print(f"  - {'/'.join(map(str, error.path)) or '<root>'}: {error.message}")
+              sys.exit(1)
+          print(f"OK   {result_path} validates against schema/result.schema.json")
+          EOF
