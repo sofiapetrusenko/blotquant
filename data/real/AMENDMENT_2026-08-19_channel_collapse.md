@@ -1,6 +1,12 @@
 # Amendment 2026-08-19 — §7 channel collapse on the Gate 2 crop set
 
-**Status: DRAFT — not in force until ratified by the human gate.**
+**Status: RATIFIED 2026-08-20 by the human gate. In force.**
+
+**Ratification, executed 2026-08-20.** Status flipped, sha256 recomputed, and the digest pinned in
+`tools/check_claims.py` (`CHANNEL_COLLAPSE_SHA256`) so that an edit to this ratified amendment
+fails the build the way an edit to the pre-registration does. The path is unchanged. This ran as
+its own commit after the phase PR merged rather than inside it; see NOTES.md, "Phase 3b-0
+rulings".
 
 Amends `data/real/DECISION_unit_of_analysis.md` §7 (pseudocoloured blots). It does not touch
 §7's rule; it decides how that rule applies to the 19 crops Gate 2 approved, now that the
@@ -9,9 +15,10 @@ discipline as `AMENDMENT_2026-08-19_delta_and_power.md`: the pre-registration it
 byte-identical to the file Gate 2 froze, and `tools/check_claims.py` fails the build if it
 does not.
 
-**Ruling recorded now; implementation deferred.** This file is the decision. The loader change
-it implies is next-phase work and is deliberately not in this branch — see "What this does not
-do" below.
+**Ruling in force; implementation still deferred.** This file is the decision, and ratifying it
+does not implement it. The loader change it implies is next-phase work, tracked as `DEBT.md` S19 —
+see "What this does not do" below. Until that lands, the 12 crops this amendment admits still do
+not load.
 
 ## Why this was needed
 

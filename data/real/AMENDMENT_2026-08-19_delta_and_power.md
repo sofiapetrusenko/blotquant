@@ -1,22 +1,25 @@
 # Amendment 2026-08-19 — mean |Δ| and Spearman discriminating power
 
-**Status: DRAFT — not in force until ratified by the human gate.**
+**Status: RATIFIED 2026-08-20 by the human gate. In force.**
 
-**Ratification procedure — one commit, all four steps.** The figure pins in
+**Ratification procedure — executed 2026-08-20, all four steps in one commit.** The figure pins in
 `tools/check_claims.py` reach this document *by its exact path*, and the check returns quietly
 when that path is absent. That is acceptable while this file is a draft and unacceptable once it
-is in force, so ratification is a defined sequence rather than an edit:
+is in force, so ratification was a defined sequence rather than an edit:
 
-1. flip the Status line above from DRAFT to ratified, dated;
-2. recompute this file's sha256;
+1. flip the Status line above from DRAFT to ratified, dated — **done**;
+2. recompute this file's sha256 — **done**;
 3. pin that digest in `tools/check_claims.py` beside the pre-registration's, so an edit to a
-   ratified amendment fails the build the way an edit to the pre-registration does;
-4. if the file is renamed in the process, update `AMENDMENT_PATH` in the same commit.
+   ratified amendment fails the build the way an edit to the pre-registration does — **done**,
+   `AMENDMENT_SHA256`;
+4. if the file is renamed in the process, update `AMENDMENT_PATH` in the same commit — **not
+   applicable**, the path is unchanged.
 
-Steps two through four are not optional and not deferrable to a follow-up: a ratified amendment
+Steps two through four were not optional and not deferrable to a follow-up: a ratified amendment
 whose digest is unpinned, or whose path no longer resolves, has its figure pins silently retired
 while CI stays green — which is the failure this document's own verification note exists to
-prevent.
+prevent. **This procedure was in fact skipped when the phase PR merged**, and run afterwards as
+its own commit; the gap and its closure are recorded in NOTES.md under "Phase 3b-0 rulings".
 
 Amends `data/real/DECISION_unit_of_analysis.md`, and **supersedes part of it**. An earlier
 draft of this header read "Supplements, does not supersede: no section of the

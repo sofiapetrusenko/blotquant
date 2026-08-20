@@ -3127,6 +3127,42 @@ not edited to match.
 > ratified deviation entry in DEBT.md - not in this branch. This branch ships the ruling, not the
 > code.
 
+**Ratification happened after the merge, as its own commit.** R8's sequence — flip DRAFT,
+recompute sha256, pin the digest — was skipped when the phase PR merged, so both amendments landed
+on `main` still marked DRAFT and unpinned; it was executed on 2026-08-20 as a separate commit
+rather than retrofitted into the PR, because rewriting a merged commit would falsify the record of
+what was actually reviewed and merged, and because the gap is itself the evidence for why step
+three exists. `check_claims.py::check_ratified_amendments` now pins both, so the same step cannot
+be skipped silently again.
+
+**A fix was reported done, both mechanical checks passed, and the edit was not in the file.**
+Cycle four's sixth finding — this module's docstring claiming "three checks" when it ran five — was
+applied by a script that raised on a *later* replacement in the same batch and never reached its
+write, discarding every edit in it. The implementer reported the item fixed; `ruff` and
+`check_claims.py` both passed; the file was unchanged. It surfaced only when the docstring was read
+again during the post-merge ratification, two commits later.
+
+This is the first recorded case where the agent's report **and** the mechanical checks affirmed an
+absent change at the same time, and the reason is worth stating plainly: **these checks validate
+claims about numbers, not the presence of an edit.** `check_claims.py` compares assertions against
+each other and against artefacts; it has no notion of "a change that was supposed to happen". A
+green build is evidence about what is in the tree, never about what was intended to be. The
+remaining seven fixes from cycles four to seven were audited by grep against the merged tree and
+are all present; this was the only casualty.
+
+**Two tooling rules, from defects in the same pass.**
+
+- **Never `git checkout -- <file>` a file holding unstaged work.** Used to revert a mutation test,
+  it silently discarded the pins and the docstring fix in the same file, neither of which was
+  staged. Restore a mutated file from a backup copy taken before the mutation; `git checkout`
+  cannot distinguish the mutation from the work.
+- **Never read `$?` after a command substitution or a pipe.** `echo "… $(basename $f): $?"` reports
+  `basename`'s status, not the checked command's, and a mutation test built that way showed a false
+  pass. This is a **recurrence** of the 2026-08-18 incident recorded under "Recovery of the 8
+  uncommitted Gate 2 sources", where `0 of 8 verified` was read as success because `$?` after a
+  pipe returned the last command in the pipeline rather than the tool. Same defect, new shell
+  construct: put the checked command on its own line and `echo $?` on the next.
+
 **What each ruling changed.** R1 and R4 are ratifications: nothing in the tree changes except that
 the amendment's verification note now records the ruling beside the finding it settles, and the
 finding is not deleted — a stop gate that was crossed stays crossed in the record even when
