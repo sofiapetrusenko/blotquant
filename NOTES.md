@@ -2981,6 +2981,177 @@ artefact fails the build rather than being measured. Each failure mode was falsi
 trusted: a re-saved crop, a missing crop, a re-encoded parent and an edited pre-registration all
 produce the expected failure.
 
+## Phase 3b-0 — first real-data run, and the operating-characteristics instrument
+
+Three workpackages, none of which changes a shipped parameter. **Gate 1 ruling 3 governs the
+whole phase**: a real blot may falsify, never select, so every finding below is recorded rather
+than fixed.
+
+### The first real-data run measured nothing, and that is the finding
+
+`tools/phase3/run_real.py` ran the shipped pipeline over all 19 Gate 2 crops with
+`configs/default.yaml`. **All 19 were refused at load**: the crops are 3-channel PNGs, and the
+loader quantifies single-channel images only. The refusal is correct behaviour — §7 of the
+pre-registration forbids choosing an RGB→grey conversion, and the loader's message says so — but
+it means no lane, band or QC flag has ever been produced from a real blot.
+
+What §11 of the pre-registration verified was **colour content** (a per-pixel colour fraction);
+what the loader tests is **channel count**. A mechanical check that does not test the property
+its consumer tests certifies nothing about the consumer, and that gap is why Gate 2 closed on a
+set the measurement instrument cannot read. Ten of the 19 crops have bit-identical RGB planes and
+could be re-exported losslessly; nine cannot, so re-export is not a mechanical fix. Recorded as
+drafts, not fixed.
+
+### The report deliberately does not print a number called N
+
+The kickoff asked for "N: how many normalized ratios survive the pre-registered ≥15 px band
+criterion". The tool reports an **upper bound and a list of blockers** instead, because three
+terms of §2's definition cannot be evaluated from a result document:
+
+- **"usable lane" is undefined.** §2 counts ratios per usable lane; nothing in the
+  pre-registration says what makes a lane usable. The report uses "lanes carrying ≥1 qualifying
+  band" and labels it in the output as an implementer's stand-in, not a quotation.
+- **Lane width is unquantified.** §10 says the height minimum "and lane-width reality" decide
+  together; no lane-width threshold exists anywhere in the repository.
+- **The reference band is undesignated.** Every §2 ratio is taken against a designated reference,
+  and nothing in `data/real/` records which band that is in a form a tool can read.
+
+Printing a number under those conditions would publish an implementer's definition wearing a
+pre-registration's name — the fitting Gate 1 ruling 3 exists to prevent. The deviation from the
+kickoff's wording is deliberate and is stated inside the report itself.
+
+Two consequences worth carrying forward. `crop_log.csv` has no `blot_id` column, though §9
+provides for one, and five parent figures contribute more than one crop — so **the set is between
+13 and 19 blots and the record does not say which**, and neither form of the stopping rule can be
+evaluated against it. And `panel_note` names a reference *protein*; the CLI needs a *band id*.
+Bridging those means deciding from the image which band is the loading control, which §2 forbids
+in terms. The tool therefore detects and reports a designation column but does **not** pass it to
+`--reference-band`: building that plumbing against a designation nothing supplies would be
+speculative measurement code.
+
+### Quotations are verified against the file they are attributed to
+
+`run_real.py` quotes §2, §8(c) and §10 and checks, on every run, that each passage is actually in
+`DECISION_unit_of_analysis.md` — raising if not. This was added after review and immediately
+earned itself: it caught that the §2 "quotation" had silently joined two separate bullets into one
+paragraph. A constant that was copied correctly once is not a quotation; a constant re-checked
+against its source is.
+
+### Operating characteristics are measured and pinned on both sides
+
+`tools/stats/rs_power.py` answers the Gate 1 deferred discriminating-power question by simulation
+(seed 20260819, ~25 s), and its full output is committed as `rs_power_expected.txt`. Two
+mechanisms hold the amendment that quotes it:
+
+1. a CI step re-runs the script and requires byte-identical stdout — this catches "the numbers
+   moved";
+2. `check_amendment_figures()` in `tools/check_claims.py` requires every figure the amendment
+   quotes to still be in the **row and column** it was read from — this catches "the numbers moved
+   and the prose did not".
+
+**The rule that closed the class.** Three consecutive review cycles fixed figure-staleness at the
+sites a reviewer happened to name, and each time an unpinned copy of the same figure survived one
+paragraph, one function or one document away — the failure `check_claims.py` was built for,
+recurring inside the mechanism built to stop it. Named-site fixing was the wrong instrument: it
+scales with a reviewer's attention. The human's ruling replaced it with a structural rule —
+**figures in the implementer's note live in tables only, and prose references them by tag** — and
+made the rule mechanical rather than editorial: `check_note_has_no_figures_in_prose()` fails the
+build on any digit in that note outside a table row, a quoted block, or one of a short list of
+declared patterns. A figure can then only be somewhere finite and enumerable, so "is every figure
+pinned?" becomes a question about a list instead of about how carefully someone read.
+
+Both halves were arrived at by being wrong first. A file-wide substring search passed a value that
+had moved between cells; a row-anchored search passed two values transposed within one row; and
+counting only rows that still carried the value could not see a duplicated row hiding a corrupted
+one. Row identity and cell value are therefore separate patterns, and a duplicated row is itself a
+failure. The check does **not** verify rounding or the arithmetic the amendment derives, and its
+docstring says so — a mechanism described as stronger than it is, is worse than no mechanism.
+
+The amendment's rulings were **not edited**. Where the committed output does not support a claim,
+or a ruling conflicts with a frozen section of the pre-registration, it is reported to the human
+gate in a labelled implementer's note. Three figures were corrected against the output, and one
+claim about what CI checks was narrowed.
+
+### E1: the documented install path, half-verified
+
+The README's "Running it locally" block was run command for command from a clean clone into a new
+virtualenv, on macOS, and needed no correction. The clean-container half is the new `install-path`
+CI job, which has not run yet. Its first step reads both README.md's blocks and the job's own step
+from disk and requires them to be the same sequence — not a subset test, which would pass an
+*added* README command and leave the job verifying a path nobody is told to type.
+
+### Phase 3b-0 rulings
+
+The human gate's rulings closing this phase, recorded verbatim as given on 2026-08-19. Where a
+ruling changed a document, the change is described after the quotation; the quotation itself is
+not edited to match.
+
+> **R1.** W0's continuation past the §1 stop condition is ratified retroactively: §1's testability
+> claim is confirmed by the computation (testable at N=30), so no substantive conflict exists. The
+> breach of the stop gate itself stays recorded, not erased.
+>
+> **R2.** The amendment's header is corrected: it explicitly SUPERSEDES §5 (stop rule) and §3's
+> consequence (cluster bootstrap at small N) by dated amendment. "Supplements, does not supersede"
+> is withdrawn as inaccurate.
+>
+> **R3.** Pre-run revision per NOTES.md's own authorization: the descriptive-only cutoff moves from
+> N<15 to N<18, aligned with the measured discriminability bound. Ruling B's stated reason is
+> rewritten: post-hoc revision is the fitting to prevent; pre-run revision on measured power is the
+> mechanism NOTES.md prescribes. The N=15-17 verdict gap is thereby closed.
+>
+> **R4.** The amendment's corrected figures are accepted as authoritative from the committed script
+> output.
+>
+> **R5.** §7 ruling on the 19-crop set, recorded as a dated amendment to
+> DECISION_unit_of_analysis.md §7 (same file discipline as the other amendment; ruling recorded
+> now, implementation deferred to the next phase):
+>
+> a) Channel collapse is permitted ONLY where the crop is byte-identical across channels (10 crops)
+> or max per-pixel divergence <= 2 DN (2 crops: GSDME, GAPDH). The 2 DN bound was named before the
+> divergence table was measured (chat record, 2026-08-19); it is not revised now that the values are
+> visible, and the amendment says so explicitly.
+>
+> b) Collapse rule: take the green channel; record in provenance roi_source-style:
+> channel_collapse: {method: green, max_divergence_dn}.
+>
+> c) The six crops at 3-43 DN are EXCLUDED with disclosure: plausibly codec noise, not provably so,
+> and admitting them would require moving a pre-named bound after seeing the data.
+>
+> d) E-TIGAR (255 DN) is rejected under §7 as it stands - real colour content, no amendment needed.
+>
+> e) Consequence stated in the amendment: the measurable set is 12 of 19 crops; if N after the >=15
+> px criterion falls below the floor, the pre-registered descriptive-only outcome applies. The
+> boundary was not moved to avoid that outcome.
+>
+> f) Pipeline implementation of the collapse (loader change + tests) is NEXT-phase work under a
+> ratified deviation entry in DEBT.md - not in this branch. This branch ships the ruling, not the
+> code.
+
+**What each ruling changed.** R1 and R4 are ratifications: nothing in the tree changes except that
+the amendment's verification note now records the ruling beside the finding it settles, and the
+finding is not deleted — a stop gate that was crossed stays crossed in the record even when
+crossing it turns out to have been harmless. R2 rewrites the amendment's header: "supplements, does
+not supersede" is withdrawn, and the two sections it does supersede are named there. R3 rewrites
+Ruling B's headline on the stop rule and its stated reason for not revising the thresholds, and
+moves the descriptive-only cutoff; the verdict gap the note reported is closed by that move rather
+than by disclosure. R5 lands as a second dated amendment file beside the first,
+`data/real/AMENDMENT_2026-08-19_channel_collapse.md`, and as a new register entry for the
+implementation it defers.
+
+**One deviation this creates, stated plainly.** The kickoff's standing constraint was no writes to
+`data/real/` except the single amendment file it named. R5 directs a second file into that
+directory. The human's ruling is later and more specific than the kickoff, so the second file is
+written; the constraint is not silently dropped, it is superseded on the record here.
+
+### Where this phase's record lives
+
+`runs/` is gitignored, so the run's `REPORT.md`, its DEBT drafts and the install log are **not in
+the tree**. That is deliberate — a result document committed without a CI step to re-measure it is
+the class of stale claim `check_claims.py` exists to catch — but it has a cost: statements in
+DEBT.md may not cite figures that only exist there, and E1's evidence paragraph was rewritten to
+respect that.
+
+
 ## Open items
 
 Unresolved questions carried out of a phase. Not decisions — each one names the phase

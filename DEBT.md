@@ -36,6 +36,46 @@ data to close it now exists in the tree, and the measurement that would close it
 and E6 likewise still stand. The one thing that did change mechanically: `tools/check_claims.py`
 verifies every crop and committed parent against its recorded digest on each CI run.
 
+**Phase 3b-0 is in progress** on branch `phase-3b0-realdata`. **One entry is updated and one is
+added, and no others.** Updated: **E1** — its *What*, *Why it matters*, *Evidence*, *Closes* and
+*Status* all change; its heading does not, because the path still has not been followed on another
+machine. E1 stays `Open`. Added: **S19**, the channel collapse the 2026-08-19 §7 amendment rules
+and this branch deliberately does not implement. The summary arithmetic moves with S19 and with
+nothing else — the register goes from 31 entries to 32 and from 16 `Open` to 17, the
+Accepted-or-Permanent count is unchanged, and the E1 summary bullet and the "Where the weight
+actually sits" clause were updated alongside.
+
+*Review cap.* PLAN.md caps the reviewer loop at five cycles. Phase 3b-0 ran **a sixth and a
+seventh**, both on explicit human instruction and both **scoped to verifying named fixes rather
+than re-reviewing the diff** — the sixth to the three fixes cycle five raised, the seventh to the
+implementer's-note rewrite and the four blocking items the sixth raised. The Phase 4a precedent
+above is the same shape and the same justification: the code had converged and the record had not,
+so an extra cycle aimed at a narrower surface is recorded as a deviation from the cap rather than
+treated as an exception within it. What the narrowing costs is the same — neither cycle re-assures
+behaviour outside its scope.
+
+Two things about how the loop ended, because "zero REQUIRED" is the usual criterion and is not
+what happened. The seventh cycle returned eight REQUIRED findings, all mechanical; they were fixed
+**without an eighth cycle**, so those fixes are covered by their own tests and by mutation testing
+but were not read by a fresh reviewer. And the loop was closed **by human ruling on a different
+criterion**: that cycles six and seven had degraded the escaping-defect class — a figure fixed
+where a reviewer named it while an unpinned copy survived elsewhere — from invisible to small and
+self-catching. That is a judgement about the *class* of remaining defect rather than about their
+count, and it is recorded here because a reader comparing this phase against PLAN.md's loop
+protocol will otherwise find a cap exceeded and no criterion met.
+
+What Phase 3b-0 did **not** do to this register: the first real-data run happened, and **all 19
+crops were refused at load as 3-channel PNGs**, so no *existing* entry that waits on a real
+measurement moved and none was re-characterised. S19 is new rather than a re-characterisation: it
+records work the human's §7 ruling created, not a re-reading of an entry already here. S1 is unchanged for the same reason as before — the data exists, the
+measurement still does not. The run did produce findings that bear on S6 (no reference-band
+designation is recorded in a form any tool can read) and on E10 (still no real-image timing
+anchor), and **neither entry is edited here, including its Status**: under Gate 1 ruling 3 what a
+real image reveals is recorded, not fixed, so those findings sit as **drafts** for the human to
+promote, and promoting them is what would move S6 and E10. Severity vocabulary is unchanged too —
+`Open`, `Accepted` and `Permanent` remain the only formal severities, and no entry has been given
+another.
+
 **Phase 4a is in progress** on branch `phase-4a-api`, under the human ruling of 2026-08-17 that
 runs Phase 4 before the remainder of Phase 3 (P2 entry 7). **Four entries have been updated for it,
 and only four:** P2 gains entries (7) and (8); **P1 is widened from numeric claims to claims
@@ -75,19 +115,22 @@ Three entries carry most of the consequence:
 - **S2** — `total_protein`, one of the four things PLAN.md claims distinguishes this tool from
   ImageJ, currently measures worse than the mode it is meant to improve on, and produces a negative
   denominator on one lane. The differentiating claim is not yet supported by its own measurement.
-- **E1** — nobody has ever followed the documented install-and-run path on another machine, so
-  "it works" is untested outside one working tree.
+- **E1** — until Phase 3b-0 nobody had ever followed the documented install-and-run path
+  outside the author's working tree. It has now been run from a clean clone into a fresh
+  virtualenv on macOS and needed no correction; the clean-container half is wired as the
+  `install-path` CI job and has not run yet.
 
-The rest divides three ways. **Fifteen of the 31 entries are `Accepted` or `Permanent`; 16 are
-`Open`.** (29 through Phase 3; Phase 4a added S18 and E10, both `Open`.) Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
+The rest divides three ways. **Fifteen of the 32 entries are `Accepted` or `Permanent`; 17 are
+`Open`.** (29 through Phase 3; Phase 4a added S18 and E10, and Phase 3b-0 added S19, all `Open`.) Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
 (S2, S5, S7, S8, S10, S12), **two were already Accepted before it** (S4, S16), and **one stays
 Open** (S3). The remaining seven Accepted-or-Permanent entries (S9, S11, S13, E5, E9, P1, P2) were settled before Gate 1. Accepted does not mean fixed: S5's QC flag
 still scores F1 0.000 and S10's still under-warns on a third of the low-dynamic-range images; the
 gate decided to keep and disclose them rather than change them, and both keep their measurements.
 **Two are one-line fixes** (E4's empty GitHub metadata, P3's branch naming). **The remaining `Open`
 entries are real and not minor**: S6's housekeeping figure rests on an oracle no real blot supplies
-and Gate 1 explicitly did not settle it; S3's two parameters have no gold-set evidence and, after Gate 1 rulings 3 and 5, no route to any measurement against ground truth; S17 is a silent drop against a stated project rule; E1 means nobody
-has run this outside one working tree; and S2's comparability gap is open — now owned by
+and Gate 1 explicitly did not settle it; S3's two parameters have no gold-set evidence and, after Gate 1 rulings 3 and 5, no route to any measurement against ground truth; S17 is a silent drop against a stated project rule; E1 is now half-answered — the documented
+path runs from a clean clone on one platform, and has still never run on a machine that is not
+the author's; and S2's comparability gap is open — now owned by
 Phase 3, conditional on a common subset existing — even though the denominator question above it is
 ruled. The project is not broken; it is measured, and this file is
 the list of what the measurements do not yet cover.
@@ -619,27 +662,88 @@ data.
 
 ---
 
+### S19 — The ruled channel collapse is not implemented, so the 12 admissible real crops still do not load
+
+**What.** The 2026-08-19 §7 amendment (`data/real/AMENDMENT_2026-08-19_channel_collapse.md`) rules
+that a crop may be collapsed to its green channel where its channels are byte-identical or diverge
+by at most 2 DN, and that the operation is recorded in provenance as
+`channel_collapse: {method: green, max_divergence_dn}`. `pipeline/load.py` implements none of it.
+It raises `UnsupportedImageError` on any 3-channel input, which is every one of the 19 Gate 2
+crops, including the 12 the amendment admits.
+
+**Why it matters.** The ruling is the whole output of the Phase 3b-0 real-data run, and until the
+loader implements it the real-blot comparison cannot begin: no lane, band or QC flag has ever been
+produced from a real image. This entry is what stands between a decision and a measurement.
+
+**Why it is not fixed here — ratified deviation.** Gate 1 ruling 3: what a real image reveals may
+falsify a decision, never select a parameter or a code path *inside the phase that saw it*. The
+divergence measurement and the ruling both happened in Phase 3b-0, so implementing the loader
+change in the same branch would be exactly the move the ruling forbids, however mechanical the
+change looks. The human ratified the deferral on 2026-08-19 (NOTES.md, "Phase 3b-0 rulings", R5f):
+**this branch ships the ruling, the next ships the code.**
+
+**Evidence.** `pipeline/load.py` raises for any `array.ndim != 2`. The refusal of all 19 crops is
+in the Phase 3b-0 run report; the per-crop divergence measurement the ruling rests on is
+reproducible read-only from the committed crops.
+
+**Closes.** A next-phase loader change implementing the collapse, its numeric tests (a
+byte-identical crop must collapse to a bit-identical plane; a crop at the bound must collapse and
+record its divergence; a crop above the bound must still raise), and the provenance field in
+`schema/result.schema.json`. Not a config change: the bound and the method are fixed by the
+amendment, not selected.
+
+**Status.** Open.
+
 ## Engineering
 
 ### E1 — The documented install-and-run path has never been followed on another machine
 
-**What.** Every run has happened in the author's working tree, in one pre-existing virtualenv.
-There has been no clone-install-run on a fresh machine.
+**What.** Until 2026-08-19 every run had happened in the author's working tree, in one
+pre-existing virtualenv, with no clone-install-run anywhere. Phase 3b-0 ran it from a clean clone
+into a new virtualenv — on the author's own machine. So the *clone* and the *virtualenv* are no
+longer assumptions; the *machine* still is.
 
-**Why it matters.** The README's setup instructions are unverified in the one condition that
-matters. Missing system libraries, a stale lockfile assumption, a path that only resolves locally,
-or a dependency that fails to build on another platform would all be invisible.
+**Why it matters.** The README's setup instructions were unverified in the one condition that
+matters, and are still unverified in half of it. A stale lockfile assumption or a path that only
+resolves inside the author's tree would now be caught. Missing system libraries, and a dependency
+that fails to build on another platform or another OS, would still be invisible. Most of what `pip`
+resolved that day was platform-independent (`py3-none-any`) and only a minority were macOS arm64
+builds, so even for those few the run says nothing about how they build elsewhere; and the resolve
+drew partly on a warm pip cache. No count is quoted here on purpose: the only record of it is the
+session's install log, which is not in the tree, and a figure in this register whose evidence is
+not in the tree is the stale claim `tools/check_claims.py` exists to catch.
 
-**Evidence.** None — that is the point. The README instructions were verified by an agent inside
-the same environment they were written in, which does not test the thing at issue. Note that CI
-does install from `requirements.txt` on a fresh Ubuntu runner and runs lint, schema validation,
-tests and the eval, so the dependency install is not wholly untested; what is untested is the
-documented *user* path end to end, including on macOS.
+**Evidence.** Originally none — that was the point. The README instructions were verified by an
+agent inside the same environment they were written in, which does not test the thing at issue.
+Note that CI does install from `requirements.txt` on a fresh Ubuntu runner and runs lint, schema
+validation, tests and the eval, so the dependency install is not wholly untested; what was
+untested is the documented *user* path end to end, including on macOS.
 
-**Closes.** A clean-clone smoke test, ideally in CI on a fresh runner, following README.md's
-instructions literally and analysing one image.
+Phase 3b-0 closed half of that. The README's "Running it locally" block was run command for
+command against a **clean `git clone` into an empty directory with a newly created virtualenv**,
+on macOS (Darwin 25.4.0 arm64, Python 3.11.0), at commit `dbe1ee8`: `python -m venv .venv && .
+.venv/bin/activate`, then `pip install -r requirements.txt`, then `python -m pipeline run
+data/images/dev_02.png --config configs/default.yaml --out results/` — README's own run line with
+its `path/to/blot.tif` placeholder replaced by a committed dev image, the only substitution made.
+All three exited 0, the run produced `results/dev_02.json`, and that document validates against
+`schema/result.schema.json`. So the documented path is no longer unverified on the author's
+platform, and it needed no correction — the README as written works from a clean clone.
 
-**Status.** Open.
+**Closes.** The `install-path` job in `.github/workflows/ci.yml`, added in Phase 3b-0. It runs
+the same three README commands on a fresh `ubuntu-latest` runner that has never seen this
+repository, in its own job so it inherits nothing from `checks`'s assembled environment, and then
+validates the result document against `schema/result.schema.json`. That job supplies the half the
+macOS run cannot: a clean container, and a second platform. Its first step reads both README.md's
+"Running it locally" blocks and the job's own install-and-run step from disk and requires them to
+be the same sequence of commands, so drift on either side fails the job rather than quietly
+leaving it testing a path nobody is told to type. A subset test would not do: it would pass an
+*added* README command, which is the likeliest future edit.
+
+**Status.** Open — narrowed, not closed. The clean-clone half is verified on macOS as above; the
+clean-container half is wired but **has not run yet**, because nothing has been pushed. The
+workflow triggers on `push` and `pull_request`, so `install-path` first executes on the first push
+of this branch — before any merge, and its result is available to the review of this change rather
+than only after it. Move to Accepted when it passes, citing the job by name.
 
 ### E2 — No packaging, no version tag, no release
 
