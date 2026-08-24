@@ -119,9 +119,18 @@ Three entries carry most of the consequence:
   install-and-run path outside the author's working tree. It has now been run from a clean clone on
   macOS *and* on a clean `ubuntu-latest` container by the `install-path` CI job, which passed in
   32 s on this branch's first push. The README needed no correction.
+- ~~**S19**~~ — **closed in Phase 3b-1.** The ratified channel-collapse rule was a decision with no
+  code behind it, and until it had some, no lane, band or QC flag had ever been produced from a
+  real image. `pipeline/load.py` now implements it, and the 12 crops the amendment admits load
+  while the 7 it refuses still raise. What this does *not* close is the measurement: the run and
+  the first real N are blocked on the human confirming the reference designations and the blot
+  identities, which is DEBT D4 and D5, not this entry.
 
-The rest divides three ways. **Sixteen of the 32 entries are `Accepted` or `Permanent`; 16 are
-`Open`.** (29 through Phase 3; Phase 4a added S18 and E10, and Phase 3b-0 added S19, all `Open`.) Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
+The rest divides three ways. **Seventeen of the 33 entries are `Accepted` or `Permanent`; 16 are
+`Open`.** (29 through Phase 3; Phase 4a added S18 and E10 and Phase 3b-0 added S19, all `Open` when
+added. Phase 3b-1 closed S19 and added S20, promoted from a Phase 3b-0 draft by human ruling once
+the collapse made it observable — so the **settled** count moved 16 → 17 as S19 became Accepted,
+and the **open** count is the one that stayed at 16, S19 leaving it as S20 joined it.) Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
 (S2, S5, S7, S8, S10, S12), **two were already Accepted before it** (S4, S16), and **one stays
 Open** (S3). The remaining seven Accepted-or-Permanent entries (S9, S11, S13, E5, E9, P1, P2) were settled before Gate 1. Accepted does not mean fixed: S5's QC flag
 still scores F1 0.000 and S10's still under-warns on a third of the low-dynamic-range images; the
@@ -521,23 +530,56 @@ scope and in README.md's limitations.
 
 **Status.** Permanent.
 
-### S14 — Two modelling assumptions are unexamined: signal polarity and lane tilt
+### S14 — Two modelling assumptions are unexamined: signal polarity and lane tilt — *polarity is examined and ruled as of 2026-08-24; tilt is not*
 
 **What.** Detection assumes bright-signal-on-dark, and profiles are projected along image axes, so
-a tilted lane smears its column profile. Neither has been examined as a scope decision.
+a tilted lane smears its column profile. Neither has been examined as a scope decision. (**Since
+2026-08-24 that last sentence is half history:** polarity has been examined against real data and
+ruled a declared caller input, per R4 below. Tilt is unchanged and still unruled. The sentence
+stands because it describes the state the entry was opened in.)
 
 **Why it matters.** A transmissive or film workflow inverts polarity and would silently misbehave.
 Tilt is a real gel-doc condition that the projection does not model.
 
 **Evidence.** Both raised as open questions in the Phase 1 PR body and unanswered. The gold set
-includes a `tilted` lane-geometry level, and tilted cells cap at IoU 0.7475; there is no
-measurement of polarity because no inverted image exists to test.
+includes a `tilted` lane-geometry level, and tilted cells cap at IoU 0.7475. The polarity half no
+longer lacks a measurement: **the sentence that stood here — "there is no measurement of polarity
+because no inverted image exists to test" — is superseded as of Phase 3b-1.** The twelve real
+crops are that test, and they run the assumption the other way.
 
-**Closes.** Unscheduled. Polarity was raised as "config parameter later, or out of scope?" and tilt
-as "sheared projection
-= Phase 3, or out of scope?"; neither has been ruled.
+**Real-data evidence, promoted from Phase 3b-1 draft D13 by human ruling R3 of 2026-08-24.** All
+twelve measurable crops are white-ground published figures whose bands are *darker* than their
+background: every median is 249 or higher against a full scale of 255, and 37.7%-54.5% of each
+image sits at exactly full scale. Detection finds maxima and defines clipping as pixels at full
+scale, so the extreme it tests for is the paper. 286 of 430 bands carry `saturated`, exactly 286
+contain a full-scale pixel inside their own ROI, and the median `saturated` band has 39% of its
+rectangle at full scale; the extreme a genuinely saturated *dark* band would produce, a pixel at
+0, occurs in 8 of 430 bands. `low_dynamic_range` reads the same fact from the other end and fires
+on 7 of 12. Figures from `runs/3b1/QC_DIAGNOSTIC.md`, a read-only diagnostic. Promoted into this
+entry rather than opened as a new one because this entry predicted the gap, and two entries would
+let a reader close either alone.
 
-**Status.** Open, unruled.
+**The consequence for the flags, stated so it is not mistaken for a corpus finding.** `saturated`
+here means "this rectangle contains white background" -- a true statement about the pixels and a
+false statement about the measurement. Human ruling R1 of 2026-08-24 records it as a **measurement
+artefact**; the reading that published figures are saturated as a class is rejected on this
+evidence and does not enter the record. Downstream: Phase 3b-1's ratio bound is **withdrawn as
+evidence about N** (R2), so N is *unknown* rather than small and no stop-rule branch is selected.
+
+**Ruled, on the polarity half only (R4, 2026-08-24).** Polarity becomes a **declared caller
+input**, never inferred: an image whose polarity is not declared is refused rather than guessed.
+Auto-detection was considered and forbidden -- a light-versus-dark ground test would be a
+threshold chosen against real data, which Gate 1 ruling 3 rules out. This puts polarity in the
+same class as the reference designation (S6) and blot identity (ruling G2): where the pipeline
+cannot know something, it refuses and says so rather than inferring it from the data it is about
+to measure. **Nothing is implemented under this ruling in Phase 3b-1**, by the ruling's own terms.
+
+**Closes.** The polarity half closes when the declared input is implemented and the real crops are
+re-run through it -- a loader and CLI change, unscheduled, and not Phase 3b-1's to make. The tilt
+half remains **unruled**: it was raised as "sheared projection = Phase 3, or out of scope?" and
+still has no ruling and no real-data evidence.
+
+**Status.** Open, ruled on polarity 2026-08-24, unimplemented; unruled on tilt.
 
 ### S15 — A weak-band floor is shipped without confirmation that it suits real blots
 
@@ -661,14 +703,14 @@ data.
 
 ---
 
-### S19 — The ruled channel collapse is not implemented, so the 12 admissible real crops still do not load
+### S19 — ~~The ruled channel collapse is not implemented, so the 12 admissible real crops still do not load~~ — CLOSED in Phase 3b-1, implemented and tested on both sides of the bound
 
 **What.** The 2026-08-19 §7 amendment (`data/real/AMENDMENT_2026-08-19_channel_collapse.md`) rules
 that a crop may be collapsed to its green channel where its channels are byte-identical or diverge
 by at most 2 DN, and that the operation is recorded in provenance as
-`channel_collapse: {method: green, max_divergence_dn}`. `pipeline/load.py` implements none of it.
-It raises `UnsupportedImageError` on any 3-channel input, which is every one of the 19 Gate 2
-crops, including the 12 the amendment admits.
+`channel_collapse: {method: green, max_divergence_dn}`. Until Phase 3b-1 `pipeline/load.py`
+implemented none of it: it raised `UnsupportedImageError` on any 3-channel input, which was every
+one of the 19 Gate 2 crops, including the 12 the amendment admits.
 
 **Why it matters.** The ruling is the whole output of the Phase 3b-0 real-data run, and until the
 loader implements it the real-blot comparison cannot begin: no lane, band or QC flag has ever been
@@ -681,17 +723,75 @@ change in the same branch would be exactly the move the ruling forbids, however 
 change looks. The human ratified the deferral on 2026-08-19 (NOTES.md, "Phase 3b-0 rulings", R5f):
 **this branch ships the ruling, the next ships the code.**
 
-**Evidence.** `pipeline/load.py` raises for any `array.ndim != 2`. The refusal of all 19 crops is
-in the Phase 3b-0 run report; the per-crop divergence measurement the ruling rests on is
-reproducible read-only from the committed crops.
+**Evidence.** Originally, `pipeline/load.py` raised for any `array.ndim != 2`, and the refusal of
+all 19 crops is in the Phase 3b-0 run report. The per-crop divergence measurement the ruling rests
+on is reproducible read-only from the committed crops, and is now re-measured on every test run
+rather than being asserted anywhere — see below.
 
-**Closes.** A next-phase loader change implementing the collapse, its numeric tests (a
-byte-identical crop must collapse to a bit-identical plane; a crop at the bound must collapse and
-record its divergence; a crop above the bound must still raise), and the provenance field in
-`schema/result.schema.json`. Not a config change: the bound and the method are fixed by the
-amendment, not selected.
+**Closed by, in Phase 3b-1.** `pipeline/load.py` gained `channel_divergence_dn` and
+`_collapse_channels`: a 3-channel 8-bit input at or below the bound is collapsed to its green plane
+and the operation is recorded as `source.channel_collapse`, and anything above it still raises
+`UnsupportedImageError` with a message naming both the measured divergence and the bound.
+`schema/result.schema.json` carries the field and is bumped to 1.3.0. The bound and the method are
+module constants rather than config keys, as this entry required: **not a config change — the bound
+and the method are fixed by the amendment, not selected.**
+
+The tests are the substance of the closure, and the refusing side is tested as hard as the admitting
+side. `tests/test_pipeline_load.py` covers both sides of the boundary on synthetic fixtures —
+0, 1 and 2 DN collapse; 3, 43 and 255 DN raise; the collapsed plane is green specifically and is
+bit-identical to the source's green plane; the divergence measurement does not wrap.
+`tests/test_real_channel_collapse.py` re-measures all 19 committed crops on every run and pins the
+disposition: the 12 the amendment admits load, and the 6 between 3 DN and 43 DN plus
+`PMC13135388_Figure4__E-TIGAR` at 255 DN are still refused.
+
+**Status.** Accepted — closed by implementation, 2026-08-20. The entry stays in the register with
+its history: the deferral it records was a ratified Gate 1 ruling 3 decision, and a closed entry
+that is deleted takes the reason for the deferral with it.
+
+### S20 — `lossy_format` is structurally unreachable on the real-blot corpus, so §6's expected finding cannot be evidenced by the flag
+
+**What.** §6 of the frozen pre-registration records, before download: *"Every candidate figure in
+the Gate 2 shortlist is distributed as JPEG. The `lossy_format` QC flag is therefore expected to
+fire on the entire real-blot set."* §9 then requires every crop exported *"as PNG (lossless
+container; the source pixels are already JPEG and are not re-encoded into further loss)"*. The flag
+is raised from the container the pipeline is handed — `pipeline/load.py` sets
+`LOSSY_FORMATS = frozenset({JPEG})` and determines the format from the file's own signature bytes —
+and every crop is a PNG. The flag therefore fires on none of them, and normalization's
+`reference_band_lossy_format` warning, which is raised from the same fact, fires on none either.
+
+**Why it matters.** §6 names the flag as the mechanism that would evidence its finding — that
+published figures do not preserve the acquisition format the measurement should be made on. The
+mechanism does not connect. The JPEG loss is real and is upstream of the file the tool sees, and the
+tool's honest answer about the PNG in front of it is "not lossy". **A reader of a future report
+would see zero `lossy_format` flags across the whole real set and conclude the opposite of what §6
+recorded.** The provenance chain does hold the truth — `crop_log.csv` records a `.jpg` parent for
+every crop — but nothing carries it into a result document.
+
+**Promoted from draft, and what changed to make it promotable.** This was draft D7 of the Phase
+3b-0 run, where it was explicitly *predicted, not observed*: no crop loaded, so no result document
+existed to show a missing flag. Phase 3b-1's channel collapse (S19) made it observable, and it was
+observed. Human ruling R3 of 2026-08-20 promoted it on that basis.
+
+**Evidence.** Measured over the committed crops and re-measured on every test run rather than
+asserted here: `tests/test_real_channel_collapse.py::test_lossy_format_fires_on_no_crop_the_collapse_admits`
+pins that 12 crops load, that `lossy_format` is false on all 12, and that all 12 report
+`image_format` `png`; `::test_every_approved_crop_has_a_jpeg_parent` pins that all 19 rows of
+`crop_log.csv` name a `.jpg` parent. `DECISION_unit_of_analysis.md` §6 and §9.
+
+**Why it is not fixed — Gate 1 ruling 3.** The only code change that would make the flag fire is one
+that has the loader consult the crop log, the parent's format, or the filename. That is
+special-casing the real set and letting a real image select a code path: the two things Gate 1
+ruling 3 and PLAN.md's anti-circularity invariant forbid outright. Human ruling R3 states it
+directly — *"no code fix under Gate 1 ruling 3"*.
+
+**Closes.** A human decision between two legitimate routes, neither of which this phase may take:
+a provenance field carrying the *parent's* format into the result document, which is a pipeline
+change and Phase 4b at the earliest; or reporting §6's finding from `crop_log.csv` in prose and
+recording that the flag is not its evidence. Note that the second route closes the entry without
+changing any code.
 
 **Status.** Open.
+
 
 ## Engineering
 
@@ -1116,7 +1216,7 @@ defeated two standing rules.
 
 ### P2 — Ratified deviations from PLAN.md
 
-**What.** **Eight numbered entries below record ten deviations** from PLAN.md, made and recorded rather than folded in silently. The two counts differ because entry (7) is a single human ruling covering three deviations; the entries are the unit of record, the deviations the unit of substance, and a reader comparing this figure against a PR body that counts deviations should know which is which.
+**What.** **Eleven numbered entries below record thirteen deviations** from PLAN.md, made and recorded rather than folded in silently. The two counts differ because entry (7) is a single human ruling covering three deviations; the entries are the unit of record, the deviations the unit of substance, and a reader comparing this figure against a PR body that counts deviations should know which is which. Phase 4a left this at **eight numbered entries** recording ten deviations, and the Phase 4a PR body states that transition; Phase 3b-1 added entries (9), (10) and (11). The historical figure and the running total are two quantities and `tools/check_claims.py` now pins them as two — it previously pinned them as one, which made them agree only until the next phase added an entry.
 
 **Why it matters.** PLAN.md is the contract. A deviation that is not recorded becomes invisible
 drift; a deviation that is recorded stays auditable.
@@ -1143,7 +1243,21 @@ favour of the numeric nudge fields PLAN.md names in the same sentence, dragging 
 work; and **deploy moves from Phase 5 into Phase 4b**, because a phase that is "done" with nothing
 to open is not done. (1)–(4) are recorded in NOTES.md; (5) is in NOTES.md's
 Phase 2 deviations list and (6) in the Phase 2 PR body; (7) is in NOTES.md's Phase 4a section and
-in the Phase 4a PR body. (8) **The Phase 4a review ran a sixth cycle, one past PLAN.md's hard cap of five**, narrowed to claim surfaces only — NOTES.md, DEBT.md, the PR body, docstrings that justify behaviour, and the OpenAPI descriptions — with behaviour explicitly out of scope. Human ruling of 2026-08-18. The reason is measured rather than general: of the 17 REQUIRED items the five capped cycles raised, nine were wrong claims rather than wrong behaviour, and **cycles 4 and 5 raised no new behaviour defect requiring a code change in this phase** — the code had converged and the record had not. The premise is stated in that hedged form deliberately: cycle 4's item 3 did surface a behavioural issue, the silent overwrite of a stored result when identical bytes are posted under different filenames, which it reported as a false docstring claim and which is recorded as E10 item 3 and deferred to Phase 4b rather than fixed here. What justifies the extension is that no cycle-4 or cycle-5 item required a code change, not that neither cycle saw anything behavioural. The cap exists to stop grinding on converged code, which is why a cycle aimed at a different surface is recorded as a deviation from it rather than as an exception within it. Recorded in NOTES.md, "The review cap was extended to a sixth cycle, narrowed to the record", which also states what the narrowing costs: it cannot re-assure behaviour. **Evidence for the premise is now in the tree**: `docs/review/phase-4a/` holds all six cycles' verdicts verbatim, and cycles 4 and 5 classify every one of their six items as a claim defect in their own words — "not in the measurement path" and "both in claim-text rather than behaviour" — both having reviewed the full diff with behaviour in scope.
+in the Phase 4a PR body. (8) **The Phase 4a review ran a sixth cycle, one past PLAN.md's hard cap of five**, narrowed to claim surfaces only — NOTES.md, DEBT.md, the PR body, docstrings that justify behaviour, and the OpenAPI descriptions — with behaviour explicitly out of scope. Human ruling of 2026-08-18. The reason is measured rather than general: of the 17 REQUIRED items the five capped cycles raised, nine were wrong claims rather than wrong behaviour, and **cycles 4 and 5 raised no new behaviour defect requiring a code change in this phase** — the code had converged and the record had not. The premise is stated in that hedged form deliberately: cycle 4's item 3 did surface a behavioural issue, the silent overwrite of a stored result when identical bytes are posted under different filenames, which it reported as a false docstring claim and which is recorded as E10 item 3 and deferred to Phase 4b rather than fixed here. What justifies the extension is that no cycle-4 or cycle-5 item required a code change, not that neither cycle saw anything behavioural. The cap exists to stop grinding on converged code, which is why a cycle aimed at a different surface is recorded as a deviation from it rather than as an exception within it. Recorded in NOTES.md, "The review cap was extended to a sixth cycle, narrowed to the record", which also states what the narrowing costs: it cannot re-assure behaviour. **Evidence for the premise is now in the tree**: `docs/review/phase-4a/` holds all six cycles' verdicts verbatim, and cycles 4 and 5 classify every one of their six items as a claim defect in their own words — "not in the measurement path" and "both in claim-text rather than behaviour" — both having reviewed the full diff with behaviour in scope. (9) **The CLI gained `--reference-designation-source`**
+(`pipeline/__main__.py`), which PLAN.md's Phase 1 CLI contract does not have — the same class of
+deviation as (5) and recorded for the same reason. It records *where* a reference designation came
+from, verbatim into `normalization.reference_designation_source`, and is never parsed: the
+designation table it describes (`data/real/designations.csv`) carries rows a human has not yet
+confirmed, and a result measured against a proposal must not be indistinguishable from one measured
+against a caption. Refused when no reference is designated. Phase 3b-1; NOTES.md's Phase 3b-1
+section. (10) **`pipeline/load.py` now accepts 3-channel input**, where PLAN.md's "Scope (MVP)"
+says "Single-channel grayscale gel-doc images". The authority is the ratified 2026-08-19 §7
+amendment, but that amendment amends `DECISION_unit_of_analysis.md` and **not** PLAN.md, so the
+widening of the MVP scope is a PLAN.md deviation in its own right and is recorded here rather than
+inherited. It is as narrow as the ruling: 8-bit only, 3 channels only, at or below a bound fixed
+before the data, collapsing to a plane the amendment names. Everything else multi-channel still
+raises, and the refusal messages still cite PLAN.md's MVP scope because that is still the rule they
+enforce. Phase 3b-1; DEBT S19 and NOTES.md's Phase 3b-1 section. (11) **The Phase 3b-1 review ran a sixth and a seventh cycle, two past PLAN.md's hard cap of five, and replaced the eighth with a human prose review plus a mechanical snapshot diff.** The sixth was narrowed by human ruling R1 of 2026-08-20 to the two claim-accuracy items cycle 5 raised and the surfaces they touch, explicitly *"per the Phase 4a precedent"* — which is entry (8), and the two extensions are the same deviation made twice rather than one licence covering both, so this is recorded as its own entry. The narrowing costs what it cost in Phase 4a, restated rather than assumed: **a cycle aimed at claim surfaces cannot re-assure behaviour.** The authority is the human's ruling; the sixth cycle was in the event *not* confined to claim surfaces, because the same ruling placed the gate-application work in its scope, and it returned behavioural findings against that new code. **Where this entry is weaker than entry (8), stated rather than left to be noticed:** entry (8) was upgraded in its own phase precisely so its premise stopped being an assertion — *"Evidence for the premise is now in the tree: `docs/review/phase-4a/` holds all six cycles' verdicts verbatim"*. An earlier draft of this entry quoted counts of what each cycle raised and how many ways a mutation failed the build; those counts had no artefact behind them and were **withdrawn** rather than left standing, since a figure in this register whose evidence is not in the tree is the stale claim `tools/check_claims.py` exists to catch. **That hole is now closed the way entry (8) closed its own.** By human ruling of 2026-08-24 this phase's cycle verdicts are committed as Phase 4a's were: `docs/review/phase-3b1/` holds all seven cycles' verdicts verbatim, extracted from the session log and byte-compared against it, and the numbers below are read from those files. **37 REQUIRED across the seven Phase 3b-1 cycles; 18 in the five Phase 3b-1 cycles inside PLAN.md's cap**, no cycle returning zero. Three of the four withdrawn claims are restored on that evidence: cycle 5's verdict reads *"Two items, both claim-accuracy, neither behavioural"*, which is both the "cycle 5" claim and the "wrong sentences" claim in the reviewer's own words; and every one of the seven cycles carries a mutation table in which no mutation survived. **The fourth stays withdrawn, and not only for want of an artefact.** It read that a mutation "failed the build from four independent directions in cycle 4 and six in cycle 5"; the artefact shows both figures belong to cycle 5 — *"four independent layers"* and *"six places at once"* are its verdict's words — while cycle 4's table gives its bound-widening mutation as 9 failed and characterises no directions. It was misattributed as well as unevidenced, so restoring it verbatim would have reintroduced an error, and the per-cycle failure counts in `docs/review/phase-3b1/README.md` stand in its place. The seventh cycle was authorised on the same basis, narrowed to confirming the sixth's twelve findings; it returned seven, **four of them introduced by those very fixes**. On that measurement the human ruled that an eighth agent cycle would not converge and replaced it: the prose fixes are reviewed by the human directly, and the confinement half is replaced by a record-edit freeze enforced by snapshot digests over NOTES.md, DEBT.md, README.md and `docs/`. The reasoning is in NOTES.md, "Process finding — behavioural review converged, prose record edits did not". This is the deviation's third form and is recorded here rather than as a fourth entry, because it is one review, extended twice and then stopped. Recorded in NOTES.md, "Phase 3b-1 human gate — rulings and confirmations".
 
 **Why (7) is not a licence to reorder further.** The reordering is about *when* Phase 4 runs, not
 about whether Phase 3 happens. Gate 2 is untouched, no real blot has been read, and the entries this

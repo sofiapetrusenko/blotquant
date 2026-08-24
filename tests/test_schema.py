@@ -17,6 +17,7 @@ from jsonschema import Draft202012Validator
 
 from pipeline import RESULT_SCHEMA_VERSION
 from pipeline.detect import ROI_SOURCES
+from pipeline.load import CHANNEL_COLLAPSE_MAX_DIVERGENCE_DN, CHANNEL_COLLAPSE_METHOD
 from synth import GROUND_TRUTH_SCHEMA_VERSION
 
 GROUND_TRUTH_SCHEMA = Path("schema/ground_truth.schema.json")
@@ -161,6 +162,59 @@ def test_result_schema_and_detection_declare_the_same_roi_source_vocabulary(
     enum = schema["properties"]["lanes"]["items"]["properties"]["roi_source"]["enum"]
 
     assert tuple(enum) == ROI_SOURCES
+
+
+def test_result_schema_and_loader_declare_the_same_collapse_rule(repo_root: Path) -> None:
+    """The ruled method and the ruled bound are written twice and must stay one rule.
+
+    ``schema/result.schema.json`` restates ``pipeline.load.CHANNEL_COLLAPSE_METHOD`` as a
+    ``const`` and ``pipeline.load.CHANNEL_COLLAPSE_MAX_DIVERGENCE_DN`` as a ``maximum``. Both
+    come from the same ratified amendment, but nothing in the files ties them together, so an
+    edit to either constant would leave the contract declaring one bound while the loader
+    enforces another -- the writer and the contract disagreeing about what the ruling says.
+    Same spirit as the ``roi_source`` and ``schema_version`` pins above.
+    """
+    schema = json.loads((repo_root / RESULT_SCHEMA).read_text(encoding="utf-8"))
+    collapse = schema["properties"]["source"]["properties"]["channel_collapse"]
+
+    assert collapse["properties"]["method"]["const"] == CHANNEL_COLLAPSE_METHOD
+    assert collapse["properties"]["max_divergence_dn"]["maximum"] == (
+        CHANNEL_COLLAPSE_MAX_DIVERGENCE_DN
+    )
+
+
+def test_result_schema_rejects_a_collapse_method_the_amendment_does_not_permit(
+    result_validator: Draft202012Validator,
+) -> None:
+    """The ``const`` is the point of the field: a plane the ruling did not name is not a variant."""
+    document = valid_result()
+    document["source"]["channel_collapse"] = {"method": "red", "max_divergence_dn": 0}
+
+    assert list(result_validator.iter_errors(document))
+
+
+def test_result_schema_rejects_a_collapse_above_the_ruled_bound(
+    result_validator: Draft202012Validator,
+) -> None:
+    """A document claiming a collapse above the bound is not one this pipeline can have written."""
+    document = valid_result()
+    over = CHANNEL_COLLAPSE_MAX_DIVERGENCE_DN + 1
+    document["source"]["channel_collapse"] = {"method": "green", "max_divergence_dn": over}
+
+    assert list(result_validator.iter_errors(document))
+
+
+def test_result_schema_accepts_a_collapse_at_the_bound(
+    result_validator: Draft202012Validator,
+) -> None:
+    """The admitting side, so the two rejections above are not passing for the wrong reason."""
+    document = valid_result()
+    document["source"]["channel_collapse"] = {
+        "method": CHANNEL_COLLAPSE_METHOD,
+        "max_divergence_dn": CHANNEL_COLLAPSE_MAX_DIVERGENCE_DN,
+    }
+
+    assert not list(result_validator.iter_errors(document))
 
 
 def test_result_schema_rejects_another_schema_version(

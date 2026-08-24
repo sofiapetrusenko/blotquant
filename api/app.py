@@ -67,8 +67,11 @@ Analyse one uploaded image and return the result document with its display deriv
 
 Processing is synchronous: the pipeline runs inside this request and the finished result
 comes back in the response. The `result_id` is content-addressed over the image bytes, the
-config digest, the reference band ids and the supplied lane ROIs, so re-posting the
-identical request returns the same id.
+config digest, the reference band ids, the supplied lane ROIs and the reference-designation
+source, so re-posting the identical request returns the same id — and changing `lane_roi` or
+`reference_band_id` changes it, because both are inputs to it. The designation source is the
+one input this API does not expose: it is always absent here, so it is constant across every
+request and never the reason two ids differ.
 
 **What is reproducible under that id, and what is not.** Everything the analysis measured:
 every ROI, every intensity, every ratio, every QC flag, and `source.sha256`. Two fields are
@@ -113,8 +116,9 @@ returns: the stored result document and its display derivative.
 
 **Which analysis you get back.** The stored entry is the most recent analysis written under
 that id, not necessarily the first. `result_id` is content-addressed over the image bytes,
-the config digest, the reference band ids and the supplied lane ROIs -- but not over
-`source.path`, which names the per-request temporary file the upload was read from. So two
+the config digest, the reference band ids, the supplied lane ROIs and the
+reference-designation source -- but not over `source.path`, which names the per-request
+temporary file the upload was read from. So two
 posts of identical bytes under different filenames share an id, produce documents that
 differ in `source.path` and `provenance.created_at`, and the later one replaces the earlier.
 Everything the analysis measured is identical across them; see `POST /analyze` for the full
@@ -312,7 +316,17 @@ def create_app(*, storage_root: Path, config_dir: Path) -> FastAPI:
 
     @app.post("/analyze", description=ANALYZE_DESCRIPTION, summary="Analyse one image")
     def analyze(
-        image: Annotated[UploadFile, File(description="8/16-bit grayscale TIFF, PNG or JPEG")],
+        image: Annotated[
+            UploadFile,
+            File(
+                description=(
+                    "8/16-bit grayscale TIFF, PNG or JPEG. An 8-bit 3-channel image whose "
+                    "channels diverge by at most 2 DN is collapsed to its green channel and "
+                    "the collapse is recorded in the result's source block; anything else "
+                    "multi-channel is refused with 415"
+                )
+            ),
+        ],
         config: Annotated[
             str, Form(description="name of a parameter set in configs/, e.g. 'default'")
         ],

@@ -55,7 +55,7 @@ SCANNED = (
     "DEBT.md",
     "README.md",
     "docs/pr/*.md",
-    "docs/review/phase-4a/README.md",
+    "docs/review/*/README.md",
     "data/real/README.md",
     "data/real/AMENDMENT_*.md",
     "tools/gate2/README.md",
@@ -74,14 +74,16 @@ failure -- see the blindness guard in :func:`check_numeric` -- which is what cau
 file's own misplacement on its first CI run.
 """
 
-VERBATIM_GLOB = "docs/review/phase-4a/cycle-*.md"
+VERBATIM_GLOB = "docs/review/*/cycle-*.md"
 """Files scanned for numbers but **exempt from the retracted-phrase check**.
 
 These are byte-for-byte extracts of reviewer verdicts from the session logs. They contain
 retracted wording *because that is what the reviewers wrote*, and editing them to satisfy a
 checker would destroy the only thing they are for. The exemption is narrow and deliberate:
 they are still read by the numeric checks, where they are a source of truth rather than a
-claim. ``docs/review/phase-4a/README.md`` is a claim about them and is **not** exempt.
+claim. Each phase's ``docs/review/<phase>/README.md`` is a claim *about* them and is **not**
+exempt. Globbed over phases rather than named per phase, for the same reason ``docs/pr/*.md``
+is: a later phase's review record is covered by adding its files, not by editing this list.
 """
 
 ALLOW_MARKER = "claims-check: allow-retracted"
@@ -172,6 +174,19 @@ class Quantity:
     name: str
     patterns: tuple[str, ...]
     note: str = ""
+    point_in_time: bool = False
+    """Whether this quantity is a measurement that legitimately changes between records.
+
+    A verbatim extract under :data:`VERBATIM_GLOB` is a *dated* record: the reviewer wrote
+    ``786 passed`` because that is what the suite measured on that day. For a stable claim --
+    a pinned bound, a fixed count -- that is a source of truth and disagreement is a defect,
+    which is why extracts are read by :func:`check_numeric` at all. For a moving total it is
+    not: seven cycles of one phase report seven different suite sizes, all of them correct
+    when written, and treating them as competing claims about today would make committing a
+    review record impossible. So a ``point_in_time`` quantity is read from live documents
+    only. This is the same distinction the P2 entry counts already draw between a frozen
+    historical delta and a running total, applied to the record rather than to the register.
+    """
     _compiled: tuple[re.Pattern[str], ...] = field(default=(), compare=False, repr=False)
 
     def compiled(self) -> tuple[re.Pattern[str], ...]:
@@ -189,6 +204,7 @@ QUANTITIES: tuple[Quantity, ...] = (
             r"(\d{3}) on the unmerged",
         ),
         "pytest on phase-4a-api",
+        point_in_time=True,
     ),
     Quantity(
         "test count on main",
@@ -199,6 +215,7 @@ QUANTITIES: tuple[Quantity, ...] = (
             r"(\d{3}) on a `main` worktree",
         ),
         "pytest on main",
+        point_in_time=True,
     ),
     Quantity(
         "REQUIRED items across cycles 1-5",
@@ -211,22 +228,57 @@ QUANTITIES: tuple[Quantity, ...] = (
         ),
         "the capped cycles only; cycle 6+ are counted separately",
     ),
+    # Phase 3b-1's cycle counts. Pinned as their own quantities rather than folded into the
+    # Phase 4a ones above: "REQUIRED items across cycles 1-5" is Phase 4a's 17, and a second
+    # phase's capped-cycle total is a different quantity that happens to be counted the same
+    # way. Both sites -- docs/review/phase-3b1/README.md and DEBT.md P2 entry (11) -- read
+    # from docs/review/phase-3b1/cycle-*.md, which is committed, so these numbers have an
+    # artefact behind them. That is why entry (11)'s withdrawn figures could be restored.
     Quantity(
-        "numbered P2 entries",
-        (
-            r"\*\*(\w+) numbered entries below record",
-            r"six → \*\*(\w+) numbered entries\*\*",
-            r"goes six → \*\*(\w+) numbered entries\*\*",
-        ),
-        "entries, not deviations",
+        "REQUIRED across all seven Phase 3b-1 cycles",
+        (r"(\d+) REQUIRED across the seven Phase 3b-1 cycles",),
+        "all seven, cap extensions included",
     ),
     Quantity(
-        "deviations recorded in P2",
+        "REQUIRED in the Phase 3b-1 cycles inside the cap",
+        (r"(\d+) in the five Phase 3b-1 cycles inside",),
+        "cycles 1-5 only; cycles 6 and 7 are the extensions",
+    ),
+    Quantity(
+        "numbered P2 entries, current",
+        (r"\*\*(\w+) numbered entries below record",),
+        "entries, not deviations. The running total, which every phase that adds one moves",
+        point_in_time=True,
+    ),
+    Quantity(
+        "deviations recorded in P2, current",
+        (r"numbered entries below record (\w+) deviations",),
+        "deviations, not entries. The running total",
+        point_in_time=True,
+    ),
+    # The Phase 4a PR body states what *that phase* did to P2 -- "goes six -> eight numbered
+    # entries, recording six -> ten deviations" -- which was true then and stays true. It was
+    # originally pinned to the same quantity as DEBT.md's running total, which made the two
+    # agree only until the next phase added an entry; Phase 3b-1 added two and the check fired
+    # on a document that had not changed and was not wrong. A frozen historical delta and a
+    # moving total are two quantities, so they are pinned as two. Both stay pinned -- the
+    # alternative considered and rejected was retiring the PR-body patterns, which would have
+    # left an unchecked number in the tree, the exact thing this file exists to prevent.
+    Quantity(
+        "numbered P2 entries as of Phase 4a",
         (
-            r"numbered entries below record (\w+) deviations",
-            r"recording six → (\w+) deviations",
+            r"goes six → \*\*(\w+) numbered entries\*\*",
+            r"Phase 4a left this at \*\*(\w+) numbered entries\*\*",
         ),
-        "deviations, not entries",
+        "historical: the count Phase 4a left behind, not the running total",
+    ),
+    Quantity(
+        "deviations recorded in P2 as of Phase 4a",
+        (
+            r"recording six → (\w+) deviations",
+            r"left this at \*\*\w+ numbered entries\*\* recording (\w+) deviations",
+        ),
+        "historical: the count Phase 4a left behind, not the running total",
     ),
     Quantity(
         "committed Gate 2 source figures",
@@ -346,7 +398,9 @@ def check_numeric(targets: list[tuple[str, list[str], bool]]) -> list[Hit]:
     for quantity in QUANTITIES:
         patterns = quantity.compiled()
         found: list[tuple[str, int, int, str]] = []
-        for rel, lines, _ in targets:
+        for rel, lines, verbatim in targets:
+            if verbatim and quantity.point_in_time:
+                continue
             for number, line in enumerate(lines, 1):
                 for pattern in patterns:
                     for match in pattern.finditer(line):
@@ -408,6 +462,7 @@ def check_arithmetic(targets: list[tuple[str, list[str], bool]]) -> list[Hit]:
                             f"{match.group(0)!r} is wrong: {s} + {e} + {p} = {s + e + p}")
                     )
     hits.extend(_check_register_composition())
+    hits.extend(_check_p2_composition())
     return hits
 
 
@@ -452,6 +507,96 @@ def _check_register_composition() -> list[Hit]:
         hits.append(Hit("DEBT.md", line, "arithmetic",
                         f"the register says {stated_settled} Accepted-or-Permanent; "
                         f"{actual_total} entries minus {actual_open} Open is {actual_settled}"))
+    return hits
+
+
+P2_COMPOSITION = re.compile(
+    r"\*\*(\w+) numbered entries below record (\w+) deviations\*\*"
+)
+P2_SECTION = re.compile(r"^### P2 — .*?(?=^### |\Z)", re.M | re.S)
+P2_EVIDENCE = re.compile(r"\*\*Evidence\.\*\*(.*?)(?=\n\n\*\*(?:Why|Status)\b)", re.S)
+"""P2's Evidence paragraph, which is where the numbered entries live.
+
+Terminated on the next *paragraph* opener rather than on any line beginning ``**``: the entries
+themselves open with bold runs (``(8) **The Phase 4a review ...``) and several wrap onto a line
+that starts with one, so a looser terminator truncates the paragraph mid-entry and reports a
+short sequence.
+"""
+P2_MARKER = re.compile(r"\((\d+)\)")
+
+P2_EXTRA_DEVIATIONS = 2
+"""How far P2's deviation count runs ahead of its entry count, and why.
+
+Entry (7) is a single human ruling covering three deviations, so it contributes one entry and
+three deviations -- two more deviations than entries. P2's own text states this. If a later
+phase records another multi-deviation entry, this constant moves *deliberately*, in the same
+commit as the prose, which is the point of pinning it rather than leaving the difference to be
+re-derived by a reader.
+"""
+
+
+def _check_p2_composition() -> list[Hit]:
+    """Check P2's stated entry and deviation counts against the entry markers it actually has.
+
+    P2's running total was previously kept honest only by agreeing with the Phase 4a PR body,
+    which stated what *that phase* left behind. Those are two different quantities, and they
+    agreed only until the next phase added an entry -- so the pin was really a countdown to a
+    false positive, and it fired in Phase 3b-1 on a document that had not changed. Splitting
+    them fixed the conflation but left the running total asserted at a single site, and a
+    single-site quantity is not checked at all. This counts the entries instead, which is
+    stronger than either arrangement: the tally is measured from the register rather than
+    compared against another sentence that could be stale in the same way.
+
+    Entries are numbered ``(1)``, ``(2)``, ... inside P2's Evidence paragraph and are referred
+    back to by the same markers later in it, so it is the order of *first* occurrence that is
+    checked, and it must be exactly ``1, 2, ... N``. Requiring the order rather than the set
+    closes two holes at once: a bare parenthesised number at or below the stated count would
+    otherwise be absorbed silently into the set, and entries appended out of sequence -- which
+    is how (9) and (10) first landed in this very diff, before (8) -- would pass a set
+    comparison while leaving the register unreadable.
+
+    Scanning is confined to the Evidence paragraph, and the composition sentence is searched
+    inside the P2 section rather than across the whole file, so neither a similar sentence nor
+    a stray ``(2)`` elsewhere in DEBT.md can be read as P2's.
+    """
+    path = REPO_ROOT / "DEBT.md"
+    if not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8")
+    section = P2_SECTION.search(text)
+    stated = P2_COMPOSITION.search(section.group(0)) if section else None
+    evidence = P2_EVIDENCE.search(section.group(0)) if section else None
+    if section is None or stated is None or evidence is None:
+        return [Hit("DEBT.md", 0, "arithmetic",
+                    "P2's composition sentence ('N numbered entries below record M deviations'), "
+                    "its Evidence paragraph, or the P2 section itself was not found; if any was "
+                    "reworded, update tools/check_claims.py::P2_COMPOSITION, ::P2_EVIDENCE or "
+                    "::P2_SECTION so the tally stays checked")]
+    stated_entries = as_number(stated.group(1))
+    stated_deviations = as_number(stated.group(2))
+    order: list[int] = []
+    for marker in P2_MARKER.findall(evidence.group(1)):
+        if int(marker) not in order:
+            order.append(int(marker))
+    line = text[: section.start() + stated.start()].count("\n") + 1
+    hits: list[Hit] = []
+    if stated_entries is None or stated_deviations is None:
+        return [Hit("DEBT.md", line, "arithmetic",
+                    f"P2's composition sentence does not spell numbers this check can read: "
+                    f"{stated.group(0)!r}")]
+    if order != list(range(1, stated_entries + 1)):
+        hits.append(Hit("DEBT.md", line, "arithmetic",
+                        f"P2 says {stated_entries} numbered entries; the markers in its Evidence "
+                        f"paragraph appear first in the order {order}, which is not "
+                        f"1..{stated_entries} in sequence"))
+    if stated_deviations != stated_entries + P2_EXTRA_DEVIATIONS:
+        hits.append(Hit("DEBT.md", line, "arithmetic",
+                        f"P2 says {stated_entries} entries recording {stated_deviations} "
+                        f"deviations, a difference of "
+                        f"{stated_deviations - stated_entries}; entry (7) is the only "
+                        f"multi-deviation entry, so the difference should be "
+                        f"{P2_EXTRA_DEVIATIONS}. If another multi-deviation entry was added, "
+                        f"move tools/check_claims.py::P2_EXTRA_DEVIATIONS in the same commit"))
     return hits
 
 

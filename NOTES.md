@@ -1371,7 +1371,12 @@ screen.
   A PNG named `.tiff` is loaded, and reported, as a PNG.
 - **A multi-channel image raises** rather than having a channel picked for it. PLAN.md's
   MVP scope is single-channel grayscale; choosing a channel silently would change every
-  intensity downstream.
+  intensity downstream. **Since Phase 3b-1 this is history in one narrow respect:** the
+  ratified 2026-08-19 §7 amendment permits an 8-bit 3-channel image whose channels diverge by
+  at most the ruled bound to be collapsed to its green channel, and the collapse is recorded in
+  `source.channel_collapse`. The reasoning above is why the exception is *that* narrow — the
+  collapse is permitted precisely where it cannot change an intensity, and a divergence above
+  the bound still raises. Nothing here was reopened by the pipeline; a human ruled it.
 - **`schema_version` named the contract targeted, not a claim of validity — and Phase 2 ended
   that.** As Phase 1 shipped, the document declared `1.0.0` while omitting five of that
   version's required fields, so a consumer validating on the declared version got `required`
@@ -3186,6 +3191,405 @@ the tree**. That is deliberate — a result document committed without a CI step
 the class of stale claim `check_claims.py` exists to catch — but it has a cost: statements in
 DEBT.md may not cite figures that only exist there, and E1's evidence paragraph was rewritten to
 respect that.
+
+
+## Phase 3b-1 — the ruled collapse implemented, and two tables the human must confirm (confirmed at the gate, 2026-08-20)
+
+### `schema/result.schema.json` goes to 1.3.0, for two optional fields
+
+Two fields, both optional, both added here: `source.channel_collapse` (W4) and
+`normalization.reference_designation_source` (W5, described under its own heading below). One
+version covers both because they land in the same diff and a version is a contract, not a
+changelog entry per field.
+
+`source.channel_collapse` is `{method, max_divergence_dn}`, present only when a
+multi-channel input was collapsed on the way in. The shape is not a design decision made here —
+the ratified 2026-08-19 §7 amendment writes it out in ruling (b), and this is that shape, field
+names included. `method` is a `const` and `max_divergence_dn` is capped at the ruled bound, so a
+document asserting a collapse the amendment does not permit fails validation rather than being
+read as a permitted variant.
+
+**Why `source` and not the `provenance` block.** The amendment says "Record the operation in
+result provenance, in the style `roi_source` already uses for lane origin". `roi_source` does not
+live in `provenance` — it is a field on `lanes[]`, recording where *that lane's* rectangle came
+from. So the style being pointed at is "a provenance fact recorded on the object it describes",
+and the object a collapse describes is the source image. `provenance` in this schema holds the
+software version, the config and its digest, the clock, and the parameter echo — things true of
+the *run*, not of the input. A collapse is a property of the file, changes per image, and is
+already neighboured there by `bit_depth`, `image_format` and `lossy_format`, which are the same
+kind of fact. Recorded because it is a placement judgement rather than a quotation, and a later
+reader would otherwise re-litigate it from the amendment's one-line instruction.
+
+**Why a bump for optional fields.** `source` and `normalization` are both
+`additionalProperties: false`, so a 1.2.0 validator rejects a 1.3.0 document outright whether or
+not the new keys are required. Leaving the
+version at 1.2.0 would have declared a contract the documents no longer satisfy — the same
+defect Phase 1 carried deliberately and Phase 2 closed. **Why optional rather than required**:
+in both cases the absence is itself the record — the file was already single-channel, or the
+designation's origin was not stated — which is true of every document written before this
+version and, for `channel_collapse`, of every image in the synthetic gold set, so no existing
+writer becomes wrong. An always-present block would have needed a null, and a present-but-null
+`channel_collapse` says "a collapse was considered and declined", which is not what the loader
+does. A present-but-null designation source would likewise read as "the origin was recorded and
+it is nothing".
+
+### The bound and the method are module constants, not config keys
+
+CLAUDE.md says every processing parameter lives in the config object. This is a deliberate,
+narrow exception, and the authority for it is explicit: DEBT S19's *Closes* paragraph says "Not
+a config change: the bound and the method are fixed by the amendment, not selected", and
+`configs/` is frozen for this phase in any case. The reasoning is the amendment's own — the 2 DN
+bound was named **before** the divergence table was measured, and a value in `configs/` is a
+value somebody may tune. Putting it there would convert a criterion into a parameter, which is
+the one move the §7 amendment exists to prevent. Both constants carry that reasoning in their
+docstrings so a reader of a refusal can find the ruling that produced it.
+
+### A 16-bit multi-channel input is refused rather than collapsed
+
+Not ruled anywhere; an implementer decision, recorded here because it is a judgement call. The
+amendment states its bound "in DN against an 8-bit full scale of 255" and was ruled on a set of
+8-bit crops. Applying 2 DN to a 16-bit image would silently reinterpret it as roughly 0.003% of
+full scale instead of 0.8% — extrapolating a human ruling into a domain the human never saw. The
+loader refuses, and the message says why. Nothing in the real set is 16-bit, so this changes no
+current outcome; it is a guard against a future one.
+
+### W4 turns DEBT draft D7 from a prediction into an observation: `lossy_format` fires on nothing
+
+Recorded because this diff caused it and is otherwise silent about it, having recorded two other
+W4 consequences. §6 of the pre-registration says, before download: *"Every candidate figure in
+the Gate 2 shortlist is distributed as JPEG. The `lossy_format` QC flag is therefore expected to
+fire on the entire real-blot set."* §9 then requires crops exported "as PNG (lossless
+container)". `lossy_format` is derived from the container the pipeline is handed, so it is false
+on every crop.
+
+Draft D7 predicted this and could not check it, because no crop loaded. W4 makes it checkable,
+and it was checked in this session over the committed crops: **12 crops load and `lossy_format`
+is true on 0 of them**; all 12 are `png` and all 19 parents in `crop_log.csv` are `.jpg`. So the
+image-level `lossy_format` flag and normalization's `reference_band_lossy_format` warning are
+now *structurally unreachable* on the one corpus where lossy provenance is known and recorded —
+and a reader of a future report would see zero flags and conclude the opposite of what §6
+recorded.
+
+**Not fixed, and specifically not fixable here.** Having the loader consult the crop log, the
+parent's format, or the filename would be special-casing the real set and letting a real image
+select a code path — the two things Gate 1 ruling 3 and PLAN.md's anti-circularity invariant
+forbid outright. D7's own *Closes* names the two legitimate routes, both human decisions: a
+provenance field carrying the parent's format (a pipeline change, Phase 4b at the earliest), or
+reporting §6's finding from `crop_log.csv` in prose. D7 is a draft in `runs/`, which is
+gitignored, so this paragraph is the only record of it in the tree. **It is a promotion
+candidate for the human**; promoting a draft into DEBT.md is not the implementer's call.
+
+### Two tables were built and neither was confirmed — *superseded at the gate, see below*
+
+`data/real/designations.csv` (W5, DEBT D4) and `data/real/blot_identity.csv` (W6, DEBT D5) each
+carry one row per measurable crop, populated from the crop filename, with every row marked
+pending. **Nothing in either file is confirmed, and the implementer may not confirm it.**
+(**Since the human gate of 2026-08-20 this paragraph is history:** rulings G1 and G2 confirmed
+every row of both tables, one of them by correcting it. The sentence stands because it describes
+the state the implementer left them in, which is the state the gate acted on — but the tree no
+longer looks like this, and a reader arriving here should go to the gate section below.)
+Designating a reference band is a measurement input rather than a parameter choice (DEBT S6), so
+Gate 1 ruling 3 does not reach it; blot identity is ruled by looking at the images, which is the
+same class as the Gate 2 "figure -> panel" rule.
+
+**Ratified by R4 as a dated correction to the task text.** What follows was written as a
+deviation and reported as one; the human ruled on 2026-08-20 that the three-value vocabulary is
+correct and that the kickoff's one-value wording is what changes. It is left standing as written,
+because a departure that turns out to have been right is still a departure the record should show
+being made and being ruled on. The task said to set
+`source_of_designation` to `parsed_pending_human` on **every** row. Two of the twelve rows carry
+something else. `PMC13135388_Figure4__E-Vinculin` gets `unparsed_needs_human` and a blank
+`reference_label`, because its filename names one label and therefore no reference at all —
+writing `parsed_pending_human` there would record a parse that did not happen, on the one row
+where a reader is most likely to assume a reference exists. `PMC13135410_Figure3__B-Fib-CCN2-GAPDH`
+gets `parsed_ambiguous_pending_human`, because the name carries three labels and taking the last as
+the reference is a guess about where the target/reference boundary falls, not a reading of a
+caption. Both values are un-confirmed, so the instruction's substance — *do not mark any row
+confirmed* — holds; what changed is that the table distinguishes three kinds of not-confirmed
+instead of one. R4 settles it the other way: the vocabulary stands, and the ambiguity flag is why — it marked the
+one row a human had to look at, and looking at it changed the row (see the gate section below).
+
+**A second deviation, smaller — and ruled by R2.** DEBT draft D5's *Closes* line asks for the
+`blot_id` column in `crop_log.csv`; §9 of the frozen pre-registration provides for it there too. The
+task forbids rewriting the frozen file, so the column went into a sibling. Reported rather than
+resolved, and R2 of 2026-08-20 ruled that it **stays** reported: *"the sibling file is the ruled
+mechanism"*. §9's provision is not withdrawn and `crop_log.csv` is not edited; the conflict remains
+on the record, now with a decision attached to it.
+D5 and the task also disagree about what settles identity — D5 says the human assigns it "from the
+captions", the task says a caption is not evidence of physical identity and only the image decides.
+The stricter reading is implemented and the file's header says so.
+
+The discipline lives in the **read** path, not the write path, because that is where a default
+would be invisible. `confirmed_reference_label` and `confirmed_blot_id` raise for a pending row,
+a blank cell, a crop with no row, and — the direction that matters — a `source` value they do
+not recognise. Both readers test membership of an allow-list of confirmations rather than
+non-membership of the pending set: a reader written as "not pending, therefore confirmed" turns
+a typo into a measurement.
+
+### Why the `blot_id` is a sibling file and not a column in `crop_log.csv`
+
+§9 of the frozen pre-registration provides for the column in the crop record — a reference strip
+"recorded against the same `blot_id`" — and DEBT draft D5 asks for it there. `crop_log.csv` is
+the byte-identical Gate 2 record. The conflict is **reported, not resolved**: the sibling file
+carries §9's sentence verbatim in its header. R2 ruled the sibling file the mechanism.
+
+### `--reference-designation-source`, and why it is free text
+
+`--reference-band` was already plumbed CLI to normalization; what was missing was the
+designation's *provenance*. The new flag records it verbatim into
+`normalization.reference_designation_source` and is never parsed. Free text on purpose: the
+vocabulary of designation states belongs to whoever is designating, and a pipeline that
+recognised `confirmed` as a keyword would be one step from acting on it. It is refused when no
+reference is designated, because a source describing no designation is a provenance record about
+nothing — and it is hashed into `result_id`, because a document labelled as a human's
+confirmation and one labelled as a parser's proposal must not share an id.
+
+**Consequence, so nobody has to discover it.** `_result_id` now hashes five inputs and appends the
+JSON-encoded source unconditionally, so **every result id from the 1.2.0 era changes**, including
+for runs that pass no designation source at all. Harmless in practice — `schema_version` is a
+`const`, so no stored 1.2.0 document validates against 1.3.0 anyway, and nothing in the tree pins a
+literal id — but it is a change to a content address and it is recorded rather than left to be
+noticed.
+
+### W7 was not run
+
+The run and N are blocked on the human confirming both tables. Building the tables and then
+measuring against the values the implementer proposed would be the phase measuring its own
+proposal.
+
+
+### Phase 3b-1 human gate — rulings and confirmations, 2026-08-20
+
+Recorded verbatim, as received, before any of it was applied. The wording below is the human's,
+not the implementer's; everything the implementer did in consequence is described in the sections
+that follow it, and where a ruling required a judgement the ruling does not make, that judgement is
+labelled as the implementer's.
+
+> R1. Sixth reviewer cycle authorised, narrowed to the two cycle-5 claim fixes
+> and their surfaces, per the Phase 4a precedent; DEBT line recorded.
+> R2. §9-vs-frozen-crop_log stays reported, not resolved; the sibling file is
+> the ruled mechanism.
+> R3. D7 promoted into DEBT.md as recorded: lossy_format structurally
+> unreachable on this corpus; no code fix under Gate 1 ruling 3.
+> R4. The three-value source_of_designation vocabulary is ratified as a dated
+> correction to the kickoff's one-value wording.
+>
+> G1. Designations confirmed against figure captions and axis labels: the ten
+> standard rows as parsed. PMC13135410_Figure3__B is corrected, not confirmed
+> as parsed: it carries TWO targets — Fibronectin (250 kDa) and CCN2 (35 kDa) —
+> sharing one reference, GAPDH, as Figure 3C's axes state (Fibronectin/GAPDH
+> and CCN2/GAPDH). Propose the table mechanism for a two-target crop (two rows
+> or a target list) and report it before wiring; do not fold them into one
+> label. E-Vinculin confirmed as the §9 separate reference strip serving the
+> excluded E-TIGAR target; contributes no ratio. Recorded alongside: E-TIGAR's
+> 255 DN divergence is publisher annotation (red arrowheads on the figure), not
+> blot content — the refusal is confirmed correct.
+>
+> G2. Blot identity ruled from the images: PMC13135410 Figure4 panels A/B/C are
+> THREE separate physical blots — basis: three distinct experiments with
+> distinct animal cohorts (4-day vs 2-week denervation; drug vs genotype), 12
+> lanes per panel each with its own MW annotation, and categorically different
+> background texture and exposure per panel with no continuity across panel
+> boundaries. All other proposed ids confirmed distinct. Ratio-contributing
+> blot count = 11 (12 ids minus E-Vinculin) against the floor of 10 →
+> verdict-eligible branch, subject to N after the band criterion.
+
+**What each ruling changed, in one line each.** R1 authorised the sixth cycle and is recorded as a
+PLAN.md deviation in DEBT P2, the same way the Phase 4a sixth cycle was. R2 closed nothing and
+changed no file: the sibling `blot_identity.csv` stands as the mechanism and §9's provision stays a
+reported conflict. R3 promoted draft D7 into the register as **S20**. R4 ratified the three-value
+`source_of_designation` vocabulary the implementer had flagged as a deviation, which converts it
+from a departure from the task text into the task text's dated correction. G1 and G2 are the two
+confirmations W7 was blocked on.
+
+**What G2 settles that the proposal could not.** The proposed identity table said in its own header
+that a panel letter is not evidence of physical identity and that only the image decides. G2 is that
+decision, and it went the way the proposal happened to guess for the `PMC13135410_Figure4` panels —
+but it went that way *on the images*, on four grounds the filename could not have supplied
+(distinct cohorts, distinct experiments, per-panel MW annotation, discontinuous background and
+exposure across panel boundaries). The agreement between proposal and ruling is a coincidence worth
+naming as one: had the ruling gone the other way the count would have been 10 rather than 12, and
+the proposal carried no evidence either way.
+
+**The two-target mechanism, chosen and reported as G1 required.** G1 offered two shapes for a
+crop carrying two targets — two rows, or a target list — and required the choice be reported
+before it was wired. **A `|`-separated list in the existing `target_label` cell was chosen**, and
+`Designation.target_labels` parses it to a tuple, so `PMC13135410_Figure3__B` contributes one
+ratio per target against the shared GAPDH rather than one ratio for a merged label. A single
+target is written bare, so the ten single-target rows are untouched by the mechanism, and a
+malformed list (`A||B`, `A|`, `A|A`) is refused at construction rather than tidied — a blank
+element would contribute a nameless ratio and a repeat would count one measurement twice.
+
+**The reason, stated accurately after a review corrected it.** The first justification written for
+this choice was that two rows would require *relaxing* the duplicate-crop guard in
+`read_designations`. That was an overstatement and is withdrawn: the guard could instead be
+re-keyed on `(crop, target)` with a consistency check on `reference_label`, which is exactly as
+strict. The honest reason is narrower — one row per crop is what the task's column list fixes and
+what every consumer already assumes, so a list keeps the change inside one cell, where two rows
+would move the table's unit of record from the crop to the (crop, target) pair and have to be
+followed through `measurable_crops`, the identity table's key, and `contributes_ratios`. Both
+mechanisms are sound; this one is smaller. **If the human prefers two rows, the swap is a
+contained change** and this paragraph is the record of what was traded for what.
+
+**One vocabulary word the human did not name.** G1 says E-Vinculin "contributes no ratio" and does
+not say how the table should carry that. `caption_confirmed_human` would have been false — the
+strip has no reference of its own, it *is* the reference — and leaving the row pending would have
+contradicted the confirmation. So the implementer added `reference_strip_confirmed_human`, held in
+a `NO_RATIO_SOURCES` set separate from the confirmed-and-measurable one. Both mean "a human ruled
+here"; only one means "measure this", and folding them together would make a ruled-and-excluded row
+indistinguishable from an unruled one at exactly the moment N is counted. Flagged as an implementer
+invention rather than a ruling, because it is one.
+
+**Ratified 2026-08-24 as a dated correction to G1.** The human ruled that
+`reference_strip_confirmed_human`, and its separation from `CONFIRMED_SOURCES` into
+`NO_RATIO_SOURCES`, both stand: *"The distinction between 'a human ruled here' and 'measure this'
+is real, and collapsing it would make a ruled-and-excluded row indistinguishable from an unruled
+one at the moment N is counted."* The paragraph above stands as written, because a word invented by
+the implementer and then ratified is still a word the record should show being invented and being
+ruled on — but it is no longer an open invention. It is part of G1 as corrected, and the read path
+that separates the two sets is the ruled mechanism.
+
+**What G1 corrects rather than confirms.** One row of the designation table was wrong, and it was
+wrong in the direction the implementer flagged. `PMC13135410_Figure3__B-Fib-CCN2-GAPDH` was written
+as target `Fib-CCN2` against reference `GAPDH`, marked `parsed_ambiguous_pending_human` with the
+note that "taking the last as the reference and the rest as the target is a guess about where the
+boundary falls". The guess was wrong: `Fib` and `CCN2` are not one hyphenated target, they are
+**two** targets — Fibronectin at 250 kDa and CCN2 at 35 kDa — sharing the one GAPDH reference, as
+Figure 3C's own axis labels state. The ambiguity flag did its job: it marked the one row a human
+had to look at, and looking at it changed the row.
+
+
+### Process finding — behavioural review converged, prose record edits did not
+
+Recorded because it changed how the rest of this phase is run, not as commentary.
+
+**What converged.** Seven review cycles, every one of them mutation-tested. By cycle 7 the
+standing mutations — widening the ruled divergence bound, keying a `blot_id` on the accession,
+defaulting a designation, dropping the merge — failed the build from many independent directions
+at once, and no mutation survived. The collapse rule, the two tables, their read-path guards and
+the schema pin are the strongest part of this phase's work.
+
+**What did not.** Cycles 5, 6 and 7 were almost entirely claim accuracy, and the fixes were
+themselves generating claim defects at roughly one per fix. Cycle 7 is the clearest measurement of
+it: of seven findings, four were introduced by cycle-6 fixes. The worst was not a stale sentence
+but a fabricated one — the repair for "NOTES.md still says W7 was not run" deleted a true sentence
+and replaced it with a claim that W7 had run and that its results were recorded in a section that
+does not exist. That was written in the same diff that **withdrew** figures from DEBT P2 on the
+principle that a claim with no artefact behind it is the stale claim `tools/check_claims.py` exists
+to catch. The standard was applied to the register and broken in prose two hundred lines away. A
+second repair annotated a paragraph to say a superseded sentence had been corrected, and left the
+sentence standing.
+
+**Why the two behave differently.** A behavioural fix is checked by a test that fails when it is
+wrong. A prose fix is checked by a reader noticing, and each rewrite creates *new* claim surface
+that the next cycle then has to check — so a rewriting loop does not converge, it churns. Every
+one of the four introduced defects was in text that did not need to be rewritten at all.
+
+**Resolution, ruled by the human.** An eighth agent cycle was **not** run. It was replaced by two
+things that address the two halves of what a cycle does: the human reviews the seven prose fixes
+directly, and a **record-edit freeze** replaces the confinement half — no prose edits to NOTES.md,
+DEBT.md, README.md or `docs/` beyond what the remaining rulings and the W7 handoff themselves
+require, each such edit listed explicitly in the handoff and diffed against a snapshot digest taken
+at this point. The freeze is enforced mechanically rather than promised: the digests are the check.
+
+**The lesson worth keeping past this phase.** Minimal edits, not rewrites. Remove a false claim,
+restore a true sentence, annotate a superseded one — and leave the surrounding prose alone. The
+project already knew this about figures (the delta/power amendment confines them to tables so a
+defect cannot survive one copy away); it did not know it about the prose around them.
+
+### Phase 3b-1 QC diagnostic — rulings, 2026-08-24
+
+Recorded verbatim, as received, before any of it was applied. The wording below is the human's,
+not the implementer's; everything done in consequence is described in the paragraphs that follow.
+
+> R1. The saturation finding is recorded as a MEASUREMENT ARTEFACT, not a
+> corpus property. The reading that published figures are saturated as a class
+> does not enter the record; the diagnostic's §6 wording stands.
+> R2. runs/3b1/RATIO_BOUND.md is WITHDRAWN as evidence about N. It was computed
+> over flags now known not to describe these images, so N is UNKNOWN rather
+> than small, and no stop-rule branch is selected by this phase. Say so
+> explicitly wherever the bound is referenced, including in the PR body.
+> R3. D13 is promoted into existing entry S14 as its first real-data evidence,
+> not as a new entry. D14 is recorded as narrowing D10.
+> R4. Polarity becomes a DECLARED CALLER INPUT, never inferred: the pipeline
+> refuses an image whose polarity is not declared, in the same class as the
+> reference designation (S6) and blot identity (G2). Any auto-detection
+> heuristic would be a threshold chosen against real data and is forbidden
+> under Gate 1 ruling 3. Record the ruling; implement nothing this phase.
+> R5. The band-mapping human gate is DEFERRED, not cancelled: the band set it
+> would map changes once polarity is handled. Record the reason.
+> R6. Phase 3b-1 closes here. What it established: the ruled channel collapse,
+> the two human-confirmed tables with guarded read paths, detection running end
+> to end on 12 real crops, and the polarity blocker found by a read-only
+> diagnostic before it entered the record as a corpus claim. What it did not
+> produce: N.
+
+**What the diagnostic measured, in one paragraph, because R1 turns on it.** All twelve measurable
+crops are white-ground published figures whose bands are *darker* than their background: every
+crop's median pixel value is 249 or higher against a full scale of 255, and between 37.7% and
+54.5% of each image sits at exactly full scale. The pipeline detects maxima and defines clipping
+as pixels at full scale, so on these images the extreme it tests for is the paper. 286 of 430
+bands carry `saturated`, exactly 286 contain a full-scale pixel inside their own ROI — the flag is
+computed on the band's own rectangle and there is no image-to-band path — and the median
+`saturated` band has 39% of its rectangle at full scale. The extreme a genuinely saturated *dark*
+band would produce, a pixel at 0, occurs in 8 of 430 bands. Figures from
+`runs/3b1/QC_DIAGNOSTIC.md`, produced read-only by `python -m tools.phase3.qc_diagnostic`.
+
+**R1, and the sentence that does not get written.** `saturated` on this corpus means "this
+rectangle contains white background". That is a true statement about the pixels and a false
+statement about the measurement, and the difference is the whole of R1. The reading that published
+figures are saturated as a class **does not enter this record**, and is named here only so that a
+later reader can see it was considered and rejected on evidence rather than never raised. What the
+diagnostic does *not* establish is recorded with equal weight in its §6: it says nothing about
+whether these figures are of good quality, whether their bands were clipped in the original blots,
+or whether a ratio from them would be sound. It says only that these flags, on these images, are
+not evidence either way.
+
+**R2, and what "unknown" costs.** `runs/3b1/RATIO_BOUND.md` counted lanes with enough *unflagged*
+bands to pair. Its arithmetic is correct and its inputs are not: the flags it filtered on are the
+ones R1 has just characterised as measuring polarity. So the bound is **withdrawn as evidence
+about N**, and the honest statement of this phase's outcome is that **N is unknown**, not that it
+is small. That distinction is load-bearing. A small N would select the pre-registered
+descriptive-only branch; an unknown N selects nothing, and **no stop-rule branch is chosen by this
+phase**. The file stays in `runs/` — which is gitignored — carrying a withdrawal notice at its
+head, because deleting a measurement that was correctly computed and wrongly premised would remove
+the evidence for why the premise was wrong.
+
+**R3, and why S14 rather than a new entry.** S14 has recorded since Phase 1 that "detection
+assumes bright-signal-on-dark" and that polarity is unexamined, with an *Evidence* paragraph
+saying in terms: "there is no measurement of polarity because no inverted image exists to test."
+There is now. Draft D13 is that measurement, and it belongs inside the entry that predicted the
+gap rather than beside it — a second entry would split one finding across two places and let a
+reader close either one alone. D14 is not promoted: it narrows draft D10 (band counts far above
+what a target-plus-reference panel should yield) by showing that two of the three band flags
+inherit the over-detection, and both stay drafts in `runs/3b1/DEBT_DRAFTS.md` for the human.
+
+**R4, and why a heuristic was not proposed.** The obvious repair — look at the image, decide
+whether it is light-ground or dark-ground, invert if needed — is a threshold chosen against real
+data, which Gate 1 ruling 3 forbids outright. R4 rules the other way instead: polarity becomes a
+**declared caller input**, and an image whose polarity is not declared is refused rather than
+guessed. That puts it in the same class as the two inputs this phase already built: the reference
+designation, which DEBT S6 makes a measurement input the human supplies, and blot identity, which
+G2 ruled from the images. The pattern is now three deep and worth naming — **where the pipeline
+cannot know something, it refuses and says so, rather than inferring it from the data it is about
+to measure.** Nothing is implemented this phase; R4 is the ruling, and the loader change belongs
+to whichever phase takes it.
+
+**R5, and what defers rather than cancels.** The band-mapping gate was ready: 430 candidate rows
+in `runs/3b1/band_mapping_pending.csv`, one per detected band, with the guarded read path built
+and refusing every crop. It is deferred because **the band set it would map is not final**. If
+polarity is handled under R4, detection runs on different pixels and produces a different set of
+bands with different ids, and every mapping ruled against today's ids would have to be made again.
+The gate is not cancelled and nothing about it is retracted: `tools/phase3/band_mapping.py`, its
+read path and its tests stay in the tree, and the vocabulary word
+`molecular_weight_confirmed_human` stays flagged as an implementer proposal awaiting a name.
+
+**R6, and the shape of what closes.** The phase ends having built the thing it set out to build
+and having found, one step before the number, that the number could not yet be trusted. Both
+halves go in the PR body. The finding arrived from a **read-only diagnostic** run before the
+claim entered the record, which is the process point worth keeping: the corpus reading was
+available, plausible, and would have been written down as established had nobody looked at the
+pixels first.
 
 
 ## Open items

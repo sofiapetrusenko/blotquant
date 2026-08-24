@@ -18,3 +18,10 @@ runs/
 # Session working file: the human's task specification for this session, not project
 # content. It describes what to build; the tree records what was built.
 kickoff_3b0.md
+
+# Session working file: the human's task specification for Phase 3b-1, on the same
+# footing as kickoff_3b0.md above. It describes what to build; the tree records what
+# was built. Ignored rather than committed so that a task description can never be
+# mistaken for a project decision — the decisions this phase acts on live in
+# data/real/AMENDMENT_2026-08-19_*.md, which are ratified and digest-pinned.
+kickoff_3b1.md

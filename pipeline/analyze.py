@@ -42,13 +42,14 @@ def _result_id(
     config_digest: str,
     reference_band_ids: Sequence[str] | None,
     lane_rois: Sequence[Roi] | None,
+    reference_designation_source: str | None,
 ) -> str:
     """Return a deterministic id for every input that can change the document.
 
     Derived from content rather than from the file path or the clock, so re-analysing the
     same image with the same inputs reproduces the same id on any machine.
 
-    All **four** inputs are hashed, not two. The reference band ids are a per-image input no
+    All **five** inputs are hashed, not two. The reference band ids are a per-image input no
     parameter set can carry -- ``NormalizationConfig`` deliberately does not -- and they change
     the denominators, the ratios and the exclusions, so hashing only the image and the config
     would give two genuinely different documents the same id, and PLAN.md's Phase 4
@@ -63,13 +64,22 @@ def _result_id(
     *in order* -- the order is the lane order -- and JSON-encoded, and ``null`` is encoded
     distinctly from any list, so "detection ran" and "the caller supplied lanes" can never
     hash alike.
+
+    The designation source is the fifth, and it is hashed even though it moves no number.
+    The rule this function keeps is "every input that can change the *document*", not every
+    input that can change an intensity: the source is written into the document, so two runs
+    differing only in it are two genuinely different documents, and giving them one id would
+    let ``GET /results/{id}`` serve a result labelled "confirmed by the human" in answer to a
+    request for one labelled "proposed by a parser". That is the failure this id exists to
+    make impossible. It is JSON-encoded, so ``null`` and the empty string cannot hash alike.
     """
     references = json.dumps(list(reference_band_ids or ()), separators=(",", ":"))
     rois = json.dumps(
         None if lane_rois is None else [roi.as_dict() for roi in lane_rois],
         separators=(",", ":"),
     )
-    payload = f"{source_sha256}|{config_digest}|{references}|{rois}".encode()
+    designation = json.dumps(reference_designation_source, separators=(",", ":"))
+    payload = f"{source_sha256}|{config_digest}|{references}|{rois}|{designation}".encode()
     return hashlib.sha256(payload).hexdigest()[:RESULT_ID_HEX_DIGITS]
 
 
@@ -131,6 +141,7 @@ def analyze_image(
     reference_band_ids: Sequence[str] | None = None,
     *,
     lane_rois: Sequence[Roi] | None = None,
+    reference_designation_source: str | None = None,
 ) -> dict[str, Any]:
     """Analyse one image end to end and return its result document.
 
@@ -157,6 +168,13 @@ def analyze_image(
     ``ground_truth_image_id`` is recorded verbatim when the caller supplies one (the
     eval harness does, to join results to ground truth). Nothing in the analysis reads
     it, and it is never inferred from the file name.
+
+    ``reference_designation_source`` records *where* that designation came from -- a
+    ground-truth field, a figure caption, a designation table and whether a human has
+    confirmed its rows. It is recorded and never acted on: nothing in the analysis reads it,
+    and it cannot supply a designation that ``reference_band_ids`` does not already carry.
+    Supplying it with no reference bands raises, because a source describing no designation
+    is a provenance record about nothing.
 
     ``reference_band_ids`` designates the housekeeping reference bands. It is required by
     the housekeeping normalization modes and refused by ``total_protein``: which band is the
@@ -208,6 +226,7 @@ def analyze_image(
         config.normalization,
         lane_total_protein=lane_total_protein,
         reference_band_ids=reference_band_ids,
+        reference_designation_source=reference_designation_source,
         lossy_format=loaded.lossy_format,
     )
     exclusions = normalization.exclusion_by_band_id()
@@ -215,7 +234,11 @@ def analyze_image(
     return {
         "schema_version": RESULT_SCHEMA_VERSION,
         "result_id": _result_id(
-            loaded.sha256, config.digest(), reference_band_ids, supplied_lane_rois
+            loaded.sha256,
+            config.digest(),
+            reference_band_ids,
+            supplied_lane_rois,
+            reference_designation_source,
         ),
         "source": loaded.as_source(ground_truth_image_id),
         "provenance": {

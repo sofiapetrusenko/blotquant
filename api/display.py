@@ -145,7 +145,8 @@ def render_display(pixels: np.ndarray, max_value: int) -> DisplayDerivative:
     if pixels.ndim != 2:
         raise DisplayError(
             f"the display derivative needs a 2D single-channel image, got shape "
-            f"{pixels.shape}; the pipeline only measures single-channel images, so this is "
+            f"{pixels.shape}; the loader delivers 2D pixels for every image it accepts -- a "
+            f"multi-channel input is either collapsed to one plane or refused -- so this is "
             f"an internal inconsistency rather than an input problem"
         )
     if pixels.size == 0:
