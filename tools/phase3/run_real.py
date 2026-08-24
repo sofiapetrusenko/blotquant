@@ -42,6 +42,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from tools.phase3.band_mapping import (
+    BandMapping,
+    mappings_for_document,
+    write_band_mappings,
+)
+from tools.phase3.blot_identity import (
+    BLOT_IDENTITY_PATH,
+    confirmed_blot_id,
+    read_blot_identities,
+)
+from tools.phase3.designations import (
+    DESIGNATIONS_PATH,
+    confirmed_reference_label,
+    contributes_ratios,
+    measurable_crops,
+    read_designations,
+)
+
 # The pre-registered band criterion, quoted rather than paraphrased. Both sentences that
 # state it in DECISION_unit_of_analysis.md are carried here so the report can show the
 # reader the wording the count was made against; §8(c) is where the rule is stated and §10
@@ -104,6 +122,9 @@ class RunConfig:
     out_dir: Path
     min_band_height_px: int
     expected_crop_count: int
+    designations_path: Path = DESIGNATIONS_PATH
+    blot_identity_path: Path = BLOT_IDENTITY_PATH
+    detection_only: bool = False
 
 
 @dataclass
@@ -855,6 +876,188 @@ def write_report(
     return report_path
 
 
+MAPPING_FILENAME = "band_mapping_pending.csv"
+DETECTION_REPORT_FILENAME = "DETECTION_REPORT.md"
+
+
+def _designation_view(designation_table: dict[str, Any], crop: str) -> tuple[str, str, str]:
+    """Return ``(targets, reference, note)`` for one crop, through the guarded read paths.
+
+    Nothing here reads ``crop_log.csv``. The designation comes from the table a human ruled on
+    at the 2026-08-20 gate, through :func:`tools.phase3.designations.contributes_ratios` and
+    :func:`tools.phase3.designations.confirmed_reference_label`, both of which raise rather
+    than default. A crop-log column named ``reference_band_id`` -- which the frozen log does not
+    have -- would be ignored by this path even if it appeared, because a column is not a ruling.
+
+    A crop ruled to contribute nothing is reported as that, not as a crop whose reference is
+    missing: ``contributes_ratios`` is asked first, exactly as
+    :func:`tools.phase3.designations.confirmed_reference_label` tells its caller to.
+    """
+    row = designation_table[crop]
+    # The cell in designations.csv is pipe-separated and is shown as written -- escaped,
+    # because an unescaped pipe inside a markdown table cell silently becomes a column break
+    # and would print a two-target crop as though its second target were its reference.
+    targets = "\\|".join(row.target_labels) if row.target_labels else "(none)"
+    if not contributes_ratios(designation_table, crop):
+        return targets, row.reference_label, "ruled to contribute no ratio (G1: §9 reference strip)"
+    reference = confirmed_reference_label(designation_table, crop)
+    note = "two targets sharing one reference" if len(row.target_labels) > 1 else ""
+    return targets, reference, note
+
+
+def _detection_rows(
+    results: list[CropResult], identity_table: dict[str, Any]
+) -> list[BandMapping]:
+    """Return every detected band as a pending mapping row, in crop-log order.
+
+    ``blot_id`` comes from :func:`tools.phase3.blot_identity.confirmed_blot_id`, which raises
+    for a pending row, a blank id, an unknown vocabulary word and a crop with no row. A band
+    whose blot cannot be named is not written with a blank blot -- the run fails instead, because
+    a mapping table with an unattributed band is a band that would be ruled on and then counted
+    against nothing.
+    """
+    rows: list[BandMapping] = []
+    for result in results:
+        if not result.ok or result.result_path is None:
+            continue
+        document = json.loads(result.result_path.read_text())
+        blot_id = confirmed_blot_id(identity_table, result.crop)
+        rows.extend(mappings_for_document(result.crop, blot_id, document))
+    return rows
+
+
+def _detection_report(
+    results: list[CropResult],
+    mapping_rows: list[BandMapping],
+    designation_table: dict[str, Any],
+    config: RunConfig,
+    mapping_path: Path,
+) -> list[str]:
+    """Return the pass-1 report: what was detected, and nothing that would pre-empt the gate."""
+    import pipeline
+
+    measured = [r for r in results if r.ok]
+    lines = [
+        "# Phase 3b-1 W7 pass 1 -- detection only",
+        "",
+        f"blotquant pipeline `{pipeline.PIPELINE_VERSION}`, result schema "
+        f"`{pipeline.RESULT_SCHEMA_VERSION}`, config `{config.pipeline_config}`, "
+        f"crops from `{config.crops_dir}` as listed in `{config.crop_log}`.",
+        "",
+        "**This run computed no ratio, no N, and no agreement statistic, and it is not able "
+        "to.** The pipeline was invoked without `--reference-band` on every crop, so no "
+        "normalization against a designated reference was attempted. Which detected band "
+        "carries each confirmed reference label is a human ruling that has not been made: "
+        "`DECISION_unit_of_analysis.md` §2 forbids guessing the loading control from the data, "
+        "and choosing a band by where it sits in the lane is that guess. The candidates are in "
+        f"`{mapping_path.name}`, every row pending.",
+        "",
+        "## Per crop",
+        "",
+        "| crop | blot | targets | reference | lanes | bands | band QC flags "
+        "| image QC flags | s |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for result in results:
+        targets, reference, note = _designation_view(designation_table, result.crop)
+        if result.ok:
+            flags = (
+                ", ".join(
+                    f"{flag} x{count}"
+                    for flag, count in sorted(result.qc_flag_counts.items())
+                )
+                or "none"
+            )
+            image_flags = ", ".join(sorted(result.image_qc_flags)) or "none"
+            lanes = str(result.lanes)
+            bands = str(result.bands)
+        else:
+            flags = image_flags = "-"
+            lanes = bands = f"FAILED (exit {result.exit_code})"
+        blot = next(
+            (row.blot_id for row in mapping_rows if row.crop_filename == result.crop), "-"
+        )
+        reference_cell = f"`{reference}`" if reference else "(none)"
+        if note:
+            reference_cell += f" -- {note}"
+        lines.append(
+            f"| `{result.crop}` | `{blot}` | {targets} | {reference_cell} | {lanes} | {bands} | "
+            f"{flags} | {image_flags} | {result.wall_clock_s:.2f} |"
+        )
+    lines += [
+        "",
+        f"{len(measured)} of {len(results)} crops produced a result document. "
+        f"{sum(r.bands or 0 for r in measured)} bands were detected in total, across "
+        f"{sum(r.lanes or 0 for r in measured)} lanes, and each one has a row in "
+        f"`{mapping_path.name}`.",
+        "",
+    ]
+
+    failed = [r for r in results if not r.ok]
+    lines += ["## Crops that did not produce a result", ""]
+    if not failed:
+        lines += ["Every crop this run was given produced a result document.", ""]
+    else:
+        lines += [
+            "Verbatim, as the process wrote it. Nothing here is summarised, because a refusal "
+            "this run cannot explain is the finding.",
+            "",
+        ]
+        for result in failed:
+            lines += [
+                f"### `{result.crop}` -- exit {result.exit_code}",
+                "",
+                "```",
+                result.stderr or "(the process wrote nothing to stderr)",
+                "```",
+                "",
+            ]
+    return lines
+
+
+def detection_pass(config: RunConfig) -> int:
+    """Run detection over the measurable crops and write the pending mapping table.
+
+    Pass 1 of W7 and nothing more. It stops exactly where the pre-registration puts a human:
+    with the bands detected and named by the pipeline's own ids, and with no claim about which
+    of them is a reference.
+    """
+    designation_table = read_designations(config.designations_path)
+    identity_table = read_blot_identities(config.blot_identity_path)
+    rows = read_crop_rows(config)
+    measurable = measurable_crops(config.crop_log, config.crops_dir)
+    by_crop = {row["crop"]: row for row in rows}
+
+    # Every ruling this pass depends on is demanded BEFORE the first crop runs. The guarded
+    # readers raise on a pending row, an unknown vocabulary word, a blank cell and an absent
+    # crop; asking them here means an unruled table stops the run with nothing written, rather
+    # than after twelve subprocesses have produced a mapping file that is missing a crop.
+    for crop in measurable:
+        confirmed_blot_id(identity_table, crop)
+        _designation_view(designation_table, crop)
+
+    results: list[CropResult] = []
+    for index, crop in enumerate(measurable, start=1):
+        result = run_one(by_crop[crop], config)
+        results.append(result)
+        state = "ok" if result.ok else f"FAILED (exit {result.exit_code})"
+        print(f"[{index:>2}/{len(measurable)}] {crop}: {state} in {result.wall_clock_s:.2f}s")
+
+    mapping_rows = _detection_rows(results, identity_table)
+    mapping_path = write_band_mappings(mapping_rows, config.out_dir / MAPPING_FILENAME)
+    report_path = config.out_dir / DETECTION_REPORT_FILENAME
+    report_path.write_text(
+        "\n".join(_detection_report(results, mapping_rows, designation_table, config, mapping_path))
+        + "\n",
+        encoding="utf-8",
+    )
+    print(
+        f"\n{sum(1 for r in results if r.ok)} of {len(results)} crops detected; "
+        f"wrote {mapping_path} ({len(mapping_rows)} bands) and {report_path}"
+    )
+    return 0
+
+
 def parse_args(argv: list[str] | None = None) -> RunConfig:
     """Return the run configuration; every value is explicit and echoed into the report."""
     parser = argparse.ArgumentParser(
@@ -875,6 +1078,16 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         help="the pre-registered band-height minimum (DECISION_unit_of_analysis.md §8(c))",
     )
     parser.add_argument("--expected-crops", type=int, default=19)
+    parser.add_argument("--designations", type=Path, default=DESIGNATIONS_PATH)
+    parser.add_argument("--blot-identity", type=Path, default=BLOT_IDENTITY_PATH)
+    parser.add_argument(
+        "--detection-only",
+        action="store_true",
+        help=(
+            "W7 pass 1: run detection over the measurable crops, write the pending "
+            "label-to-band mapping table, and stop before any ratio, N or statistic"
+        ),
+    )
     args = parser.parse_args(argv)
     return RunConfig(
         crop_log=args.crop_log,
@@ -884,6 +1097,9 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         out_dir=args.out,
         min_band_height_px=args.min_band_height_px,
         expected_crop_count=args.expected_crops,
+        designations_path=args.designations,
+        blot_identity_path=args.blot_identity,
+        detection_only=args.detection_only,
     )
 
 
@@ -899,6 +1115,8 @@ def main(argv: list[str] | None = None) -> int:
     config.out_dir.mkdir(parents=True, exist_ok=True)
 
     verify_quotations(config)
+    if config.detection_only:
+        return detection_pass(config)
     rows = read_crop_rows(config)
     ref_column = reference_column(rows)
 
