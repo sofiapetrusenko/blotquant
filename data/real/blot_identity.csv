@@ -1,0 +1,45 @@
+# blotquant real-blot identities. One row per measurable crop.
+#
+# RULED FROM THE IMAGES AT THE HUMAN GATE, 2026-08-20 (ruling G2). Each blot_id was
+# PROPOSED from the parent figure stem and the panel token and from nothing else, and a
+# panel letter is not evidence of physical identity -- TWO PANELS OF ONE FIGURE MAY BE TWO
+# DIFFERENT PHYSICAL BLOTS, and one physical blot may be split across two panels. The
+# proposals did not decide that; the human did, by looking at the images.
+#
+# What the images decided, where it mattered: PMC13135410_Figure4 panels A/B/C are THREE
+# SEPARATE PHYSICAL BLOTS -- three distinct experiments with distinct animal cohorts
+# (4-day vs 2-week denervation; drug vs genotype), 12 lanes per panel each with its own MW
+# annotation, and categorically different background texture and exposure per panel with
+# no continuity across panel boundaries. None of that is visible in a filename. All other
+# ids were ruled distinct.
+#
+# identity_source 'image_confirmed_human' means a human ruled from the images.
+# 'proposed_pending_human' means a filename proposed it and nobody has looked. Tools that
+# read this file refuse every value they do not know and never read one as a confirmation.
+#
+# NOT every blot here contributes a ratio: PMC13135388_Figure4__E-Vinculin is the §9
+# separate reference strip for the E-TIGAR target, which §7 refuses at 255 DN. See
+# designations.csv. The ratio-contributing blot count is therefore one lower than the
+# number of rows in this file.
+#
+# Why this is a sibling file and not a column in crop_log.csv: §9 of
+# DECISION_unit_of_analysis.md provides for the column in the crop record --
+# "if the reference is a separate strip (e.g. loading-control row below), it is cropped as part of the same rectangle whenever they are vertically contiguous in the figure, else as a second rectangle recorded against the same blot_id"
+# -- but crop_log.csv is the frozen Gate 2 record and is byte-identical to what the gate
+# approved. That conflict is reported for the human to rule on, not resolved by editing
+# the approved artefact. See DEBT draft D5.
+#
+# Lines beginning with # are this note. The CSV header is the first line that is not one.
+crop_filename,parent_figure,panel,blot_id,identity_source,notes
+PMC12686555_FIGURE1__A-p16p21-ACTIN.png,PMC12686555_FIGURE1,A,PMC12686555_FIGURE1_A,image_confirmed_human,"ruled distinct from the images (G2, 2026-08-20)"
+PMC12686555_FIGURE2__C-HSPA12B-ACTIN.png,PMC12686555_FIGURE2,C,PMC12686555_FIGURE2_C,image_confirmed_human,"ruled distinct from the images (G2, 2026-08-20)"
+PMC12708318_Figure5__A1-GSDME-actin.png,PMC12708318_Figure5,A1,PMC12708318_Figure5_A1,image_confirmed_human,"ruled distinct from the images (G2, 2026-08-20)"
+PMC12895598_Fig3__A-EMT-GAPDH.png,PMC12895598_Fig3,A,PMC12895598_Fig3_A,image_confirmed_human,"ruled distinct from the images (G2, 2026-08-20)"
+PMC12956003_Figure2__A-Htt-tub.png,PMC12956003_Figure2,A,PMC12956003_Figure2_A,image_confirmed_human,"ruled distinct from the images (G2, 2026-08-20)"
+PMC13017922_Figure8__D-ABCB1-Actin.png,PMC13017922_Figure8,D,PMC13017922_Figure8_D,image_confirmed_human,"ruled distinct from the images (G2, 2026-08-20)"
+PMC13025488_Figure5__C-pSMAD-GAPDH.png,PMC13025488_Figure5,C,PMC13025488_Figure5_C,image_confirmed_human,"ruled distinct from the images (G2, 2026-08-20)"
+PMC13135410_Figure3__B-Fib-CCN2-GAPDH.png,PMC13135410_Figure3,B,PMC13135410_Figure3_B,image_confirmed_human,"ruled distinct from the images (G2, 2026-08-20)"
+PMC13135410_Figure4__A-PDGFRa-GAPDH.png,PMC13135410_Figure4,A,PMC13135410_Figure4_A,image_confirmed_human,"ruled from the images (G2, 2026-08-20): panels A/B/C of this figure are THREE SEPARATE PHYSICAL BLOTS -- three distinct experiments with distinct animal cohorts (4-day vs 2-week denervation; drug vs genotype), 12 lanes per panel each with its own MW annotation, and categorically different background texture and exposure per panel with no continuity across panel boundaries"
+PMC13135410_Figure4__B-PDGFRa-GAPDH.png,PMC13135410_Figure4,B,PMC13135410_Figure4_B,image_confirmed_human,"ruled from the images (G2, 2026-08-20): panels A/B/C of this figure are THREE SEPARATE PHYSICAL BLOTS -- three distinct experiments with distinct animal cohorts (4-day vs 2-week denervation; drug vs genotype), 12 lanes per panel each with its own MW annotation, and categorically different background texture and exposure per panel with no continuity across panel boundaries"
+PMC13135410_Figure4__C-PDGFRa-GAPDH.png,PMC13135410_Figure4,C,PMC13135410_Figure4_C,image_confirmed_human,"ruled from the images (G2, 2026-08-20): panels A/B/C of this figure are THREE SEPARATE PHYSICAL BLOTS -- three distinct experiments with distinct animal cohorts (4-day vs 2-week denervation; drug vs genotype), 12 lanes per panel each with its own MW annotation, and categorically different background texture and exposure per panel with no continuity across panel boundaries"
+PMC13135388_Figure4__E-Vinculin.png,PMC13135388_Figure4,E,PMC13135388_Figure4_E,image_confirmed_human,"ruled from the images (G2, 2026-08-20). This is the §9 case the missing blot_id column was meant to record: a reference cropped as a second rectangle 'recorded against the same blot_id' as its target. The target is PMC13135388_Figure4__E-TIGAR.png, same figure and same panel E, which §7 refuses at 255 DN -- confirmed at the gate as publisher annotation (red arrowheads), not blot content. So this blot_id is a real and distinct blot, and it CONTRIBUTES NO RATIO because the target it references does not load. See designations.csv"

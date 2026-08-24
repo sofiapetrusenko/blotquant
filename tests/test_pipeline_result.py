@@ -157,6 +157,67 @@ def test_both_shipped_configs_produce_a_valid_result(
     }
 
 
+@pytest.fixture
+def collapsible_png(tmp_path: Path, three_lane_blot: Blot) -> Path:
+    """Write the three-lane fixture as an 8-bit 3-channel PNG with 2 DN of divergence.
+
+    The same 8-bit reduction the JPEG test below uses, stacked into three planes with green
+    offset by the ruled bound. At the bound rather than below it, so the document this produces
+    exercises the schema's ``maximum`` at the value it permits rather than at zero.
+    """
+    pixels = (three_lane_blot.pixels // 257).astype(np.uint8)
+    stacked = np.stack([pixels, pixels, pixels], axis=2)
+    stacked[:, :, 1] = np.clip(pixels.astype(np.int32) + 2, 0, 255).astype(np.uint8)
+    path = tmp_path / "collapsible.png"
+    assert cv2.imwrite(str(path), stacked)
+    return path
+
+
+def test_a_collapsed_document_validates_against_the_full_schema(
+    collapsible_png: Path,
+) -> None:
+    """The reason the schema went to 1.3.0, asserted on a document the pipeline actually wrote.
+
+    ``source`` is ``additionalProperties: false``, so a new key that the schema does not define
+    fails the whole document. Asserting the loader records the block is not the same as
+    asserting a *result* carrying it satisfies the contract it declares.
+    """
+    result = analyze_image(collapsible_png, load_config(CONFIG_DIR / "default.yaml"))
+
+    errors = list(Draft202012Validator(_schema()).iter_errors(result))
+
+    assert result["source"]["channel_collapse"] == {"method": "green", "max_divergence_dn": 2}
+    assert errors == [], "\n".join(str(error) for error in errors)
+
+
+def test_a_single_channel_document_carries_no_collapse_block(result: dict[str, Any]) -> None:
+    """Absence is the record that the file was already single-channel."""
+    assert "channel_collapse" not in result["source"]
+
+
+def test_the_cli_reports_the_collapse_it_performed(
+    collapsible_png: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An operator must be told which plane was taken and how close to the bound the image sat.
+
+    The whole point of ``max_divergence_dn`` per the amendment is that a reader can see how
+    close to the bound that image sat, and the CLI is where most readers will see it first.
+    """
+    code = main(
+        [
+            "run", str(collapsible_png),
+            "--config", str(CONFIG_DIR / "default.yaml"),
+            "--out", str(tmp_path / "out"),
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert code == 0
+    assert "collapsed to a single channel by green" in output
+    assert "2 DN" in output
+    assert "AMENDMENT_2026-08-19_channel_collapse.md" in output
+
+
 def test_the_result_id_is_content_addressed(blot_png: Path, tmp_path: Path) -> None:
     """The id depends on the image bytes and the config, not on the path or the clock."""
     config = load_config(CONFIG_DIR / "default.yaml")

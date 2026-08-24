@@ -1,0 +1,37 @@
+# blotquant real-blot reference-band designations. One row per measurable crop.
+#
+# CONFIRMED AT THE HUMAN GATE, 2026-08-20 (ruling G1). Each row was checked against its
+# figure caption and axis labels. Pre-registration DECISION_unit_of_analysis.md §2: the
+# reference lane/band is designated from the figure caption alone, and 'Guessing the
+# loading control from the data is forbidden'. These rows are that designation; they were
+# PROPOSED from the crop filename, which is a naming convention and not data, and the
+# proposal was adjudicated rather than accepted. One row was CORRECTED in the process --
+# see PMC13135410_Figure3__B, which the parser read as one hyphenated target and which in
+# fact carries two.
+#
+# source_of_designation vocabulary, and what each value licenses:
+#   caption_confirmed_human        a human confirmed the row; it contributes ratios.
+#   reference_strip_confirmed_human a human ruled on the row and it contributes NO ratio:
+#                                  a §9 separate reference strip, not a target panel.
+#   parsed_*_pending_human         a parser's proposal. NOT confirmed, NOT measurable.
+# Tools that read this file refuse every value they do not know, and refuse to treat an
+# unrecognised value as a confirmation. Nothing is measured against a pending row.
+#
+# target_label may name MORE THAN ONE target, separated by '|'. A crop carrying two
+# targets against one shared reference contributes one ratio PER TARGET; the two are not
+# folded into a single label (ruled at the gate).
+#
+# Lines beginning with # are this note. The CSV header is the first line that is not one.
+crop_filename,target_label,reference_label,source_of_designation,notes
+PMC12686555_FIGURE1__A-p16p21-ACTIN.png,p16p21,ACTIN,caption_confirmed_human,"confirmed as parsed against the figure caption (G1, 2026-08-20)"
+PMC12686555_FIGURE2__C-HSPA12B-ACTIN.png,HSPA12B,ACTIN,caption_confirmed_human,"confirmed as parsed against the figure caption (G1, 2026-08-20)"
+PMC12708318_Figure5__A1-GSDME-actin.png,GSDME,actin,caption_confirmed_human,"confirmed as parsed against the figure caption (G1, 2026-08-20)"
+PMC12895598_Fig3__A-EMT-GAPDH.png,EMT,GAPDH,caption_confirmed_human,"confirmed as parsed against the figure caption (G1, 2026-08-20)"
+PMC12956003_Figure2__A-Htt-tub.png,Htt,tub,caption_confirmed_human,"confirmed as parsed against the figure caption (G1, 2026-08-20)"
+PMC13017922_Figure8__D-ABCB1-Actin.png,ABCB1,Actin,caption_confirmed_human,"confirmed as parsed against the figure caption (G1, 2026-08-20)"
+PMC13025488_Figure5__C-pSMAD-GAPDH.png,pSMAD,GAPDH,caption_confirmed_human,"confirmed as parsed against the figure caption (G1, 2026-08-20)"
+PMC13135410_Figure3__B-Fib-CCN2-GAPDH.png,Fibronectin|CCN2,GAPDH,caption_confirmed_human,"CORRECTED at the human gate, not confirmed as parsed (G1, 2026-08-20). The filename's 'Fib-CCN2' is not one hyphenated target: this crop carries TWO targets, Fibronectin (250 kDa) and CCN2 (35 kDa), sharing the one GAPDH reference, as Figure 3C's axis labels state (Fibronectin/GAPDH and CCN2/GAPDH). Each target contributes its own ratio against the shared reference"
+PMC13135410_Figure4__A-PDGFRa-GAPDH.png,PDGFRa,GAPDH,caption_confirmed_human,"confirmed as parsed against the figure caption (G1, 2026-08-20)"
+PMC13135410_Figure4__B-PDGFRa-GAPDH.png,PDGFRa,GAPDH,caption_confirmed_human,"confirmed as parsed against the figure caption (G1, 2026-08-20)"
+PMC13135410_Figure4__C-PDGFRa-GAPDH.png,PDGFRa,GAPDH,caption_confirmed_human,"confirmed as parsed against the figure caption (G1, 2026-08-20)"
+PMC13135388_Figure4__E-Vinculin.png,,Vinculin,reference_strip_confirmed_human,"Confirmed at the human gate (G1, 2026-08-20) as the §9 SEPARATE REFERENCE STRIP serving the E-TIGAR target, not a panel with a target of its own. E-TIGAR is refused under §7 at 255 DN, so this strip has nothing to be a reference for and CONTRIBUTES NO RATIO. reference_label names what the strip carries, and target_label is empty because there is no target on this crop"

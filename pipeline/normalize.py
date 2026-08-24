@@ -144,6 +144,7 @@ class NormalizationResult:
     mode: str
     exclude_qc_flagged: bool
     reference_band_ids: tuple[str, ...] | None
+    reference_designation_source: str | None
     warnings: tuple[str, ...]
     ratios: tuple[Ratio, ...]
     band_exclusions: tuple[BandExclusion, ...]
@@ -157,6 +158,8 @@ class NormalizationResult:
         }
         if self.reference_band_ids is not None:
             document["reference_band_ids"] = list(self.reference_band_ids)
+        if self.reference_designation_source is not None:
+            document["reference_designation_source"] = self.reference_designation_source
         document["warnings"] = list(self.warnings)
         document["ratios"] = [ratio.as_dict() for ratio in self.ratios]
         return document
@@ -264,6 +267,42 @@ def _resolve_references(
     return tuple(reference_band_ids)
 
 
+def _resolve_designation_source(
+    reference_designation_source: str | None, references: Sequence[str]
+) -> str | None:
+    """Return the validated provenance of the caller's reference designation.
+
+    Says *where the designation came from* -- a ground-truth ``role`` field, a figure caption
+    a human read, a row of a designation table pending confirmation. The pipeline neither
+    parses it nor acts on it; it is recorded so that a reader of a result can tell a
+    designation somebody confirmed from one a script proposed, which is a distinction no
+    band id carries on its own.
+
+    Raises :class:`ReferenceBandError` when it is supplied with no designation to describe.
+    A source without references is a provenance record about nothing: it would put the word
+    "confirmed" on a document in which nothing was designated, and reading it back later as
+    if it qualified some reference is exactly the false-record failure this module's
+    "never inferred" rule exists to prevent. An empty or whitespace-only string is refused
+    for the same reason -- it records a source while naming none.
+    """
+    if reference_designation_source is None:
+        return None
+    if not references:
+        raise ReferenceBandError(
+            "reference_designation_source was given with no reference_band_ids to describe; "
+            "it records where a designation came from, so with nothing designated it would "
+            "be a provenance record about nothing. Pass the reference band ids it describes, "
+            "or omit it"
+        )
+    if not reference_designation_source.strip():
+        raise ReferenceBandError(
+            "reference_designation_source is empty; it must name where the designation came "
+            "from (a ground-truth field, a figure caption, a designation table and its "
+            "confirmation state). An empty source records that one exists while naming none"
+        )
+    return reference_designation_source
+
+
 def _resolve_lane_totals(
     lane_total_protein: Mapping[str, float] | None, mode: str
 ) -> Mapping[str, float]:
@@ -369,6 +408,7 @@ def normalize(
     lossy_format: bool,
     lane_total_protein: Mapping[str, float] | None = None,
     reference_band_ids: Sequence[str] | None = None,
+    reference_designation_source: str | None = None,
 ) -> NormalizationResult:
     """Normalize every band of one image and return the ratios plus their caveats.
 
@@ -376,7 +416,10 @@ def normalize(
     denominator needs and refuses the other, so no unread input reaches a provenance record:
     ``total_protein`` requires ``lane_total_protein``, the signal integral of every detected
     lane ROI, and refuses ``reference_band_ids``; the housekeeping modes require
-    ``reference_band_ids`` and refuse ``lane_total_protein``. ``lossy_format`` says whether
+    ``reference_band_ids`` and refuse ``lane_total_protein``. ``reference_designation_source``
+    is optional everywhere and describes the reference ids rather than replacing them: it says
+    where the designation came from, and it is refused when there is no designation for it to
+    describe. ``lossy_format`` says whether
     the image came out of a lossy container, which is a caveat on every denominator measured
     from it; it is required rather than defaulted, because a caller who forgot it would
     silently lose the ``reference_band_lossy_format`` warning on every JPEG.
@@ -423,6 +466,7 @@ def normalize(
             f"order given, so a repeated lane would emit every ratio in it twice"
         )
     references = _resolve_references(bands, reference_band_ids, config.mode)
+    designation_source = _resolve_designation_source(reference_designation_source, references)
     totals = _resolve_lane_totals(lane_total_protein, config.mode)
     reference_ids = set(references)
     by_lane: dict[str, list[NormalizationBand]] = {lane_id: [] for lane_id in lane_ids}
@@ -518,6 +562,7 @@ def normalize(
         mode=config.mode,
         exclude_qc_flagged=config.exclude_qc_flagged,
         reference_band_ids=references if config.mode in HOUSEKEEPING_MODES else None,
+        reference_designation_source=designation_source,
         warnings=tuple(warning for warning in WARNING_ORDER if warning in warnings),
         ratios=tuple(ratios),
         band_exclusions=tuple(exclusions[band.band_id] for band in bands),

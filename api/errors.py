@@ -87,10 +87,15 @@ STATUS_BY_ERROR: tuple[tuple[type[PipelineError], int], ...] = (
     # NormalizationError, which is a 500 below, because status_for takes the first match.
     (ReferenceBandError, 400),
     # The upload is an image this service cannot quantify: a container outside TIFF/PNG/JPEG,
-    # a pixel type outside uint8/uint16, a multi-channel image, or a payload that does not
-    # decode. 415 is exactly "the entity's media type is unsupported", and the verbatim
-    # message distinguishes the four cases. The pipeline refuses to squash or rescale any of
-    # them, so there is no representation of these inputs that a 200 could have carried.
+    # a pixel type outside uint8/uint16, a multi-channel image *the ruled channel collapse does
+    # not admit*, or a payload that does not decode. The qualifier is load-bearing since the
+    # 2026-08-19 §7 amendment: an 8-bit 3-channel image at or below the ruled divergence bound
+    # is collapsed to one plane and quantified, so multi-channel is no longer unquantifiable per
+    # se. 415 is exactly "the entity's media type is unsupported", and the verbatim message
+    # distinguishes the cases -- including naming the divergence it measured, so a caller can
+    # tell a colour image from one that missed the bound by a digit. The pipeline refuses to
+    # squash or rescale any of them, so there is no representation of these inputs that a 200
+    # could have carried.
     (UnsupportedFormatError, 415),
     (UnsupportedBitDepthError, 415),
     (UnsupportedImageError, 415),

@@ -25,7 +25,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     run = subparsers.add_parser("run", help="analyse one image and write its result JSON")
-    run.add_argument("image", type=Path, help="path to an 8/16-bit grayscale TIFF, PNG or JPEG")
+    run.add_argument(
+        "image",
+        type=Path,
+        help=(
+            "path to an 8/16-bit grayscale TIFF, PNG or JPEG. An 8-bit 3-channel image whose "
+            "channels diverge by at most 2 DN is collapsed to its green channel and the "
+            "collapse is recorded in provenance; anything else multi-channel is refused"
+        ),
+    )
     run.add_argument(
         "--config",
         type=Path,
@@ -63,6 +71,19 @@ def build_parser() -> argparse.ArgumentParser:
             "previous run on the same image"
         ),
     )
+    run.add_argument(
+        "--reference-designation-source",
+        dest="reference_designation_source",
+        metavar="SOURCE",
+        help=(
+            "free text saying where the reference-band designation came from -- a figure "
+            "caption a human read, a designation table and whether its rows are confirmed, a "
+            "ground-truth field. Recorded verbatim in provenance and never acted on: it "
+            "cannot supply a designation, only describe the one --reference-band gives. "
+            "Refused without --reference-band, because a source describing no designation is "
+            "a provenance record about nothing"
+        ),
+    )
     return parser
 
 
@@ -77,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
             config,
             reference_band_ids=args.reference_band_ids,
             lane_rois=lane_rois,
+            reference_designation_source=args.reference_designation_source,
         )
         path = write_result(result, args.out, args.image.stem)
     except (PipelineError, FileNotFoundError) as error:
@@ -88,6 +110,14 @@ def main(argv: list[str] | None = None) -> int:
 
     normalization = result["normalization"]
     lane_sources = sorted({lane["roi_source"] for lane in result["lanes"]})
+    collapse = result["source"].get("channel_collapse")
+    if collapse is not None:
+        print(
+            f"{args.image}: collapsed to a single channel by "
+            f"{collapse['method']}, max channel divergence "
+            f"{collapse['max_divergence_dn']} DN "
+            f"(data/real/AMENDMENT_2026-08-19_channel_collapse.md)"
+        )
     print(
         f"{args.image}: {len(result['lanes'])} lane(s) [{', '.join(lane_sources)}], "
         f"{len(result['bands'])} band(s), "
@@ -101,6 +131,9 @@ def main(argv: list[str] | None = None) -> int:
         f"{len(result['bands'])} band(s) flagged; {excluded} of "
         f"{len(normalization['ratios'])} ratio(s) excluded from normalization"
     )
+    designation_source = normalization.get("reference_designation_source")
+    if designation_source is not None:
+        print(f"reference designation source: {designation_source}")
     for warning in normalization["warnings"]:
         print(f"warning: normalization: {warning}")
     print(f"wrote {path}")

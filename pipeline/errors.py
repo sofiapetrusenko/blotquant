@@ -25,7 +25,15 @@ class UnsupportedBitDepthError(PipelineError):
 
 
 class UnsupportedImageError(PipelineError):
-    """The input decodes to something other than a single-channel 2D image."""
+    """The input decodes to something this pipeline cannot reduce to a single 2D plane.
+
+    Not simply "multi-channel". Since the ratified 2026-08-19 §7 amendment, an 8-bit 3-channel
+    image whose maximum per-pixel channel divergence is at or below the ruled bound is collapsed
+    to its green channel and quantified, so it is a multi-channel image the *collapse does not
+    admit* that raises this: a divergence above the bound, a channel count the ruling does not
+    cover, or a bit depth its bound is not defined for. Every message names which, and the
+    divergence case names the value it measured against the bound it measured it against.
+    """
 
 
 class BackgroundError(PipelineError):

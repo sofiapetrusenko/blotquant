@@ -71,6 +71,28 @@ def blot_bytes(tmp_path: Path, three_lane_blot: Blot) -> bytes:
     return path.read_bytes()
 
 
+@pytest.fixture
+def collapsible_bytes(tmp_path: Path, three_lane_blot: Blot) -> bytes:
+    """Return the fixture as an 8-bit 3-channel PNG with green offset by the ruled bound."""
+    pixels = (three_lane_blot.pixels // 257).astype(np.uint8)
+    stacked = np.stack([pixels, pixels, pixels], axis=2)
+    stacked[:, :, 1] = np.clip(pixels.astype(np.int32) + 2, 0, 255).astype(np.uint8)
+    path = tmp_path / "collapsible.png"
+    assert cv2.imwrite(str(path), stacked)
+    return path.read_bytes()
+
+
+@pytest.fixture
+def colour_bytes(tmp_path: Path, three_lane_blot: Blot) -> bytes:
+    """Return the fixture as an 8-bit 3-channel PNG whose divergence is far above the bound."""
+    pixels = (three_lane_blot.pixels // 257).astype(np.uint8)
+    stacked = np.stack([pixels, pixels, pixels], axis=2)
+    stacked[:, :, 1] = np.clip(pixels.astype(np.int32) + 43, 0, 255).astype(np.uint8)
+    path = tmp_path / "colour.png"
+    assert cv2.imwrite(str(path), stacked)
+    return path.read_bytes()
+
+
 def _upload(payload: bytes, name: str = "fixture_blot.png") -> dict[str, Any]:
     """Return the ``files`` mapping for a multipart upload of ``payload``."""
     return {"image": (name, payload, PNG_MEDIA_TYPE)}
@@ -678,3 +700,43 @@ def test_the_pipeline_never_imports_the_api() -> None:
     """
     for name, roots in _imported_roots(REPO_ROOT / "pipeline").items():
         assert "api" not in roots, f"pipeline/{name} imports the api"
+
+
+def test_analyze_accepts_a_collapsible_upload_and_records_the_collapse(
+    client: TestClient, collapsible_bytes: bytes
+) -> None:
+    """The API's stated input contract, exercised: a colour file at the bound is quantified.
+
+    `api/display.py` asserts the loader hands the display path 2D pixels for every image it
+    accepts. Before this test, the only API coverage of a 3-channel upload was the refusing
+    side, so that assertion rested on the one input class nothing posted.
+    """
+    response = client.post(
+        "/analyze", files=_upload(collapsible_bytes, "collapsible.png"), data={"config": "default"}
+    )
+
+    assert response.status_code == 200, response.text
+    envelope = response.json()
+    assert envelope["result"]["source"]["channel_collapse"] == {
+        "method": "green",
+        "max_divergence_dn": 2,
+    }
+    assert _schema_errors(envelope["result"]) == []
+    assert envelope["display"]["png_base64"], "the display derivative renders from the plane"
+
+
+def test_analyze_refuses_a_colour_upload_with_415_and_names_the_divergence(
+    client: TestClient, colour_bytes: bytes
+) -> None:
+    """The refusing side over HTTP: 415, and a message a caller can act on.
+
+    415 rather than 400 because the entity's media type is what is unsupported, and the message
+    must distinguish a genuine colour image from one that missed the bound by a digit.
+    """
+    response = client.post(
+        "/analyze", files=_upload(colour_bytes, "colour.png"), data={"config": "default"}
+    )
+
+    assert response.status_code == 415
+    detail = response.json()["detail"]
+    assert "43 DN" in detail and "2 DN" in detail
