@@ -3497,6 +3497,100 @@ restore a true sentence, annotate a superseded one — and leave the surrounding
 project already knew this about figures (the delta/power amendment confines them to tables so a
 defect cannot survive one copy away); it did not know it about the prose around them.
 
+### Phase 3b-1 QC diagnostic — rulings, 2026-08-24
+
+Recorded verbatim, as received, before any of it was applied. The wording below is the human's,
+not the implementer's; everything done in consequence is described in the paragraphs that follow.
+
+> R1. The saturation finding is recorded as a MEASUREMENT ARTEFACT, not a
+> corpus property. The reading that published figures are saturated as a class
+> does not enter the record; the diagnostic's §6 wording stands.
+> R2. runs/3b1/RATIO_BOUND.md is WITHDRAWN as evidence about N. It was computed
+> over flags now known not to describe these images, so N is UNKNOWN rather
+> than small, and no stop-rule branch is selected by this phase. Say so
+> explicitly wherever the bound is referenced, including in the PR body.
+> R3. D13 is promoted into existing entry S14 as its first real-data evidence,
+> not as a new entry. D14 is recorded as narrowing D10.
+> R4. Polarity becomes a DECLARED CALLER INPUT, never inferred: the pipeline
+> refuses an image whose polarity is not declared, in the same class as the
+> reference designation (S6) and blot identity (G2). Any auto-detection
+> heuristic would be a threshold chosen against real data and is forbidden
+> under Gate 1 ruling 3. Record the ruling; implement nothing this phase.
+> R5. The band-mapping human gate is DEFERRED, not cancelled: the band set it
+> would map changes once polarity is handled. Record the reason.
+> R6. Phase 3b-1 closes here. What it established: the ruled channel collapse,
+> the two human-confirmed tables with guarded read paths, detection running end
+> to end on 12 real crops, and the polarity blocker found by a read-only
+> diagnostic before it entered the record as a corpus claim. What it did not
+> produce: N.
+
+**What the diagnostic measured, in one paragraph, because R1 turns on it.** All twelve measurable
+crops are white-ground published figures whose bands are *darker* than their background: every
+crop's median pixel value is 249 or higher against a full scale of 255, and between 37.7% and
+54.5% of each image sits at exactly full scale. The pipeline detects maxima and defines clipping
+as pixels at full scale, so on these images the extreme it tests for is the paper. 286 of 430
+bands carry `saturated`, exactly 286 contain a full-scale pixel inside their own ROI — the flag is
+computed on the band's own rectangle and there is no image-to-band path — and the median
+`saturated` band has 39% of its rectangle at full scale. The extreme a genuinely saturated *dark*
+band would produce, a pixel at 0, occurs in 8 of 430 bands. Figures from
+`runs/3b1/QC_DIAGNOSTIC.md`, produced read-only by `python -m tools.phase3.qc_diagnostic`.
+
+**R1, and the sentence that does not get written.** `saturated` on this corpus means "this
+rectangle contains white background". That is a true statement about the pixels and a false
+statement about the measurement, and the difference is the whole of R1. The reading that published
+figures are saturated as a class **does not enter this record**, and is named here only so that a
+later reader can see it was considered and rejected on evidence rather than never raised. What the
+diagnostic does *not* establish is recorded with equal weight in its §6: it says nothing about
+whether these figures are of good quality, whether their bands were clipped in the original blots,
+or whether a ratio from them would be sound. It says only that these flags, on these images, are
+not evidence either way.
+
+**R2, and what "unknown" costs.** `runs/3b1/RATIO_BOUND.md` counted lanes with enough *unflagged*
+bands to pair. Its arithmetic is correct and its inputs are not: the flags it filtered on are the
+ones R1 has just characterised as measuring polarity. So the bound is **withdrawn as evidence
+about N**, and the honest statement of this phase's outcome is that **N is unknown**, not that it
+is small. That distinction is load-bearing. A small N would select the pre-registered
+descriptive-only branch; an unknown N selects nothing, and **no stop-rule branch is chosen by this
+phase**. The file stays in `runs/` — which is gitignored — carrying a withdrawal notice at its
+head, because deleting a measurement that was correctly computed and wrongly premised would remove
+the evidence for why the premise was wrong.
+
+**R3, and why S14 rather than a new entry.** S14 has recorded since Phase 1 that "detection
+assumes bright-signal-on-dark" and that polarity is unexamined, with an *Evidence* paragraph
+saying in terms: "there is no measurement of polarity because no inverted image exists to test."
+There is now. Draft D13 is that measurement, and it belongs inside the entry that predicted the
+gap rather than beside it — a second entry would split one finding across two places and let a
+reader close either one alone. D14 is not promoted: it narrows draft D10 (band counts far above
+what a target-plus-reference panel should yield) by showing that two of the three band flags
+inherit the over-detection, and both stay drafts in `runs/3b1/DEBT_DRAFTS.md` for the human.
+
+**R4, and why a heuristic was not proposed.** The obvious repair — look at the image, decide
+whether it is light-ground or dark-ground, invert if needed — is a threshold chosen against real
+data, which Gate 1 ruling 3 forbids outright. R4 rules the other way instead: polarity becomes a
+**declared caller input**, and an image whose polarity is not declared is refused rather than
+guessed. That puts it in the same class as the two inputs this phase already built: the reference
+designation, which DEBT S6 makes a measurement input the human supplies, and blot identity, which
+G2 ruled from the images. The pattern is now three deep and worth naming — **where the pipeline
+cannot know something, it refuses and says so, rather than inferring it from the data it is about
+to measure.** Nothing is implemented this phase; R4 is the ruling, and the loader change belongs
+to whichever phase takes it.
+
+**R5, and what defers rather than cancels.** The band-mapping gate was ready: 430 candidate rows
+in `runs/3b1/band_mapping_pending.csv`, one per detected band, with the guarded read path built
+and refusing every crop. It is deferred because **the band set it would map is not final**. If
+polarity is handled under R4, detection runs on different pixels and produces a different set of
+bands with different ids, and every mapping ruled against today's ids would have to be made again.
+The gate is not cancelled and nothing about it is retracted: `tools/phase3/band_mapping.py`, its
+read path and its tests stay in the tree, and the vocabulary word
+`molecular_weight_confirmed_human` stays flagged as an implementer proposal awaiting a name.
+
+**R6, and the shape of what closes.** The phase ends having built the thing it set out to build
+and having found, one step before the number, that the number could not yet be trusted. Both
+halves go in the PR body. The finding arrived from a **read-only diagnostic** run before the
+claim entered the record, which is the process point worth keeping: the corpus reading was
+available, plausible, and would have been written down as established had nobody looked at the
+pixels first.
+
 
 ## Open items
 

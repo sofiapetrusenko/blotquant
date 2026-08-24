@@ -5,6 +5,14 @@ band-mapping gate worth holding?** -- by counting, from a detection run's own re
 how many lanes are left with enough unflagged bands for a ratio to be possible at all. If that
 count is small, the gate is expensive and the phase's outcome is knowable before it is held.
 
+**Its output was WITHDRAWN as evidence about N by human ruling R2 of 2026-08-24**, and the
+withdrawal is emitted at the head of every report this module writes. The counts filter on QC
+flags, and the QC diagnostic of the same day established that those flags measure polarity rather
+than clipping on this corpus (DEBT S14). The arithmetic is sound and its input is not, so the
+result says nothing about N -- N is *unknown*, not small. The module is kept, and kept runnable,
+because it becomes meaningful again once polarity is a declared input under R4 and the crops are
+re-run through it.
+
 **Nothing here selects, tunes, or rules.** It reads the shipped exclusion rule out of
 :mod:`pipeline.normalize` rather than restating it, groups by the human-ruled ``blot_id``
 through :func:`tools.phase3.blot_identity.confirmed_blot_id`, and applies the pre-registered
@@ -196,6 +204,27 @@ def report(
 
     lines = [
         "# Phase 3b-1 — the ratio bound, before the band-mapping gate",
+        "",
+        # Emitted by the generator, not pasted into the output, so that re-running this tool
+        # reproduces the withdrawal instead of silently erasing it. R2 requires the notice
+        # wherever the bound is referenced, and the place a reader meets it is this file.
+        "> **WITHDRAWN AS EVIDENCE ABOUT N — human ruling R2, 2026-08-24.**",
+        ">",
+        "> Every count below filters on bands carrying no QC flag. The QC diagnostic of the "
+        "same day (`QC_DIAGNOSTIC.md`) established that those flags are measuring "
+        "**polarity, not clipping**: these are white-ground figures with dark bands, and "
+        "`saturated` fires on white background inside a band rectangle. The arithmetic here "
+        "is correct and its input is not.",
+        ">",
+        "> **The consequence is that N is UNKNOWN, not small.** A small N would select the "
+        "pre-registered descriptive-only branch; an unknown N selects nothing, and **no "
+        "stop-rule branch is selected by Phase 3b-1**. Nothing in this file may be cited as "
+        "a bound on N, on the surviving ratio count, or on the blot count against the "
+        "10-blot floor.",
+        ">",
+        "> Kept rather than deleted: a measurement that was correctly computed and wrongly "
+        "premised is the evidence for why the premise was wrong. Re-running it is only "
+        "meaningful after polarity is handled under R4.",
         "",
         "**Read-only. No ruling was made, no ratio computed, no N counted, no agreement "
         "statistic produced, and no stop-rule branch selected.** This file answers one "

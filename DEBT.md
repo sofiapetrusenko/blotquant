@@ -530,23 +530,56 @@ scope and in README.md's limitations.
 
 **Status.** Permanent.
 
-### S14 — Two modelling assumptions are unexamined: signal polarity and lane tilt
+### S14 — Two modelling assumptions are unexamined: signal polarity and lane tilt — *polarity is examined and ruled as of 2026-08-24; tilt is not*
 
 **What.** Detection assumes bright-signal-on-dark, and profiles are projected along image axes, so
-a tilted lane smears its column profile. Neither has been examined as a scope decision.
+a tilted lane smears its column profile. Neither has been examined as a scope decision. (**Since
+2026-08-24 that last sentence is half history:** polarity has been examined against real data and
+ruled a declared caller input, per R4 below. Tilt is unchanged and still unruled. The sentence
+stands because it describes the state the entry was opened in.)
 
 **Why it matters.** A transmissive or film workflow inverts polarity and would silently misbehave.
 Tilt is a real gel-doc condition that the projection does not model.
 
 **Evidence.** Both raised as open questions in the Phase 1 PR body and unanswered. The gold set
-includes a `tilted` lane-geometry level, and tilted cells cap at IoU 0.7475; there is no
-measurement of polarity because no inverted image exists to test.
+includes a `tilted` lane-geometry level, and tilted cells cap at IoU 0.7475. The polarity half no
+longer lacks a measurement: **the sentence that stood here — "there is no measurement of polarity
+because no inverted image exists to test" — is superseded as of Phase 3b-1.** The twelve real
+crops are that test, and they run the assumption the other way.
 
-**Closes.** Unscheduled. Polarity was raised as "config parameter later, or out of scope?" and tilt
-as "sheared projection
-= Phase 3, or out of scope?"; neither has been ruled.
+**Real-data evidence, promoted from Phase 3b-1 draft D13 by human ruling R3 of 2026-08-24.** All
+twelve measurable crops are white-ground published figures whose bands are *darker* than their
+background: every median is 249 or higher against a full scale of 255, and 37.7%-54.5% of each
+image sits at exactly full scale. Detection finds maxima and defines clipping as pixels at full
+scale, so the extreme it tests for is the paper. 286 of 430 bands carry `saturated`, exactly 286
+contain a full-scale pixel inside their own ROI, and the median `saturated` band has 39% of its
+rectangle at full scale; the extreme a genuinely saturated *dark* band would produce, a pixel at
+0, occurs in 8 of 430 bands. `low_dynamic_range` reads the same fact from the other end and fires
+on 7 of 12. Figures from `runs/3b1/QC_DIAGNOSTIC.md`, a read-only diagnostic. Promoted into this
+entry rather than opened as a new one because this entry predicted the gap, and two entries would
+let a reader close either alone.
 
-**Status.** Open, unruled.
+**The consequence for the flags, stated so it is not mistaken for a corpus finding.** `saturated`
+here means "this rectangle contains white background" -- a true statement about the pixels and a
+false statement about the measurement. Human ruling R1 of 2026-08-24 records it as a **measurement
+artefact**; the reading that published figures are saturated as a class is rejected on this
+evidence and does not enter the record. Downstream: Phase 3b-1's ratio bound is **withdrawn as
+evidence about N** (R2), so N is *unknown* rather than small and no stop-rule branch is selected.
+
+**Ruled, on the polarity half only (R4, 2026-08-24).** Polarity becomes a **declared caller
+input**, never inferred: an image whose polarity is not declared is refused rather than guessed.
+Auto-detection was considered and forbidden -- a light-versus-dark ground test would be a
+threshold chosen against real data, which Gate 1 ruling 3 rules out. This puts polarity in the
+same class as the reference designation (S6) and blot identity (ruling G2): where the pipeline
+cannot know something, it refuses and says so rather than inferring it from the data it is about
+to measure. **Nothing is implemented under this ruling in Phase 3b-1**, by the ruling's own terms.
+
+**Closes.** The polarity half closes when the declared input is implemented and the real crops are
+re-run through it -- a loader and CLI change, unscheduled, and not Phase 3b-1's to make. The tilt
+half remains **unruled**: it was raised as "sheared projection = Phase 3, or out of scope?" and
+still has no ruling and no real-data evidence.
+
+**Status.** Open, ruled on polarity 2026-08-24, unimplemented; unruled on tilt.
 
 ### S15 — A weak-band floor is shipped without confirmation that it suits real blots
 

@@ -262,8 +262,19 @@ def test_the_report_states_no_verdict_and_no_statistic(tmp_path: Path) -> None:
     )
 
     assert "no stop-rule branch selected" in text
-    for forbidden in ("Spearman", "Bland", "r_s", "verdict-eligible", "descriptive-only"):
+    assert "WITHDRAWN AS EVIDENCE ABOUT N" in text, (
+        "R2's withdrawal is emitted by the generator, so re-running cannot erase it"
+    )
+    assert "N is UNKNOWN, not small" in text
+    for forbidden in ("Spearman", "Bland", "r_s"):
         assert forbidden not in text
+
+    # The two stop-rule branch names are permitted inside R2's withdrawal notice, which names
+    # them in order to say neither is selected, and nowhere else. Checking the whole document
+    # would have to choose between forbidding the notice and forbidding nothing.
+    body = text.split("meaningful after polarity is handled under R4.", 1)[1]
+    for forbidden in ("verdict-eligible", "descriptive-only"):
+        assert forbidden not in body
 
 
 def test_the_report_excludes_the_reference_strip_from_the_blot_count(tmp_path: Path) -> None:
