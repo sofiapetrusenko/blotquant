@@ -33,6 +33,7 @@ from pipeline.errors import UnsupportedImageError
 from pipeline.load import load_image
 from tools.phase3.crop_names import (
     PENDING_SOURCES,
+    REAL_CROP_POLARITY,
     TARGET_SEPARATOR,
     CorpusError,
     CropName,
@@ -274,7 +275,7 @@ def measurable_crops(crop_log: Path, crops_dir: Path) -> list[str]:
         crop, path = row["crop"], crops_dir / row["crop"]
         _verify_crop_digest(path, row["crop_sha256"], crop_log)
         try:
-            load_image(path)
+            load_image(path, REAL_CROP_POLARITY)
         except UnsupportedImageError:
             continue
         measurable.append(crop)

@@ -22,6 +22,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from pipeline.load import DARK_ON_BRIGHT
+
 PARSED_PENDING = "parsed_pending_human"
 """Panel, target and reference all read cleanly off the filename. Still not confirmed."""
 
@@ -81,6 +83,26 @@ class CropName:
     reference_label: str | None
     source: str
     notes: str
+
+
+REAL_CROP_POLARITY = DARK_ON_BRIGHT
+"""The polarity declared for every crop in ``data/real/crops/``, and the evidence for it.
+
+The ratified 2026-08-24 polarity amendment makes polarity a declared caller input, so the real
+corpus needs a declaration and this is it -- written once, where every tool that touches those
+crops can read it, rather than repeated at each call site where the two values could drift.
+
+**Established by measurement over the twelve measurable crops, not by looking at the figures,
+and applied to all nineteen.** ``runs/3b1/QC_DIAGNOSTIC.md``, produced read-only in Phase 3b-1:
+every one of the twelve measurable crops has a median pixel
+value of 249 or higher against a full scale of 255, and 37.7%-54.5% of each image sits at exactly
+full scale. White ground, dark bands. The amendment's own "Why this is needed" section carries
+the same figures.
+
+It applies to the whole approved crop set because the set is one corpus -- 19 crops taken from
+published figure panels by the Gate 2 procedure. If a crop is ever added that is not, it needs
+its own declaration and this constant stops being the right mechanism.
+"""
 
 
 class CropSetError(ValueError):

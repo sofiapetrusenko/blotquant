@@ -31,8 +31,13 @@ from pathlib import Path
 import numpy as np
 
 from pipeline import qc as qc_module
-from pipeline.load import load_image
-from tools.phase3.blot_identity import BLOT_IDENTITY_PATH, confirmed_blot_id, read_blot_identities
+from pipeline.load import invert_pixels, load_image
+from tools.phase3.blot_identity import (
+    BLOT_IDENTITY_PATH,
+    confirmed_blot_id,
+    read_blot_identities,
+)
+from tools.phase3.crop_names import REAL_CROP_POLARITY
 from tools.phase3.designations import DESIGNATIONS_PATH, read_designations
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -173,17 +178,28 @@ def diagnose(
 ) -> list[CropDiagnostic]:
     """Return one :class:`CropDiagnostic` per result document under ``run_dir``.
 
-    Reads the delivered pixels through :func:`pipeline.load.load_image`, which is the same
-    loader the run used, so the values examined here are the values QC saw -- including the
-    ratified green-channel collapse. Nothing is re-detected and nothing is re-flagged: the
-    bands and their flags come from the committed documents.
+    Reads the crops through :func:`pipeline.load.load_image`, the same loader the run used, so
+    the ratified green-channel collapse is applied here exactly as it was there. The pixels
+    examined are the **delivered** ones. For the Phase 3b-1 documents this currently reads, those
+    are also the ones QC saw, because that run predates the polarity amendment. For any run after
+    it they are not: a real-crop run declares ``dark_on_bright``, so QC sees the inverted array
+    while this function un-inverts to recover the file as published. That is
+    deliberate and is what the diagnostic is about -- see the comment at the call below. Nothing
+    is re-detected and nothing is re-flagged: the bands and their flags come from the committed
+    documents.
     """
     out: list[CropDiagnostic] = []
     for path in sorted(run_dir.glob("*/*.json")):
         document = json.loads(path.read_text())
         crop = Path(str(document["source"]["path"])).name
-        image = load_image(crops_dir / crop)
-        pixels = image.pixels.astype(np.int64)
+        # Declared truthfully -- these crops are dark_on_bright -- and then UN-inverted, because
+        # this diagnostic is a statement about the delivered file rather than about the sample.
+        # Its whole subject is where the extreme pixels sit in the bytes as published, and
+        # `invert_pixels` is its own exact inverse on uint8/uint16, so this recovers the array
+        # the file holds without opening a second door past the loader's refusal.
+        image = load_image(crops_dir / crop, REAL_CROP_POLARITY)
+        delivered = invert_pixels(image.pixels, image.max_value)
+        pixels = delivered.astype(np.int64)
         mask = np.zeros(pixels.shape, dtype=bool)
         for band in document["bands"]:
             roi = band["roi"]

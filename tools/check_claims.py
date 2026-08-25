@@ -618,6 +618,8 @@ RATIFIED_AMENDMENTS = {
         "163915c54fafd45c79767da00f0fe89b79d71598b0ea9b42e453e0a95fe7f134",
     "data/real/AMENDMENT_2026-08-19_channel_collapse.md":
         "285a06e9f133bace1176a2eac467d09b8fe9997e47a72002fb57288f11b35a63",
+    "data/real/AMENDMENT_2026-08-24_polarity.md":
+        "578b2ba65e44e7d4a4d6fcb408d9e5175750d0503841a66f54b4d13b4500a156",
 }
 """Ratified amendments to the pre-registration, and the digest cited for each.
 
@@ -630,7 +632,15 @@ no more than a pre-registration revisable after the fact.
 fail the build on every edit; each amendment's status section carries the sequence that moves it
 between the two states, and adding its digest here is step three of that sequence. Both entries
 were added on 2026-08-20, *after* the phase PR merged with that step skipped -- which is the
-argument for the pin rather than against it.
+argument for the pin rather than against it. The polarity amendment was added on 2026-08-24
+inside its own ratification changeset, which is the sequence working as it should -- and the
+digest here was then **re-pinned twice**, both times in the same uncommitted working tree,
+because review found that the status flip had left three draft-era sentences standing inside a
+file whose header said RATIFIED, and then that the note explaining the first correction narrated
+an event no reader of `main` could see. Correcting them moved the bytes. That is not a
+licence to edit a ratified amendment:
+it was step one of the file's own procedure finished late, the file says so in its own text, and
+a change to any *ruling* remains a further amendment with its own date and digest.
 """
 
 
@@ -1237,6 +1247,143 @@ def check_amendment_figures() -> list[Hit]:
     return hits
 
 
+NUMBER_WORDS: dict[str, int] = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+    "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+    "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
+}
+"""Spelled-out counts the prose here actually uses. Deliberately not exhaustive.
+
+A word not in this map is not scanned, which is a boundary rather than a gap in the check's own
+terms -- DEBT E11 records it. Extending the map is how coverage grows; guessing at a general
+number-word parser is how a checker acquires bugs of its own.
+"""
+
+COUNTED_NOUN = (
+    r"(?:entries|entr(?:y|ies)|files?|images?|records?|crops?|bands?|lanes?|rows?|tests?|"
+    r"cycles?|runs?|findings?|sentences?|literals?|patterns?|steps?|things?|paths?|"
+    r"documents?|panels?|blots?|amendments?|deviations?|occurrences?)"
+)
+"""Nouns whose counts this project has got wrong, plus their obvious neighbours.
+
+Scoped to what has actually gone wrong rather than to every noun in English: a checker that
+fires on "two reasons" and "three ways" teaches its reader to skim it, which is the failure mode
+DEBT P1 records for this whole surface.
+"""
+
+COUNT_CLAIM = re.compile(
+    r"(?<![\w./-])(\d{1,4}|" + "|".join(NUMBER_WORDS) + r")\s+(?:\*\*)?" + COUNTED_NOUN + r"\b",
+    re.I,
+)
+"""A count of things asserted in running text: a number, then one of the counted nouns."""
+
+TABLE_ROW = re.compile(r"^\s*\|")
+"""A Markdown table row. A count inside one is a row, not prose, so the freeze does not reach it."""
+
+COUNT_ALLOW_MARKER = "claims-check: counted"
+"""Marker declaring a prose count deliberate and pinned elsewhere.
+
+Put ``<!-- claims-check: counted -->`` on the offending line or the line above it, exactly as
+:data:`ALLOW_MARKER` works for retracted wording. It is not an escape hatch for an unchecked
+number: the authorship freeze (NOTES.md, "Authorship freeze") says an agent may not write a
+prose count at all, so a marker here means a **human** wrote it or a human ruled it stays.
+"""
+
+
+def _pinned_numbers() -> set[str]:
+    """Return every number any :data:`QUANTITIES` pattern currently matches in a scanned file.
+
+    A count that a pinned quantity already covers is checked -- by :func:`check_numeric`, which
+    fails when two sites disagree -- so the freeze has nothing to add to it and reporting it
+    would be noise.
+    """
+    found: set[str] = set()
+    for _rel, lines, verbatim in _targets():
+        for quantity in QUANTITIES:
+            if verbatim and quantity.point_in_time:
+                continue
+            for pattern in quantity.compiled():
+                for line in lines:
+                    for match in pattern.finditer(line):
+                        found.add(match.group(1).lower())
+    return found
+
+
+def check_prose_counts(targets: list[tuple[str, list[str], bool]]) -> list[Hit]:
+    """Report a count of things asserted in prose rather than as a table row or a pinned figure.
+
+    The secondary half of the 2026-08-25 authorship freeze (NOTES.md). The primary half is that
+    an agent does not write one; this catches what that misses, and catches a human's too, which
+    is why it reports rather than fails.
+
+    A count is accepted when it is **derived from a table in the same document whose rows are the
+    things counted** -- approximated here as: the count appears inside a table row, or a table
+    with at least that many body rows appears within :data:`COUNT_TABLE_WINDOW` lines below it --
+    or when the number is already pinned by :data:`QUANTITIES`, or when the line carries
+    :data:`COUNT_ALLOW_MARKER`. Verbatim review extracts are exempt for the same reason they are
+    exempt from the retracted-phrase check: they are a record of what someone wrote.
+
+    **Report-only by construction**: every hit is returned with check name ``prose-count``, and
+    :func:`main` is what decides whether a check is fatal. Nothing here edits or fails a build.
+    """
+    hits: list[Hit] = []
+    pinned = _pinned_numbers()
+    for rel, lines, verbatim in targets:
+        if verbatim:
+            continue
+        in_fence = False
+        for number, line in enumerate(lines, 1):
+            if line.lstrip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence or TABLE_ROW.match(line) or line.lstrip().startswith(">"):
+                continue
+            previous = lines[number - 2] if number >= 2 else ""
+            if COUNT_ALLOW_MARKER in line or COUNT_ALLOW_MARKER in previous:
+                continue
+            for match in COUNT_CLAIM.finditer(line):
+                raw = match.group(1).lower()
+                value = NUMBER_WORDS.get(raw, int(raw) if raw.isdigit() else None)
+                if value is None or value < 2 or raw in pinned:
+                    continue
+                if _table_below(lines, number, value):
+                    continue
+                hits.append(
+                    Hit(rel, number, "prose-count",
+                        f"{match.group(0)!r} is a count of things asserted in prose. Under the "
+                        f"2026-08-25 authorship freeze a count belongs in a table whose rows are "
+                        f"the things counted, or in human-authored narrative, or pinned in "
+                        f"QUANTITIES. If a human wrote this and it stays, mark the line "
+                        f"'{COUNT_ALLOW_MARKER}'"))
+    return hits
+
+
+COUNT_TABLE_WINDOW = 12
+"""How far below a count to look for the table it is derived from.
+
+Twelve lines: far enough to clear a sentence and a blank line, near enough that the table is the
+one the reader sees next. A count whose table is further away than that is not obviously derived
+from it, which is the thing being checked.
+"""
+
+
+def _table_below(lines: list[str], number: int, value: int) -> bool:
+    """Return whether a table with at least ``value`` body rows starts within the window."""
+    for offset in range(number, min(number + COUNT_TABLE_WINDOW, len(lines))):
+        if not TABLE_ROW.match(lines[offset]):
+            continue
+        body = 0
+        for row in lines[offset:]:
+            if not TABLE_ROW.match(row):
+                break
+            if not set(row.strip()) <= set("|-: "):
+                body += 1
+        if body - 1 >= value:  # minus the header row
+            return True
+    return False
+
+
 def main() -> int:
     """Run every check and report. Returns 0 when clean, 1 on any hit."""
     targets = _targets()
@@ -1254,6 +1401,15 @@ def main() -> int:
         + check_ratified_amendments()
         + check_amendment_figures()
     )
+    # Report-only, and separate from `hits` so that it cannot change the exit code. The
+    # authorship freeze's primary half is an authorship rule; this half exists to show a human
+    # where prose counts are, and the scope decision on what to do about them is the human's.
+    advisories = check_prose_counts(targets)
+    if advisories:
+        print(f"\nprose-count (REPORT ONLY, does not fail the build) -- "
+              f"{len(advisories)} advisory(ies):", file=sys.stderr)
+        for hit in advisories:
+            print(f"  {hit.path}:{hit.line}: {hit.message}", file=sys.stderr)
     scanned = ", ".join(rel for rel, _, _ in targets)
     if not hits:
         print(f"OK: claims check passed over {len(targets)} file(s): {scanned}")

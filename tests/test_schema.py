@@ -17,7 +17,12 @@ from jsonschema import Draft202012Validator
 
 from pipeline import RESULT_SCHEMA_VERSION
 from pipeline.detect import ROI_SOURCES
-from pipeline.load import CHANNEL_COLLAPSE_MAX_DIVERGENCE_DN, CHANNEL_COLLAPSE_METHOD
+from pipeline.load import (
+    BRIGHT_ON_DARK,
+    CHANNEL_COLLAPSE_MAX_DIVERGENCE_DN,
+    CHANNEL_COLLAPSE_METHOD,
+    POLARITIES,
+)
 from synth import GROUND_TRUTH_SCHEMA_VERSION
 
 GROUND_TRUTH_SCHEMA = Path("schema/ground_truth.schema.json")
@@ -63,6 +68,7 @@ def valid_result() -> dict[str, Any]:
             "width_px": 256,
             "height_px": 192,
             "lossy_format": True,
+            "polarity": BRIGHT_ON_DARK,
         },
         "provenance": {
             "software_version": "0.1.0",
@@ -375,6 +381,47 @@ def test_result_schema_rejects_an_invented_lane_roi_source(
     errors = list(result_validator.iter_errors(document))
 
     assert any("is not one of" in error.message for error in errors)
+
+
+def test_result_schema_requires_a_declared_polarity(
+    result_validator: Draft202012Validator,
+) -> None:
+    """1.4.0 makes it required, and the requirement is the contract, not the docstring.
+
+    An absent ``channel_collapse`` means the file was single-channel, which is information. An
+    absent polarity would mean nobody said -- and a document measured without a declared polarity
+    is what the 2026-08-24 amendment exists to prevent being produced.
+    """
+    document = valid_result()
+    del document["source"]["polarity"]
+
+    errors = list(result_validator.iter_errors(document))
+
+    assert any("polarity" in error.message and "required" in error.message for error in errors)
+
+
+def test_result_schema_rejects_a_polarity_the_amendment_does_not_define(
+    result_validator: Draft202012Validator,
+) -> None:
+    """An enum, so a third convention fails validation rather than reading as a variant.
+
+    ``auto`` is the value a caller would most plausibly invent, and it is the one the amendment
+    refuses by name: it would be an auto-detection heuristic wearing a vocabulary word.
+    """
+    document = valid_result()
+    document["source"]["polarity"] = "auto"
+
+    errors = list(result_validator.iter_errors(document))
+
+    assert any("is not one of" in error.message for error in errors)
+
+
+def test_the_schema_polarity_enum_is_the_loaders_vocabulary(repo_root: Path) -> None:
+    """Written twice and must stay one vocabulary, like ``roi_source`` and ``schema_version``."""
+    schema = json.loads((repo_root / RESULT_SCHEMA).read_text(encoding="utf-8"))
+    enum = schema["properties"]["source"]["properties"]["polarity"]["enum"]
+
+    assert tuple(enum) == POLARITIES
 
 
 def test_result_schema_requires_provenance(result_validator: Draft202012Validator) -> None:

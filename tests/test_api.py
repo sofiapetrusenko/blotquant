@@ -26,9 +26,11 @@ from api import app as app_module
 from api.__main__ import build_parser
 from api.__main__ import main as api_main
 from api.app import create_app
+from api.display import INVERTED_MAPPING_FORMULA
 from api.errors import status_for
 from pipeline import RESULT_SCHEMA_VERSION
 from pipeline.errors import NormalizationError, PipelineError, ReferenceBandError
+from pipeline.load import BRIGHT_ON_DARK
 from tests.conftest import Blot
 from tests.test_pipeline_config import CONFIG_DIR
 
@@ -36,6 +38,17 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = REPO_ROOT / "schema" / "result.schema.json"
 
 PNG_MEDIA_TYPE = "image/png"
+
+
+def _form(config: str = "default", **extra: object) -> dict[str, object]:
+    """Return the form fields of an analyse request, with polarity always declared.
+
+    Every request needs one since the 2026-08-24 polarity amendment made it required, and the
+    fixtures here are synthetic dev images, which the generator declares ``bright_on_dark``.
+    Written once so that a test which needs to omit or corrupt the field has to say so, rather
+    than differing from its neighbours by a dictionary key nobody notices.
+    """
+    return {"config": config, "polarity": BRIGHT_ON_DARK, **extra}
 
 
 @pytest.fixture
@@ -111,7 +124,7 @@ def test_analyze_returns_a_schema_valid_document_in_an_envelope(
     client: TestClient, blot_bytes: bytes
 ) -> None:
     """The envelope carries the document the pipeline wrote, unmodified and valid."""
-    response = client.post("/analyze", files=_upload(blot_bytes), data={"config": "default"})
+    response = client.post("/analyze", files=_upload(blot_bytes), data=_form())
 
     assert response.status_code == 200
     envelope = response.json()
@@ -125,7 +138,7 @@ def test_analyze_returns_a_display_derivative_marked_as_one(
     client: TestClient, blot_bytes: bytes
 ) -> None:
     """The PNG is labelled a derivative, records its mapping, and decodes to the right size."""
-    response = client.post("/analyze", files=_upload(blot_bytes), data={"config": "default"})
+    response = client.post("/analyze", files=_upload(blot_bytes), data=_form())
 
     display = response.json()["display"]
     assert display["is_derivative"] is True
@@ -151,7 +164,7 @@ def test_supplied_lane_rois_become_the_lanes_and_are_recorded_as_the_callers(
     response = client.post(
         "/analyze",
         files=_upload(blot_bytes),
-        data={"config": "default", "lane_roi": ["5,0,70,120", "120,0,70,120"]},
+        data=_form(lane_roi=["5,0,70,120", "120,0,70,120"]),
     )
 
     assert response.status_code == 200
@@ -164,11 +177,11 @@ def test_the_same_image_with_different_lane_rois_gets_a_different_id(
     client: TestClient, blot_bytes: bytes
 ) -> None:
     """Otherwise ``GET /results/{id}`` would serve one analysis for another."""
-    detected = client.post("/analyze", files=_upload(blot_bytes), data={"config": "default"})
+    detected = client.post("/analyze", files=_upload(blot_bytes), data=_form())
     supplied = client.post(
         "/analyze",
         files=_upload(blot_bytes),
-        data={"config": "default", "lane_roi": ["5,0,70,120", "120,0,70,120"]},
+        data=_form(lane_roi=["5,0,70,120", "120,0,70,120"]),
     )
 
     assert detected.json()["result"]["result_id"] != supplied.json()["result"]["result_id"]
@@ -181,7 +194,7 @@ def test_a_stored_result_comes_back_in_the_same_envelope(
     posted = client.post(
         "/analyze",
         files=_upload(blot_bytes),
-        data={"config": "default", "lane_roi": ["5,0,70,120"]},
+        data=_form(lane_roi=["5,0,70,120"]),
     ).json()
 
     fetched = client.get(f"/results/{posted['result']['result_id']}")
@@ -199,7 +212,7 @@ def test_the_two_pass_housekeeping_flow_works_over_the_api(
     per-lane references under a housekeeping mode. This is the flow the endpoint's OpenAPI
     description documents, executed exactly as written.
     """
-    first = client.post("/analyze", files=_upload(blot_bytes), data={"config": "default"})
+    first = client.post("/analyze", files=_upload(blot_bytes), data=_form())
     assert first.status_code == 200
     first_result = first.json()["result"]
     assert first_result["normalization"]["mode"] == "total_protein"
@@ -211,7 +224,7 @@ def test_the_two_pass_housekeeping_flow_works_over_the_api(
     second = client.post(
         "/analyze",
         files=_upload(blot_bytes),
-        data={"config": "housekeeping", "reference_band_id": references},
+        data=_form("housekeeping", reference_band_id=references),
     )
 
     assert second.status_code == 200
@@ -231,7 +244,7 @@ def test_a_lane_roi_off_the_image_is_a_400_with_the_message_intact(
     response = client.post(
         "/analyze",
         files=_upload(blot_bytes),
-        data={"config": "default", "lane_roi": ["5,0,70,120", "170,0,70,120"]},
+        data=_form(lane_roi=["5,0,70,120", "170,0,70,120"]),
     )
 
     assert response.status_code == 400
@@ -248,7 +261,7 @@ def test_overlapping_lane_rois_are_a_400_naming_both(
     response = client.post(
         "/analyze",
         files=_upload(blot_bytes),
-        data={"config": "default", "lane_roi": ["0,0,60,120", "50,0,60,120"]},
+        data=_form(lane_roi=["0,0,60,120", "50,0,60,120"]),
     )
 
     assert response.status_code == 400
@@ -269,7 +282,7 @@ def test_a_lane_roi_too_small_to_profile_is_a_400_not_a_pipeline_internal_422(
     response = client.post(
         "/analyze",
         files=_upload(blot_bytes),
-        data={"config": "default", "lane_roi": ["5,0,70,120", "120,0,70,1"]},
+        data=_form(lane_roi=["5,0,70,120", "120,0,70,1"]),
     )
 
     assert response.status_code == 400
@@ -286,18 +299,104 @@ def test_a_malformed_lane_roi_string_is_a_400(client: TestClient, blot_bytes: by
     response = client.post(
         "/analyze",
         files=_upload(blot_bytes),
-        data={"config": "default", "lane_roi": ["5,0,70"]},
+        data=_form(lane_roi=["5,0,70"]),
     )
 
     assert response.status_code == 400
     assert "comma-separated value(s)" in response.json()["detail"]
 
 
+def test_an_upload_without_a_polarity_is_refused(client: TestClient, blot_bytes: bytes) -> None:
+    """The amendment names the API as an entry point, so the refusal must exist on it too.
+
+    A missing required form field is FastAPI's own request-validation failure, so this is a 422
+    rather than the 415 an unrecognised *value* gets -- the caller sent a malformed request in
+    the first case and an unquantifiable input in the second.
+    """
+    response = client.post(
+        "/analyze", files=_upload(blot_bytes), data={"config": "default"}
+    )
+
+    assert response.status_code == 422
+    assert "polarity" in response.text
+
+
+def test_an_empty_polarity_field_is_a_malformed_request_not_a_bad_value(
+    client: TestClient, blot_bytes: bytes
+) -> None:
+    """Recorded because the two refusals differ and the boundary is not obvious.
+
+    An empty form field does not reach the pipeline: FastAPI treats it as the field not being
+    supplied, so it is the same 422 as omitting it rather than the 415 an unrecognised value
+    gets. Asserted so that a future change to the field's type -- to one with a default, say --
+    shows up here instead of silently turning a refusal into an acceptance.
+    """
+    response = client.post(
+        "/analyze", files=_upload(blot_bytes), data={"config": "default", "polarity": ""}
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("value", ["auto", "unknown", "BRIGHT_ON_DARK", "dark on bright"])
+def test_an_unrecognised_polarity_is_refused_with_415(
+    client: TestClient, blot_bytes: bytes, value: str
+) -> None:
+    """What the OpenAPI description promises, asserted rather than asserted-in-prose.
+
+    ``auto`` is the value a caller would most plausibly invent, and it is the one the amendment
+    refuses by name.
+    """
+    response = client.post(
+        "/analyze", files=_upload(blot_bytes), data={"config": "default", "polarity": value}
+    )
+
+    assert response.status_code == 415
+    assert "polarity" in response.json()["detail"]
+
+
+def test_a_dark_on_bright_upload_is_measured_and_records_its_declaration(
+    client: TestClient, blot_bytes: bytes
+) -> None:
+    """The other side of the vocabulary, end to end through the service."""
+    response = client.post(
+        "/analyze",
+        files=_upload(blot_bytes),
+        data={"config": "default", "polarity": "dark_on_bright"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["source"]["polarity"] == "dark_on_bright"
+    mapping = response.json()["display"]["mapping"]
+    assert mapping["source_inverted"] is True, (
+        "the display block must say the array it rendered is not the array uploaded"
+    )
+    assert mapping["source_polarity"] == "dark_on_bright"
+    assert mapping["formula"] == INVERTED_MAPPING_FORMULA, (
+        "the block must report the mapping it performed, not the one it would have"
+    )
+
+
+def test_the_two_declarations_of_one_upload_do_not_share_a_result_id(
+    client: TestClient, blot_bytes: bytes
+) -> None:
+    """Same bytes, opposite declarations, two different measurements -- and two addresses."""
+    bright = client.post("/analyze", files=_upload(blot_bytes), data=_form()).json()["result"]
+    dark = client.post(
+        "/analyze",
+        files=_upload(blot_bytes),
+        data={"config": "default", "polarity": "dark_on_bright"},
+    ).json()["result"]
+
+    assert bright["result_id"] != dark["result_id"]
+
+
 def test_an_unknown_config_is_a_400_listing_the_ones_that_exist(
     client: TestClient, blot_bytes: bytes
 ) -> None:
     """A typo is a message, never a fallback to some default parameter set."""
-    response = client.post("/analyze", files=_upload(blot_bytes), data={"config": "defualt"})
+    response = client.post("/analyze", files=_upload(blot_bytes), data=_form("defualt"))
 
     assert response.status_code == 400
     detail = response.json()["detail"]
@@ -316,7 +415,7 @@ def test_an_unsupported_pixel_type_is_a_415_that_says_which(
     response = client.post(
         "/analyze",
         files={"image": ("float.tiff", path.read_bytes(), "image/tiff")},
-        data={"config": "default"},
+        data=_form(),
     )
 
     assert response.status_code == 415
@@ -329,7 +428,7 @@ def test_bytes_that_are_not_an_image_are_a_415(client: TestClient) -> None:
     response = client.post(
         "/analyze",
         files=_upload(b"this is not a blot", name="blot.png"),
-        data={"config": "default"},
+        data=_form(),
     )
 
     assert response.status_code == 415
@@ -343,7 +442,7 @@ def test_a_reference_band_that_names_nothing_is_a_400(
     response = client.post(
         "/analyze",
         files=_upload(blot_bytes),
-        data={"config": "housekeeping", "reference_band_id": ["L9_B9"]},
+        data=_form("housekeeping", reference_band_id=["L9_B9"]),
     )
 
     assert response.status_code == 400
@@ -394,7 +493,7 @@ def test_a_successful_response_carries_no_error_field(
 ) -> None:
     """A 200 must never carry an error string for a caller to notice or miss."""
     envelope = client.post(
-        "/analyze", files=_upload(blot_bytes), data={"config": "default"}
+        "/analyze", files=_upload(blot_bytes), data=_form()
     ).json()
 
     assert "error" not in envelope
@@ -418,7 +517,7 @@ def test_an_invalid_document_is_a_500_and_is_never_served_as_a_200(
 
     monkeypatch.setattr(app_module, "analyze_image", _with_an_extra_key)
 
-    response = client.post("/analyze", files=_upload(blot_bytes), data={"config": "default"})
+    response = client.post("/analyze", files=_upload(blot_bytes), data=_form())
 
     assert response.status_code == 500
     body = response.json()
@@ -450,7 +549,7 @@ def test_an_invalid_document_is_not_written_to_the_store_either(
     monkeypatch.setattr(app_module, "analyze_image", _with_an_extra_key)
 
     assert (
-        client.post("/analyze", files=_upload(blot_bytes), data={"config": "default"})
+        client.post("/analyze", files=_upload(blot_bytes), data=_form())
     ).status_code == 500
 
     result_id = captured["result_id"]
@@ -468,7 +567,7 @@ def test_a_stored_document_from_an_older_contract_says_so_rather_than_blaming_a_
     message has to carry the id and both versions for an operator to act on it.
     """
     result_id = (
-        client.post("/analyze", files=_upload(blot_bytes), data={"config": "default"})
+        client.post("/analyze", files=_upload(blot_bytes), data=_form())
         .json()["result"]["result_id"]
     )
     stored = tmp_path / "results" / result_id / "result.json"
@@ -492,7 +591,7 @@ def test_a_damaged_stored_display_record_leaves_as_a_json_error_like_every_other
 ) -> None:
     """One JSON error shape is a promise, so no path may escape as a bare decode failure."""
     result_id = (
-        client.post("/analyze", files=_upload(blot_bytes), data={"config": "default"})
+        client.post("/analyze", files=_upload(blot_bytes), data=_form())
         .json()["result"]["result_id"]
     )
     (tmp_path / "results" / result_id / "display.json").write_text("{ truncat", encoding="utf-8")
@@ -519,7 +618,7 @@ def test_a_stored_document_with_undecodable_bytes_is_refused_rather_than_repaire
     is not merely that a 500 comes back, but that the id in the document was never rewritten.
     """
     result = client.post(
-        "/analyze", files=_upload(blot_bytes), data={"config": "default"}
+        "/analyze", files=_upload(blot_bytes), data=_form()
     ).json()["result"]
     result_id = result["result_id"]
     band_id = result["bands"][0]["band_id"]
@@ -550,7 +649,7 @@ def test_a_display_record_damaged_into_an_unlabelled_one_is_refused(
     measurement -- the one thing the display boundary exists to prevent.
     """
     result_id = (
-        client.post("/analyze", files=_upload(blot_bytes), data={"config": "default"})
+        client.post("/analyze", files=_upload(blot_bytes), data=_form())
         .json()["result"]["result_id"]
     )
     (tmp_path / "results" / result_id / "display.json").write_text("{}", encoding="utf-8")
@@ -591,7 +690,7 @@ def test_a_422_from_request_validation_is_told_apart_by_the_error_key(
     flat = tmp_path / "flat.png"
     assert cv2.imwrite(str(flat), np.full((60, 60), 1000, dtype=np.uint16))
     no_lanes = client.post(
-        "/analyze", files=_upload(flat.read_bytes(), name="flat.png"), data={"config": "default"}
+        "/analyze", files=_upload(flat.read_bytes(), name="flat.png"), data=_form()
     )
 
     assert missing_config.status_code == no_lanes.status_code == 422
@@ -712,7 +811,7 @@ def test_analyze_accepts_a_collapsible_upload_and_records_the_collapse(
     side, so that assertion rested on the one input class nothing posted.
     """
     response = client.post(
-        "/analyze", files=_upload(collapsible_bytes, "collapsible.png"), data={"config": "default"}
+        "/analyze", files=_upload(collapsible_bytes, "collapsible.png"), data=_form()
     )
 
     assert response.status_code == 200, response.text
@@ -734,7 +833,7 @@ def test_analyze_refuses_a_colour_upload_with_415_and_names_the_divergence(
     must distinguish a genuine colour image from one that missed the bound by a digit.
     """
     response = client.post(
-        "/analyze", files=_upload(colour_bytes, "colour.png"), data={"config": "default"}
+        "/analyze", files=_upload(colour_bytes, "colour.png"), data=_form()
     )
 
     assert response.status_code == 415

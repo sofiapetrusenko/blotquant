@@ -19,14 +19,22 @@
     "schema_version": {
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
-      "const": "1.3.0",
+      "const": "1.4.0",
       "description": "The version of this contract the document was written against. A const, mirroring ground_truth.schema.json, so the schema file and pipeline.RESULT_SCHEMA_VERSION cannot drift apart; tests/test_schema.py pins the two together."
     },
     "result_id": { "type": "string", "minLength": 1 },
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "image_format", "bit_depth", "width_px", "height_px", "lossy_format"],
+      "required": [
+        "path",
+        "image_format",
+        "bit_depth",
+        "width_px",
+        "height_px",
+        "lossy_format",
+        "polarity"
+      ],
       "description": "The input as loaded. bit_depth is what the file declared; unsupported depths raise instead of being squashed.",
       "properties": {
         "path": { "type": "string", "minLength": 1 },
@@ -37,6 +45,11 @@
         "width_px": { "type": "integer", "minimum": 1 },
         "height_px": { "type": "integer", "minimum": 1 },
         "lossy_format": { "type": "boolean" },
+        "polarity": {
+          "type": "string",
+          "enum": ["bright_on_dark", "dark_on_bright"],
+          "description": "The signal polarity the caller declared for this file: bright_on_dark when bands are brighter than their background, dark_on_bright when they are darker. Declared, never inferred (2026-08-24 polarity amendment, ruling (a)); the pipeline refuses an undeclared image rather than guessing. An enum rather than a free string, so a document asserting a polarity the amendment does not define fails validation instead of being read as a third convention. Recorded as DECLARED, not as applied: a dark_on_bright document says so although its pixels were inverted to the canonical convention on the way in, because the declaration describes the file and the inversion describes the run."
+        },
         "channel_collapse": {
           "type": "object",
           "additionalProperties": false,

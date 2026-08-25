@@ -30,6 +30,7 @@ from pipeline.__main__ import main
 from pipeline.analyze import analyze_image
 from pipeline.config import load_config
 from pipeline.errors import ReferenceBandError
+from pipeline.load import BRIGHT_ON_DARK
 from tests.conftest import Blot
 from tests.test_pipeline_config import CONFIG_DIR
 from tests.test_pipeline_result import _schema
@@ -68,6 +69,7 @@ def test_a_designated_reference_produces_ratios_and_records_its_source(
         load_config(housekeeping_config),
         reference_band_ids=REFERENCES,
         reference_designation_source=PARSED_PENDING,
+        polarity=BRIGHT_ON_DARK,
     )
 
     normalization = result["normalization"]
@@ -87,7 +89,7 @@ def test_an_undesignated_reference_produces_no_ratio_and_refuses_to_guess(
     refusal to infer.
     """
     with pytest.raises(ReferenceBandError) as raised:
-        analyze_image(blot_png, load_config(housekeeping_config))
+        analyze_image(blot_png, load_config(housekeeping_config), polarity=BRIGHT_ON_DARK)
 
     message = str(raised.value)
     assert "not visible in the pixels" in message
@@ -107,6 +109,7 @@ def test_the_source_is_refused_when_it_describes_no_designation(
             blot_png,
             load_config(CONFIG_DIR / "default.yaml"),
             reference_designation_source=PARSED_PENDING,
+            polarity=BRIGHT_ON_DARK,
         )
 
 
@@ -121,6 +124,7 @@ def test_a_blank_source_is_refused_rather_than_recorded(
             load_config(housekeeping_config),
             reference_band_ids=REFERENCES,
             reference_designation_source=blank,
+            polarity=BRIGHT_ON_DARK,
         )
 
 
@@ -129,7 +133,8 @@ def test_the_source_is_absent_rather_than_null_when_it_was_not_given(
 ) -> None:
     """Absence says the origin was not stated. It must not be readable as confirmation."""
     result = analyze_image(
-        blot_png, load_config(housekeeping_config), reference_band_ids=REFERENCES
+        blot_png, load_config(housekeeping_config), reference_band_ids=REFERENCES,
+        polarity=BRIGHT_ON_DARK,
     )
 
     assert "reference_designation_source" not in result["normalization"]
@@ -149,19 +154,27 @@ def test_the_result_id_covers_the_designation_source(
         config,
         reference_band_ids=REFERENCES,
         reference_designation_source=PARSED_PENDING,
+        polarity=BRIGHT_ON_DARK,
     )
     confirmed = analyze_image(
         blot_png,
         config,
         reference_band_ids=REFERENCES,
         reference_designation_source="figure caption, confirmed by the human",
+        polarity=BRIGHT_ON_DARK,
     )
-    unstated = analyze_image(blot_png, config, reference_band_ids=REFERENCES)
+    unstated = analyze_image(
+        blot_png,
+        config,
+        reference_band_ids=REFERENCES,
+        polarity=BRIGHT_ON_DARK,
+    )
     repeated = analyze_image(
         blot_png,
         config,
         reference_band_ids=REFERENCES,
         reference_designation_source=PARSED_PENDING,
+        polarity=BRIGHT_ON_DARK,
     )
 
     assert len({proposed["result_id"], confirmed["result_id"], unstated["result_id"]}) == 3
@@ -174,7 +187,9 @@ def test_the_cli_plumbs_the_designation_and_its_source_end_to_end(
 ) -> None:
     """The whole path: flags on the command line, ratios and the source in the written file."""
     out = tmp_path / "out"
-    argv = ["run", str(blot_png), "--config", str(housekeeping_config), "--out", str(out)]
+    argv = ["run", str(blot_png), "--config", str(housekeeping_config), "--out", str(out),
+        "--polarity", BRIGHT_ON_DARK,
+    ]
     for band_id in REFERENCES:
         argv += ["--reference-band", band_id]
     argv += ["--reference-designation-source", PARSED_PENDING]
@@ -195,11 +210,12 @@ def test_the_cli_refuses_a_source_without_a_designation(
     out = tmp_path / "out"
 
     code = main(
-        [
-            "run", str(blot_png),
+        ["run", str(blot_png),
             "--config", str(housekeeping_config),
             "--out", str(out),
             "--reference-designation-source", PARSED_PENDING,
+            "--polarity",
+            BRIGHT_ON_DARK,
         ]
     )
 

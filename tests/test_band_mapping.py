@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from pipeline.errors import PipelineError
+from pipeline.load import BRIGHT_ON_DARK
 from tools.phase3.band_mapping import (
     COLUMNS,
     CONFIRMED_SOURCES,
@@ -396,6 +397,10 @@ def wired_set(tmp_path: Path) -> RunConfig:
         out_dir=tmp_path / "out",
         min_band_height_px=PREREGISTERED_MIN_BAND_HEIGHT_PX,
         expected_crop_count=len(DEV_IMAGES),
+        # These fixtures are synthetic dev images, which the generator declares
+        # bright_on_dark. Inheriting the real corpus's declaration would be this
+        # suite asserting something false about its own fixtures.
+        polarity=BRIGHT_ON_DARK,
         designations_path=designations,
         blot_identity_path=identity,
         detection_only=True,

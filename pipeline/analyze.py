@@ -43,13 +43,14 @@ def _result_id(
     reference_band_ids: Sequence[str] | None,
     lane_rois: Sequence[Roi] | None,
     reference_designation_source: str | None,
+    polarity: str,
 ) -> str:
     """Return a deterministic id for every input that can change the document.
 
     Derived from content rather than from the file path or the clock, so re-analysing the
     same image with the same inputs reproduces the same id on any machine.
 
-    All **five** inputs are hashed, not two. The reference band ids are a per-image input no
+    All **six** inputs are hashed, not two. The reference band ids are a per-image input no
     parameter set can carry -- ``NormalizationConfig`` deliberately does not -- and they change
     the denominators, the ratios and the exclusions, so hashing only the image and the config
     would give two genuinely different documents the same id, and PLAN.md's Phase 4
@@ -72,6 +73,15 @@ def _result_id(
     let ``GET /results/{id}`` serve a result labelled "confirmed by the human" in answer to a
     request for one labelled "proposed by a parser". That is the failure this id exists to
     make impossible. It is JSON-encoded, so ``null`` and the empty string cannot hash alike.
+
+    The declared polarity is the sixth, added 2026-08-24 with the amendment that introduced it,
+    and it is the input whose omission was caught by a test rather than by reasoning. ``sha256``
+    identifies the **delivered** bytes, so one file declared ``bright_on_dark`` and
+    ``dark_on_bright`` hashes the same on the first five inputs while producing two documents
+    that share no measured number -- one measures the bands and the other measures the gaps
+    between them. Without this, ``POST /analyze`` of the same upload under the two declarations
+    returned one id for both, and ``ResultStore.save`` would have silently overwritten one
+    measurement with the other.
     """
     references = json.dumps(list(reference_band_ids or ()), separators=(",", ":"))
     rois = json.dumps(
@@ -79,7 +89,10 @@ def _result_id(
         separators=(",", ":"),
     )
     designation = json.dumps(reference_designation_source, separators=(",", ":"))
-    payload = f"{source_sha256}|{config_digest}|{references}|{rois}|{designation}".encode()
+    declared = json.dumps(polarity, separators=(",", ":"))
+    payload = (
+        f"{source_sha256}|{config_digest}|{references}|{rois}|{designation}|{declared}"
+    ).encode()
     return hashlib.sha256(payload).hexdigest()[:RESULT_ID_HEX_DIGITS]
 
 
@@ -140,6 +153,7 @@ def analyze_image(
     ground_truth_image_id: str | None = None,
     reference_band_ids: Sequence[str] | None = None,
     *,
+    polarity: str,
     lane_rois: Sequence[Roi] | None = None,
     reference_designation_source: str | None = None,
 ) -> dict[str, Any]:
@@ -183,7 +197,9 @@ def analyze_image(
     the same image, or from a user correcting the detection.
     """
     supplied_lane_rois = None if lane_rois is None else tuple(lane_rois)
-    loaded = load_image(image_path)
+    # Keyword-only and with no default, so a caller that has not decided cannot analyse.
+    # 2026-08-24 polarity amendment, ruling (a); the refusal itself lives in load_image.
+    loaded = load_image(image_path, polarity)
     correction = correct_background(loaded.pixels, config.background)
     detection = detect(correction.corrected, config.detection, supplied_lane_rois)
     measurements = quantify_bands(
@@ -239,6 +255,7 @@ def analyze_image(
             reference_band_ids,
             supplied_lane_rois,
             reference_designation_source,
+            polarity,
         ),
         "source": loaded.as_source(ground_truth_image_id),
         "provenance": {

@@ -31,7 +31,7 @@ from pipeline.detect import (
     smooth_profile,
 )
 from pipeline.errors import QcError
-from pipeline.load import load_image
+from pipeline.load import BRIGHT_ON_DARK, load_image
 from pipeline.qc import (
     BAND_QC_FLAGS,
     IMAGE_QC_FLAGS,
@@ -667,7 +667,7 @@ def test_image_flags_match_ground_truth_on_selected_gold_set_images(
     """The image-level flags reproduce ground truth's own labels, firing and not firing."""
     truth = _truth(committed_data_dir, image_id)
     assert set(truth["image_qc_flags"]) == expected, "the fixture states the truth labels"
-    loaded = load_image(committed_data_dir / str(truth["image_path"]))
+    loaded = load_image(committed_data_dir / str(truth["image_path"]), BRIGHT_ON_DARK)
     correction = correct_background(loaded.pixels, config.background)
     detection = detect(correction.corrected, config.detection)
 
@@ -695,7 +695,7 @@ def test_saturated_bands_are_flagged_on_a_saturating_gold_set_image(
     from evals.metrics import PLAN_IOU_THRESHOLD, match_boxes
 
     truth = _truth(committed_data_dir, "dev_00")
-    loaded = load_image(committed_data_dir / str(truth["image_path"]))
+    loaded = load_image(committed_data_dir / str(truth["image_path"]), BRIGHT_ON_DARK)
     correction = correct_background(loaded.pixels, config.background)
     detection = detect(correction.corrected, config.detection)
     report = assess(

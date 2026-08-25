@@ -16,6 +16,7 @@ from pipeline.errors import (
     UnsupportedImageError,
 )
 from pipeline.load import (
+    BRIGHT_ON_DARK,
     CHANNEL_COLLAPSE_MAX_DIVERGENCE_DN,
     channel_divergence_dn,
     detect_format,
@@ -35,7 +36,7 @@ def test_tiff16_round_trips_exactly(tmp_path: Path) -> None:
     path = tmp_path / "blot.tiff"
     tifffile.imwrite(str(path), array, photometric="minisblack")
 
-    loaded = load_image(path)
+    loaded = load_image(path, BRIGHT_ON_DARK)
 
     assert loaded.image_format == "tiff"
     assert loaded.bit_depth == 16
@@ -53,7 +54,7 @@ def test_png8_round_trips_exactly(tmp_path: Path) -> None:
     path = tmp_path / "blot.png"
     assert cv2.imwrite(str(path), array)
 
-    loaded = load_image(path)
+    loaded = load_image(path, BRIGHT_ON_DARK)
 
     assert (loaded.image_format, loaded.bit_depth, loaded.max_value) == ("png", 8, 255)
     assert loaded.lossy_format is False
@@ -66,7 +67,7 @@ def test_jpeg_is_flagged_lossy_and_stays_8_bit(tmp_path: Path) -> None:
     path = tmp_path / "blot.jpg"
     assert cv2.imwrite(str(path), array, [cv2.IMWRITE_JPEG_QUALITY, 75])
 
-    loaded = load_image(path)
+    loaded = load_image(path, BRIGHT_ON_DARK)
 
     assert (loaded.image_format, loaded.bit_depth) == ("jpeg", 8)
     assert loaded.lossy_format is True
@@ -80,7 +81,7 @@ def test_format_comes_from_content_not_extension(tmp_path: Path) -> None:
     encoded = cv2.imencode(".png", array)[1].tobytes()
     misnamed.write_bytes(encoded)
 
-    loaded = load_image(misnamed)
+    loaded = load_image(misnamed, BRIGHT_ON_DARK)
 
     assert loaded.image_format == "png"
     np.testing.assert_array_equal(loaded.pixels, array)
@@ -94,7 +95,7 @@ def test_sha256_is_the_file_digest(tmp_path: Path) -> None:
     path = tmp_path / "blot.png"
     assert cv2.imwrite(str(path), array)
 
-    loaded = load_image(path)
+    loaded = load_image(path, BRIGHT_ON_DARK)
 
     assert loaded.sha256 == "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -105,7 +106,7 @@ def test_float_tiff_raises_unsupported_bit_depth(tmp_path: Path) -> None:
     tifffile.imwrite(str(path), np.zeros((8, 8), dtype=np.float32))
 
     with pytest.raises(UnsupportedBitDepthError, match="float32"):
-        load_image(path)
+        load_image(path, BRIGHT_ON_DARK)
 
 
 def test_int32_tiff_raises_unsupported_bit_depth(tmp_path: Path) -> None:
@@ -114,7 +115,7 @@ def test_int32_tiff_raises_unsupported_bit_depth(tmp_path: Path) -> None:
     tifffile.imwrite(str(path), np.zeros((8, 8), dtype=np.uint32))
 
     with pytest.raises(UnsupportedBitDepthError, match="uint32"):
-        load_image(path)
+        load_image(path, BRIGHT_ON_DARK)
 
 
 def _three_channel(divergence: int) -> np.ndarray:
@@ -203,7 +204,7 @@ def test_a_float_three_channel_image_is_refused_and_is_not_told_to_export_a_chan
     tifffile.imwrite(str(path), np.zeros((8, 8, 3), dtype=np.float32), photometric="rgb")
 
     with pytest.raises(UnsupportedImageError) as raised:
-        load_image(path)
+        load_image(path, BRIGHT_ON_DARK)
 
     message = str(raised.value)
     assert "not one this pipeline reads at any channel count" in message
@@ -222,7 +223,7 @@ def test_divergence_at_or_below_the_bound_collapses_to_green(
     array = _three_channel(divergence)
     path = _write_png(tmp_path / "colour.png", array)
 
-    loaded = load_image(path)
+    loaded = load_image(path, BRIGHT_ON_DARK)
 
     assert loaded.pixels.ndim == 2
     assert loaded.pixels.dtype == np.uint8
@@ -242,7 +243,7 @@ def test_the_collapse_takes_green_and_not_a_neighbouring_plane(tmp_path: Path) -
     array = _three_channel(2)
     path = _write_png(tmp_path / "colour.png", array)
 
-    loaded = load_image(path)
+    loaded = load_image(path, BRIGHT_ON_DARK)
 
     np.testing.assert_array_equal(loaded.pixels, array[:, :, 1])
     assert not np.array_equal(loaded.pixels, array[:, :, 0])
@@ -266,7 +267,7 @@ def test_green_is_taken_through_a_decoder_that_does_not_use_bgr(tmp_path: Path) 
     path = tmp_path / "rgb.tiff"
     tifffile.imwrite(str(path), array, photometric="rgb")
 
-    loaded = load_image(path)
+    loaded = load_image(path, BRIGHT_ON_DARK)
 
     assert loaded.channel_collapse is not None
     assert loaded.channel_collapse.max_divergence_dn == 2
@@ -277,7 +278,7 @@ def test_the_collapsed_plane_is_contiguous(tmp_path: Path) -> None:
     """The collapse hands back a plain 2D array, not a strided view of the decode buffer."""
     path = _write_png(tmp_path / "colour.png", _three_channel(0))
 
-    assert load_image(path).pixels.flags["C_CONTIGUOUS"]
+    assert load_image(path, BRIGHT_ON_DARK).pixels.flags["C_CONTIGUOUS"]
 
 
 @pytest.mark.parametrize("divergence", [3, 43, 255])
@@ -294,7 +295,7 @@ def test_divergence_above_the_bound_raises_and_names_the_measurement(
     path = _write_png(tmp_path / "colour.png", _three_channel(divergence))
 
     with pytest.raises(UnsupportedImageError, match="single-channel") as raised:
-        load_image(path)
+        load_image(path, BRIGHT_ON_DARK)
 
     message = str(raised.value)
     assert f"{divergence} DN" in message, "the refusal must name what it measured"
@@ -311,9 +312,9 @@ def test_the_bound_is_not_moved_by_a_single_dn(tmp_path: Path) -> None:
     inside = _write_png(tmp_path / "inside.png", _three_channel(2))
     outside = _write_png(tmp_path / "outside.png", _three_channel(3))
 
-    assert load_image(inside).channel_collapse is not None
+    assert load_image(inside, BRIGHT_ON_DARK).channel_collapse is not None
     with pytest.raises(UnsupportedImageError):
-        load_image(outside)
+        load_image(outside, BRIGHT_ON_DARK)
 
 
 def test_a_four_channel_image_raises(tmp_path: Path) -> None:
@@ -321,7 +322,7 @@ def test_a_four_channel_image_raises(tmp_path: Path) -> None:
     path = _write_png(tmp_path / "rgba.png", np.zeros((8, 8, 4), dtype=np.uint8))
 
     with pytest.raises(UnsupportedImageError, match="single-channel"):
-        load_image(path)
+        load_image(path, BRIGHT_ON_DARK)
 
 
 def test_a_16_bit_three_channel_image_raises(tmp_path: Path) -> None:
@@ -330,14 +331,14 @@ def test_a_16_bit_three_channel_image_raises(tmp_path: Path) -> None:
     tifffile.imwrite(str(path), np.zeros((8, 8, 3), dtype=np.uint16), photometric="rgb")
 
     with pytest.raises(UnsupportedImageError, match="8-bit"):
-        load_image(path)
+        load_image(path, BRIGHT_ON_DARK)
 
 
 def test_a_single_channel_image_records_no_collapse(tmp_path: Path) -> None:
     """No collapse block on an image that never needed one -- absence is the record."""
     path = _write_png(tmp_path / "grey.png", _ramp(8, 8, np.uint8))
 
-    loaded = load_image(path)
+    loaded = load_image(path, BRIGHT_ON_DARK)
 
     assert loaded.channel_collapse is None
     assert "channel_collapse" not in loaded.as_source()
@@ -347,7 +348,7 @@ def test_the_source_block_carries_the_collapse_in_the_ruled_shape(tmp_path: Path
     """Provenance carries exactly the two fields the amendment writes, and their values."""
     path = _write_png(tmp_path / "colour.png", _three_channel(2))
 
-    source = load_image(path).as_source()
+    source = load_image(path, BRIGHT_ON_DARK).as_source()
 
     assert source["channel_collapse"] == {"method": "green", "max_divergence_dn": 2}
 
@@ -362,7 +363,7 @@ def test_the_digest_still_identifies_the_file_as_delivered(tmp_path: Path) -> No
     path = _write_png(tmp_path / "colour.png", array)
     expected = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
-    assert load_image(path).sha256 == expected
+    assert load_image(path, BRIGHT_ON_DARK).sha256 == expected
 
 
 def test_unsupported_container_raises(tmp_path: Path) -> None:
@@ -371,7 +372,7 @@ def test_unsupported_container_raises(tmp_path: Path) -> None:
     assert cv2.imwrite(str(path), np.zeros((8, 8), dtype=np.uint8))
 
     with pytest.raises(UnsupportedFormatError, match="tiff"):
-        load_image(path)
+        load_image(path, BRIGHT_ON_DARK)
 
 
 def test_empty_file_raises(tmp_path: Path) -> None:
@@ -380,7 +381,7 @@ def test_empty_file_raises(tmp_path: Path) -> None:
     path.write_bytes(b"")
 
     with pytest.raises(UnsupportedFormatError, match="empty file"):
-        load_image(path)
+        load_image(path, BRIGHT_ON_DARK)
 
 
 def test_truncated_png_raises(tmp_path: Path) -> None:
@@ -389,13 +390,13 @@ def test_truncated_png_raises(tmp_path: Path) -> None:
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
 
     with pytest.raises(UnsupportedFormatError, match="cannot decode"):
-        load_image(path)
+        load_image(path, BRIGHT_ON_DARK)
 
 
 def test_missing_file_raises(tmp_path: Path) -> None:
     """A path that is not a file raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
-        load_image(tmp_path / "nothing.tiff")
+        load_image(tmp_path / "nothing.tiff", BRIGHT_ON_DARK)
 
 
 @pytest.mark.parametrize(

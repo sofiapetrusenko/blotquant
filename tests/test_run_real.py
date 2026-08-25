@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 
+from pipeline.load import BRIGHT_ON_DARK
 from tools.phase3.run_real import (
     NOT_RUN_SHA_MISMATCH,
     PREREGISTERED_MIN_BAND_HEIGHT_PX,
@@ -76,6 +77,10 @@ def fake_set(tmp_path: Path) -> RunConfig:
         out_dir=tmp_path / "out",
         min_band_height_px=PREREGISTERED_MIN_BAND_HEIGHT_PX,
         expected_crop_count=len(DEV_IMAGES),
+        # These fixtures are synthetic dev images, which the generator declares
+        # bright_on_dark. Inheriting the real corpus's declaration would be this
+        # suite asserting something false about its own fixtures.
+        polarity=BRIGHT_ON_DARK,
     )
 
 
@@ -207,6 +212,9 @@ def test_report_never_names_a_crop_that_is_not_in_the_set(fake_set: RunConfig) -
             str(fake_set.out_dir),
             "--expected-crops",
             str(len(DEV_IMAGES)),
+            # Required since the polarity amendment, and these fixtures are dev images.
+            "--polarity",
+            BRIGHT_ON_DARK,
         ]
     )
     assert exit_code == 0

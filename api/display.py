@@ -47,12 +47,23 @@ import cv2
 import numpy as np
 
 from api.errors import DisplayError
+from pipeline.load import CANONICAL_POLARITY
 
 MAPPING_NAME = "linear_full_scale"
 """The only display mapping this service implements; recorded in every response."""
 
 MAPPING_FORMULA = "out = round(px * 255 / max_value)"
 """The mapping, written out, so the record does not depend on knowing the name."""
+
+INVERTED_MAPPING_FORMULA = "out = round((max_value - px) * 255 / max_value)"
+"""The same mapping applied to a source the loader inverted on the way in.
+
+``px`` in :data:`MAPPING_FORMULA` is the pixel as **delivered**, so on a ``dark_on_bright``
+upload the identity claim it makes for an 8-bit source is false: what is rendered is the
+canonical-polarity array the pipeline measured, which is ``max_value - px``. Rather than render
+the delivered pixels and hide the one transformation that most changes the answer, the derivative
+shows what was measured and the block says so. Added 2026-08-24 with the polarity amendment.
+"""
 
 OUTPUT_MAX_VALUE = 255
 """Full scale of the 8-bit derivative. PNG is 8-bit here because browsers display 8-bit."""
@@ -96,6 +107,14 @@ class DisplayDerivative:
     width_px: int
     height_px: int
     source_max_value: int
+    source_polarity: str
+    """The polarity declared for the source, carried so the mapping block can be true.
+
+    The derivative renders the array the pipeline measured. For a ``dark_on_bright`` source that
+    is not the array the caller uploaded, and a mapping block that did not say so would be a
+    false provenance statement in the one block a reader consults to learn how the picture was
+    made.
+    """
 
     def as_block(self) -> dict[str, Any]:
         """Return the response's ``display`` block *without* the encoded image.
@@ -113,8 +132,14 @@ class DisplayDerivative:
             "height_px": self.height_px,
             "mapping": {
                 "name": MAPPING_NAME,
-                "formula": MAPPING_FORMULA,
+                "formula": (
+                    MAPPING_FORMULA
+                    if self.source_polarity == CANONICAL_POLARITY
+                    else INVERTED_MAPPING_FORMULA
+                ),
                 "source_max_value": self.source_max_value,
+                "source_polarity": self.source_polarity,
+                "source_inverted": self.source_polarity != CANONICAL_POLARITY,
                 "output_max_value": OUTPUT_MAX_VALUE,
                 "scales": True,
                 "clips": False,
@@ -123,7 +148,9 @@ class DisplayDerivative:
         }
 
 
-def render_display(pixels: np.ndarray, max_value: int) -> DisplayDerivative:
+def render_display(
+    pixels: np.ndarray, max_value: int, source_polarity: str
+) -> DisplayDerivative:
     """Render ``pixels`` to an 8-bit PNG under the linear full-scale mapping.
 
     Guarantees, all asserted numerically in ``tests/test_api_display.py``:
@@ -131,8 +158,11 @@ def render_display(pixels: np.ndarray, max_value: int) -> DisplayDerivative:
     * a source pixel of ``max_value`` maps to 255 and a source pixel of 0 maps to 0;
     * no output is clipped -- the mapping is a scaling of the *whole* source range, so no
       input can exceed 255 after it;
-    * an 8-bit source is reproduced value for value, because ``max_value`` is then 255 and
-      the factor is exactly 1.
+    * an 8-bit source is reproduced value for value **when its polarity is canonical**, because
+      ``max_value`` is then 255 and the factor is exactly 1. A ``dark_on_bright`` source was
+      inverted by the loader before it reached here, so what is reproduced value for value is
+      the *measured* array rather than the delivered one -- and the mapping block says which,
+      through ``source_polarity``, ``source_inverted`` and the formula it reports.
 
     Rounding is half-to-even (:func:`numpy.rint`), which is what Python's ``round`` in
     :data:`MAPPING_FORMULA` also does. The tie-breaking rule is unobservable at either
@@ -180,4 +210,5 @@ def render_display(pixels: np.ndarray, max_value: int) -> DisplayDerivative:
         width_px=int(rendered.shape[1]),
         height_px=int(rendered.shape[0]),
         source_max_value=int(max_value),
+        source_polarity=source_polarity,
     )

@@ -33,6 +33,7 @@ import pytest
 from pipeline.errors import UnsupportedImageError
 from pipeline.load import CHANNEL_COLLAPSE_MAX_DIVERGENCE_DN, load_image
 from tools.phase3.blot_identity import SECTION_9_QUOTE
+from tools.phase3.crop_names import REAL_CROP_POLARITY
 
 CROPS = Path(__file__).resolve().parents[1] / "data/real/crops"
 CROP_LOG = CROPS / "crop_log.csv"
@@ -109,7 +110,7 @@ def test_the_partition_covers_the_approved_set_exactly() -> None:
 @pytest.mark.parametrize("crop", sorted(BYTE_IDENTICAL_CROPS))
 def test_a_byte_identical_crop_collapses_and_records_zero(crop: str) -> None:
     """Ruling (a), first case: identical planes collapse, and 0 DN is recorded, not omitted."""
-    loaded = load_image(CROPS / crop)
+    loaded = load_image(CROPS / crop, REAL_CROP_POLARITY)
 
     assert loaded.pixels.ndim == 2
     assert loaded.channel_collapse is not None
@@ -120,7 +121,7 @@ def test_a_byte_identical_crop_collapses_and_records_zero(crop: str) -> None:
 @pytest.mark.parametrize("crop", sorted(AT_THE_BOUND_CROPS))
 def test_a_crop_at_the_bound_collapses_and_records_the_bound(crop: str) -> None:
     """Ruling (a), second case: these two crops sit exactly on the bound and are admitted."""
-    loaded = load_image(CROPS / crop)
+    loaded = load_image(CROPS / crop, REAL_CROP_POLARITY)
 
     assert loaded.channel_collapse is not None
     assert loaded.channel_collapse.max_divergence_dn == CHANNEL_COLLAPSE_MAX_DIVERGENCE_DN
@@ -137,7 +138,7 @@ def test_an_excluded_crop_is_still_refused_and_the_refusal_names_its_divergence(
     while still failing if a crop drifts into the admitted band.
     """
     with pytest.raises(UnsupportedImageError, match="single-channel") as raised:
-        load_image(CROPS / crop)
+        load_image(CROPS / crop, REAL_CROP_POLARITY)
 
     message = str(raised.value)
     # Parsed, not substring-matched: "43 DN" contains "3 DN", so a membership test over the
@@ -150,7 +151,7 @@ def test_an_excluded_crop_is_still_refused_and_the_refusal_names_its_divergence(
 def test_the_pseudocoloured_crop_is_still_refused_at_full_scale() -> None:
     """Ruling (d): E-TIGAR carries a fully saturated colour pixel and is rejected under §7."""
     with pytest.raises(UnsupportedImageError, match="single-channel") as raised:
-        load_image(CROPS / REAL_COLOUR_CROP)
+        load_image(CROPS / REAL_COLOUR_CROP, REAL_CROP_POLARITY)
 
     assert "255 DN" in str(raised.value)
 
@@ -164,7 +165,7 @@ def test_exactly_twelve_of_nineteen_crops_load() -> None:
     loaded, refused = [], []
     for crop in _approved_crops():
         try:
-            load_image(CROPS / crop)
+            load_image(CROPS / crop, REAL_CROP_POLARITY)
         except UnsupportedImageError:
             refused.append(crop)
         else:
@@ -192,7 +193,7 @@ def test_lossy_format_fires_on_no_crop_the_collapse_admits() -> None:
     loaded = []
     for crop in _approved_crops():
         try:
-            loaded.append(load_image(CROPS / crop))
+            loaded.append(load_image(CROPS / crop, REAL_CROP_POLARITY))
         except UnsupportedImageError:
             continue
 

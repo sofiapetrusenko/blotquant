@@ -126,13 +126,23 @@ Three entries carry most of the consequence:
   the first real N are blocked on the human confirming the reference designations and the blot
   identities, which is DEBT D4 and D5, not this entry.
 
-The rest divides three ways. **Seventeen of the 33 entries are `Accepted` or `Permanent`; 16 are
+The rest divides three ways. **Seventeen of the 36 entries are `Accepted` or `Permanent`; 19 are
 `Open`.** (29 through Phase 3; Phase 4a added S18 and E10 and Phase 3b-0 added S19, all `Open` when
 added. Phase 3b-1 closed S19 and added S20, promoted from a Phase 3b-0 draft by human ruling once
 the collapse made it observable — so the **settled** count moved 16 → 17 as S19 became Accepted,
-and the **open** count is the one that stayed at 16, S19 leaving it as S20 joined it.) Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
+and the open count stayed at 16, S19 leaving it as S20 joined it. Phase 3b-2 added **S21**, the
+container-width limit the polarity inversion inherits, `Open` with no evidence and a mechanism
+only — which is what takes the open count to 17 and the total to 34. Phase 3b-2 then added **E11**,
+the prose-count check's coverage boundary, `Open` and accepted as a boundary rather than a gap,
+and **P4**, the review loop closing at the cap without zero, `Open` until a third phase tests its
+replacement criterion — open 19, total 36.) Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
 (S2, S5, S7, S8, S10, S12), **two were already Accepted before it** (S4, S16), and **one stays
-Open** (S3). The remaining seven Accepted-or-Permanent entries (S9, S11, S13, E5, E9, P1, P2) were settled before Gate 1. Accepted does not mean fixed: S5's QC flag
+Open** (S3). Seven more Accepted-or-Permanent entries (S9, S11, S13, E5, E9, P1, P2) were settled
+before Gate 1, and **two were closed later** — E1 in Phase 3b-0, by running the
+documented install path on a clean container, and S19 in Phase 3b-1, by implementing the ruled
+collapse. Six plus two plus seven plus two is the seventeen. (The phases matter to the sentence
+nine lines above, whose arithmetic — settled 16 → 17, open steady at 16 — only closes because E1
+was already settled entering Phase 3b-1.) Accepted does not mean fixed: S5's QC flag
 still scores F1 0.000 and S10's still under-warns on a third of the low-dynamic-range images; the
 gate decided to keep and disclose them rather than change them, and both keep their measurements.
 **Two are one-line fixes** (E4's empty GitHub metadata, P3's branch naming). **The remaining `Open`
@@ -574,12 +584,19 @@ same class as the reference designation (S6) and blot identity (ruling G2): wher
 cannot know something, it refuses and says so rather than inferring it from the data it is about
 to measure. **Nothing is implemented under this ruling in Phase 3b-1**, by the ruling's own terms.
 
-**Closes.** The polarity half closes when the declared input is implemented and the real crops are
-re-run through it -- a loader and CLI change, unscheduled, and not Phase 3b-1's to make. The tilt
-half remains **unruled**: it was raised as "sheared projection = Phase 3, or out of scope?" and
-still has no ruling and no real-data evidence.
+**Closes.** The polarity half closes when the declared input is implemented **and the real crops
+are re-run through it**. Phase 3b-2 did the first: `pipeline.load.load_image` takes a required
+polarity, refuses an undeclared or unrecognised one, inverts a `dark_on_bright` image to the
+canonical convention, and records the declaration as `source.polarity` (result schema 1.4.0);
+`--polarity` and the API field carry it; `evals.run.GOLD_SET_POLARITY` declares the gold set's and
+`tools.phase3.crop_names.REAL_CROP_POLARITY` the real corpus's. **The re-run has not happened**,
+so nothing yet says what the fix does to the measurement -- that is W11, and the ratified
+amendment's §(e) addition predicts it in advance. The tilt half remains **unruled**: it was
+raised as "sheared projection = Phase 3, or out of scope?" and still has no ruling and no
+real-data evidence.
 
-**Status.** Open, ruled on polarity 2026-08-24, unimplemented; unruled on tilt.
+**Status.** Open. Polarity ruled 2026-08-24 and implemented in Phase 3b-2, real crops not yet
+re-measured; tilt unruled.
 
 ### S15 — A weak-band floor is shipped without confirmation that it suits real blots
 
@@ -793,6 +810,66 @@ changing any code.
 **Status.** Open.
 
 
+### S21 — QC measures clipping and dynamic range against the container's full scale, not the data's
+
+**What.** `pipeline.qc._clipped_pixel_count` counts pixels at `>= max_value`, and
+`is_low_dynamic_range` compares the brightest corrected peak against a fraction of `max_value`,
+where `max_value` is `2**bit_depth - 1` — the full scale of the **declared container**. A file
+whose data occupies less than its container (a 12-bit scan carried in `uint16` is the standard
+case) is measured against a ceiling its pixels can never reach.
+
+**Why it matters.** Two flags go wrong, in opposite directions, and **only one of them the same
+way in both polarities**. Measured on 12-bit data in a `uint16` container with
+`configs/default.yaml`:
+
+| declared polarity | where the band clips | value the pipeline measures | `saturated` | `low_dynamic_range` |
+|---|---|---|---|---|
+| `bright_on_dark` | white point 4095 | 4095 | **False — broken** | True |
+| `dark_on_bright` | black point 0 | 65535 | True — correct | True |
+| `dark_on_bright` | black point 100 | 65435 | **False — broken** | True |
+
+`low_dynamic_range` is **unconditional and polarity-independent**: a 12-bit peak is at most 4095
+against a threshold of 0.25 × 65535 = 16384, so it fires on every such file whatever its real
+range. DEBT S10 already records this flag under-warning; this is the same flag failing the other
+way on a different input class.
+
+`saturated` is **polarity-dependent**, which the first version of this entry got wrong twice.
+Under `bright_on_dark` a band clipped at the scanner's white point never reaches the container
+ceiling and the flag cannot fire. Under `dark_on_bright` the inversion maps the container *floor*
+onto the ceiling, so a band clipped at 0 lands exactly on `max_value` and the flag fires
+correctly — but only when the data's floor coincides with the container's. A scanner with a black
+point of 100 inverts to 65435 and the flag goes silent again.
+
+**Evidence, and what it is not.** No file of this kind is in the project — but the weaker
+condition is already common in the gold set, which is why the entry is filed rather than
+imagined: **12 of the 16 committed 16-bit images do not reach full scale**, topping out between
+25.2% (`dev_05.png`, max 16540) and 76.5% (`test_00.png`, max 50119); only 4 reach 65535. Those
+are synthetic images whose data genuinely stops where it stops, so nothing is mismeasured today
+— no *clipping* is being missed, because none occurred. The entry is about a scanner that clips
+at its own ceiling, which the project has never been handed.
+
+**Pre-existing, and half of it polarity-independent — stated carefully because this entry has
+now been wrong about that twice.** The `low_dynamic_range` half is identical whatever is
+declared. The `saturated` half is not, per the table above, and a reader deciding whether the fix
+below is needed for a `dark_on_bright` corpus needs the difference: for 0-floored data the flag
+already works, and for everything else it does not. A first draft of this entry blamed
+`pipeline.load.invert_pixels` and claimed the inversion puts the background "within a few DN" of
+full scale so the clipping test fires on the paper. **That is arithmetically false and was
+withdrawn**: on a 12-bit `dark_on_bright` file with paper at 4000 and a band core clipped to 0,
+inversion gives paper 61535 — 4000 DN below the ceiling, contributing zero clipped pixels — and
+band core exactly 65535, so the test fires on the *band*, which is correct. Verified by running
+it — and re-verified across all three cells of the table above after a second review found the
+replacement paragraph had over-generalised in the other direction. Inversion is exact and makes
+the dark-side clipping test work on 0-floored data; the container-width problem sits in
+`pipeline/qc.py`, and only its `low_dynamic_range` half is polarity-independent.
+
+**Closes.** When a file whose data is narrower than its container is handed to the pipeline. The
+fix is not obvious and is deliberately not proposed here: taking the observed maximum as the
+scale would be a threshold chosen against the data, which Gate 1 ruling 3 forbids, so the likely
+shape is a second declared input — the data's own full scale — on the same terms as polarity.
+
+**Status.** Open, no clipped narrow-container file in hand; the mechanism is measured.
+
 ## Engineering
 
 ### E1 — ~~The documented install-and-run path has never been followed on another machine~~ — CLOSED, verified on a clean container
@@ -862,9 +939,11 @@ only), no `git tag`, no GitHub release.
 
 **Status.** Open.
 
-### E3 — `evals.sweep --check` runs on every push and costs ~9 minutes of CPU
+### E3 — ~~`evals.sweep --check` runs on every push and costs ~9 minutes of CPU~~ — SCOPED in Phase 3b-2; the waste is closed, the measurement is not verified
 
-**What.** The CI step that re-measures every recorded figure runs unconditionally.
+**What.** The CI step that re-measures every recorded figure runs unconditionally. (**Since
+2026-08-24 that is history:** it is scoped by `paths:` and lives in its own workflow. The
+sentence stands because it describes the state the entry was opened in; see *Done* below.)
 
 **Why it matters.** It is the slowest thing in CI by a wide margin and it cannot be affected by a
 change that touches no measurement code, so most of those runs are waste. Slow CI on documentation
@@ -872,14 +951,59 @@ commits discourages small commits.
 
 **Evidence.** Measured at about nine and a quarter minutes of CPU on an arm64 developer machine —
 a figure that exists as prose only, in NOTES.md and `.github/workflows/ci.yml`, with no captured
-`time` output committed. The CI step's wall-clock has run 6m23s–7m41s, read from GitHub Actions
-step timings rather than from anything in the repository. It is genuinely load-bearing —
+`time` output committed. The CI step's wall-clock has run **4m54s–7m42s, median 6m59s**, over all 33
+non-zero runs of it in the repository's Actions history, read 2026-08-24. An earlier version of
+this sentence gave 6m23s–7m41s on the same description ("read from GitHub Actions step timings"),
+which was two runs presented as the survey; both endpoints sit inside the real spread. Read from
+Actions rather than from anything in the repository, either way. It is genuinely load-bearing —
 it is what catches a stale recorded figure — so the fix is to scope it, not to remove it.
 
 **Closes.** Phase 5, or earlier if it obstructs Phase 3. Intended shape: run it only when
 `evals/`, `configs/`, `pipeline/` or `synth/` change, with lint and pytest staying on every push.
+(**Done in Phase 3b-2** — see below. In that shape and slightly wider: the four directories this
+line names, plus `data/**`, `requirements.txt` and the workflow file itself, for reasons the
+*Done* paragraph gives. What remains is not the scoping.)
 
-**Status.** Open.
+**Done, 2026-08-24 (Phase 3b-2 W8).** The step moved out of `.github/workflows/ci.yml` into
+`.github/workflows/figures.yml`, triggered on `paths:` covering `evals/**`, `configs/**`,
+`pipeline/**`, `synth/**`, `data/**`, `requirements.txt` and that workflow file itself. `data/**`
+is in the list because the gold set the sweep reads lives there (`evals/sweep.py`'s `DATA_DIR`),
+not in `synth/`: without it, regenerating the gold set or editing one truth record would skip the
+check that exists to notice exactly that. Lint, the claims check, ground-truth
+schema validation, `pytest`, the dev-split eval and the operating-characteristics table all stay
+in `ci.yml` on every push, unfiltered — that is every step of the `checks` job that checks
+anything, the remainder being checkout, Python setup and the dependency install. The sweep was
+the only step that moved.
+The same command runs; nothing was weakened or made optional.
+
+Separately, and the larger half of the saving: **the workflow ran twice per commit on any
+same-repository PR** -- once for `push`, once for `pull_request` -- which this entry did not
+record and which doubled the cost of every job, not only this one. Each job now carries
+`if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name !=
+github.repository`, so same-repository work is covered once by its push and a fork PR is covered
+once by the `pull_request` event. A fork's pushes never reach this repository, so dropping
+`pull_request` outright would have left fork PRs running nothing.
+
+**What the de-duplication costs, recorded because it is not equivalence.** A `pull_request`
+build checks out the merge commit; a `push` build checks out the branch head. Skipping
+`pull_request` for same-repository PRs means **a PR is now only ever tested at its branch head**,
+so a branch green against the `main` it was cut from and broken against the `main` it will land
+on goes untested until merge. Accepted deliberately -- the alternative is running every job twice
+-- and the mitigation is to rebase before merging. It is recorded here and in `ci.yml` because an
+earlier draft of this entry described the change as removing duplication and nothing else, which
+reads as equivalence.
+
+**What remains open, and why this entry is not closed.** Two things. First, **the saving is
+predicted, not measured**: no CI run has yet happened under the new triggers, so the figures
+above are still the pre-change measurements this entry always carried. E3 closes when a
+documentation-only push is observed to skip the job and a `pipeline/` push is observed to run
+it. Second, a **`paths:`-filtered workflow reports no status rather than a passing one**, so if
+`recorded-figures` is ever made a required check on `main`, a documentation-only PR waits for a
+check that will never run. That is recorded in `figures.yml` beside the trigger, and taking it
+requires replacing the path filter with an always-running job that decides internally -- a
+deliberate change, not a side effect of enabling branch protection.
+
+**Status.** Open, scoped 2026-08-24, saving unmeasured.
 
 ### E4 — The GitHub repository has no description and no topics
 
@@ -979,7 +1103,17 @@ were ever unfrozen today there would be nowhere to record it.
 **Evidence.** File absent; both references present in CLAUDE.md and PLAN.md. Disclosed in README's
 "What does not exist yet".
 
-**Closes.** Phase 3, which owns the iteration log — or sooner if S8 forces a `synth/` change first.
+**Closes.** Phase 3, which owns the iteration log — or sooner if S8 forces a `synth/` change
+first.
+
+**Nearly forced, and then not, in Phase 3b-2.** The polarity amendment briefly looked like the
+"sooner" case: an implementation put the gold set's declaration inside `synth/`, which would have
+been an authorised change to the frozen package and would have required this file to exist to
+hold its break marker. Review found that the ratified amendment forecloses that placement (§(b):
+"`synth/` is frozen … and none is proposed here"), the constant moved to the eval harness, and
+`synth/` was left untouched. So the file is still absent and this entry is unchanged — recorded
+because the near miss is evidence for the entry rather than against it: the protocol's first real
+test would have found nowhere to write.
 
 **Status.** Open.
 
@@ -998,6 +1132,62 @@ attempt after three failures, which is itself evidence the hazard is live.
 **Closes.** Unscheduled. Mitigation is the enumerated list plus the rule in P1.
 
 **Status.** Accepted, with the mitigation named.
+
+### E11 — The prose-count check reaches a named slice of the record, and it is accepted as a slice
+
+**What.** `tools/check_claims.py::check_prose_counts` reports a count of things asserted in prose
+rather than given as a table row (NOTES.md, "Authorship freeze", 2026-08-25). It is **report-only**
+— it does not fail the build — and it reaches part of the record. This entry names the part, as
+accepted debt. It sits beside **E9**, which records the same shape for the transcription checker:
+figures outside marked blocks are not transcription-checked, and that too is accepted rather than
+closed.
+
+**Why it matters.** A checker with an unstated boundary reads as coverage. The failure this
+project keeps hitting is a clean check being taken for a clean record, and the prose-count check
+is more exposed to it than most: it is advisory, so a reader sees a passing build beside its
+output and may take the two as the same statement.
+
+**Evidence — what it does not reach.**
+
+*Files.* Only those in `SCANNED` plus the verbatim review extracts. Every other Markdown file in
+the tree is outside it, and two of them matter:
+
+| file | why it is outside |
+|---|---|
+| `PLAN.md` | never scanned; the phase contract |
+| `CLAUDE.md` | never scanned; the operating rules |
+| `data/real/DECISION_unit_of_analysis.md` | frozen, digest-pinned instead |
+| `synth/MODELS.md` | frozen with `synth/` |
+| `data/real/provenance.md` | a record of downloads |
+| `evals/dev_sweeps.md` | the figure record; E9's territory |
+| `prompts/phase-kickoff.md` | a template |
+| `.claude/agents/implementer.md` | agent definition |
+| `.claude/agents/reviewer.md` | agent definition |
+
+*Spans inside a file it does reach.* Table rows, blockquotes, fenced code, lines carrying the
+`claims-check: counted` marker, and verbatim review extracts. Each exemption is deliberate and
+each is a hole: a count asserted inside a blockquote that is not a quotation, for instance, is
+invisible to it.
+
+*Everything outside Markdown.* Python docstrings, YAML comments and workflow files carry counts
+and are not scanned at all — and three of this phase's five instances of the class were in exactly
+those places (`tools/phase3/crop_names.py`, `evals/run.py`, `.github/workflows/figures.yml`).
+**That is the largest hole and it is the one to close first if this is ever extended.**
+
+*Vocabulary.* Only the nouns in `COUNTED_NOUN` and the number words in `NUMBER_WORDS`, and only
+counts of two or more. A count of one is not a count for this purpose; a noun outside the list is
+not seen.
+
+*The table heuristic itself.* A count is accepted if a table with at least that many body rows
+begins within `COUNT_TABLE_WINDOW` lines below it. That is proximity, not derivation: a nearby
+table long enough to satisfy the test will license a count it has nothing to do with.
+
+**Closes.** Not scheduled, and closing it is not obviously right. The authorship freeze is the
+primary control and this check is the backstop; widening a backstop until it fires on everything
+is how a checker becomes something readers skim. If it is extended, the order is Python and YAML
+first, then `PLAN.md`.
+
+**Status.** Open, accepted with the boundary named.
 
 ### E10 — The API is not deployment-ready: no upload cap, slow on real images, and an unstable `source.path`
 
@@ -1282,6 +1472,60 @@ here.
 **Closes.** Not applicable — each is settled. Phase 5's README supersedes the interim one.
 
 **Status.** Accepted.
+
+### P4 — The Phase 3b-2 review loop closed at PLAN.md's cap without reaching zero REQUIRED
+
+**What.** PLAN.md's reviewer loop runs to zero REQUIRED with a hard cap of five cycles. Phase
+3b-2's loop reached the cap with findings outstanding, and was **closed on a stated criterion by
+human ruling of 2026-08-25** rather than extended. Cycle 5's findings were fixed; they carry
+tests and mutation testing but **no fresh-reviewer pass**.
+
+**The criterion the loop closed on**, ruled rather than inferred: *this is the second consecutive
+phase where behavioural work converged under mutation testing and prose record edits did not, at
+roughly one claim defect per fix. A sixth cycle repeats what has now failed twice.* Phase 3b-1
+reached the same conclusion after seven cycles and replaced its eighth with a human prose review
+plus a record-edit freeze; this phase reached it at five and replaced the sixth with an
+**authorship freeze** (NOTES.md), a report-only mechanical check, and direct human review.
+**Replaced, not skipped** — that distinction is the whole of the ruling, and the replacement is
+in the tree: the freeze, `check_claims.py::check_prose_counts`, `tests/test_prose_counts.py`, and
+DEBT **E11** naming what the check does not reach.
+
+**What the closure costs, stated rather than implied.** Cycle 5's fixes were reviewed by nobody
+but their author. The largest of them rewrote DEBT S21 — an entry that had already been wrong
+twice about the same mechanism — and is now defended by a parametrised test over the three cases
+it describes, which is more than prose but less than a reader who did not write it. Anything
+wrong in that entry now ships.
+
+**One asterisk on the loop's own summary.** It is tempting to say every finding after cycle 2 was
+prose. Cycle 5 touched three code files, and two of them are measurement code:
+
+| file | change | verified how |
+|---|---|---|
+| `pipeline/load.py` | `invert_pixels` docstring | AST comparison, docstrings stripped: executable code identical |
+| `evals/run.py` | `GOLD_SET_POLARITY` docstring | AST comparison, every bare string statement stripped: executable code identical |
+| `tests/test_polarity.py` | new tests | executable by construction; the point of the change |
+
+Neither measurement-code edit changes executable code, and both were proven so rather than
+asserted. **Had either been executable, the claim that the residual class was prose would carry an
+executable edit in measurement code made in a prose cycle with no fresh-reviewer pass** — the
+asterisk is recorded here so the check is on the record whether or not it fires.
+
+**The replacement stopping criterion, in force for future loops.** The cap stays, and beneath it:
+**two consecutive cycles with zero *behavioural* REQUIRED closes the loop.** Findings in the
+residual prose class go to the human, not to another cycle. The evidence for the rule is two
+phases: in both, behavioural findings stopped early and permanently under mutation testing while
+prose findings recurred at a roughly constant rate through every subsequent cycle, including
+cycles whose fixes introduced them.
+
+**Why it matters.** A loop that runs to a fixed count treats every cycle as equally productive.
+These two phases say cycles are not: the ones after behaviour converges buy a different and much
+smaller thing, at a cost that includes generating the defects they then find.
+
+**Closes.** When a third phase runs a loop under the replacement criterion and the record can say
+whether it converged. Until then the criterion rests on two phases, which is enough to rule on and
+not enough to call settled.
+
+**Status.** Open, criterion ruled 2026-08-25 and untested on a third phase.
 
 ### P3 — Branch naming has deviated from the phase convention for documentation work
 

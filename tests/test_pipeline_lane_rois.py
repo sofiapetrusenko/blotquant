@@ -45,6 +45,7 @@ from pipeline.detect import (
     validate_lane_rois,
 )
 from pipeline.errors import DetectionError, LaneRoiError
+from pipeline.load import BRIGHT_ON_DARK
 from tests.conftest import Blot
 from tests.test_pipeline_config import CONFIG_DIR
 
@@ -576,8 +577,8 @@ def test_every_lane_in_the_document_says_where_its_roi_came_from(blot_png: Path)
     config = load_config(CONFIG_DIR / "default.yaml")
     supplied = parse_lane_rois(["5,0,70,120", "120,0,70,120"])
 
-    detected = analyze_image(blot_png, config)
-    given = analyze_image(blot_png, config, lane_rois=supplied)
+    detected = analyze_image(blot_png, config, polarity=BRIGHT_ON_DARK)
+    given = analyze_image(blot_png, config, lane_rois=supplied, polarity=BRIGHT_ON_DARK)
 
     assert [lane["roi_source"] for lane in detected["lanes"]] == ["detected"] * 3
     assert [lane["roi_source"] for lane in given["lanes"]] == ["caller"] * 2
@@ -592,10 +593,10 @@ def test_the_result_id_covers_the_supplied_lane_rois(blot_png: Path) -> None:
     first = parse_lane_rois(["5,0,70,120", "120,0,70,120"])
     second = parse_lane_rois(["10,0,60,120", "130,0,60,120"])
 
-    detected = analyze_image(blot_png, config)
-    given = analyze_image(blot_png, config, lane_rois=first)
-    other = analyze_image(blot_png, config, lane_rois=second)
-    repeated = analyze_image(blot_png, config, lane_rois=first)
+    detected = analyze_image(blot_png, config, polarity=BRIGHT_ON_DARK)
+    given = analyze_image(blot_png, config, lane_rois=first, polarity=BRIGHT_ON_DARK)
+    other = analyze_image(blot_png, config, lane_rois=second, polarity=BRIGHT_ON_DARK)
+    repeated = analyze_image(blot_png, config, lane_rois=first, polarity=BRIGHT_ON_DARK)
 
     assert len({detected["result_id"], given["result_id"], other["result_id"]}) == 3
     assert given["result_id"] == repeated["result_id"], "still content-addressed"
@@ -607,8 +608,8 @@ def test_the_result_id_covers_the_order_the_lane_rois_were_given_in(blot_png: Pa
     forward = parse_lane_rois(["5,0,70,120", "120,0,70,120"])
     backward = parse_lane_rois(["120,0,70,120", "5,0,70,120"])
 
-    first = analyze_image(blot_png, config, lane_rois=forward)
-    second = analyze_image(blot_png, config, lane_rois=backward)
+    first = analyze_image(blot_png, config, lane_rois=forward, polarity=BRIGHT_ON_DARK)
+    second = analyze_image(blot_png, config, lane_rois=backward, polarity=BRIGHT_ON_DARK)
 
     assert first["lanes"][0]["roi"] != second["lanes"][0]["roi"]
     assert first["result_id"] != second["result_id"]
@@ -619,8 +620,8 @@ def test_a_result_with_supplied_lanes_is_deterministic(blot_png: Path) -> None:
     config = load_config(CONFIG_DIR / "default.yaml")
     supplied = parse_lane_rois(["5,0,70,120", "120,0,70,120"])
 
-    first = analyze_image(blot_png, config, lane_rois=supplied)
-    second = analyze_image(blot_png, config, lane_rois=supplied)
+    first = analyze_image(blot_png, config, lane_rois=supplied, polarity=BRIGHT_ON_DARK)
+    second = analyze_image(blot_png, config, lane_rois=supplied, polarity=BRIGHT_ON_DARK)
 
     del first["provenance"]["created_at"]
     del second["provenance"]["created_at"]
@@ -637,9 +638,9 @@ def test_an_empty_lane_roi_list_is_refused_rather_than_re_detecting(blot_png: Pa
     config = load_config(CONFIG_DIR / "default.yaml")
 
     with pytest.raises(LaneRoiError, match="no lane ROI was supplied"):
-        analyze_image(blot_png, config, lane_rois=[])
+        analyze_image(blot_png, config, lane_rois=[], polarity=BRIGHT_ON_DARK)
 
-    absent = analyze_image(blot_png, config)
+    absent = analyze_image(blot_png, config, polarity=BRIGHT_ON_DARK)
     assert [lane["roi_source"] for lane in absent["lanes"]] == ["detected"] * 3
 
 
@@ -664,6 +665,8 @@ def test_the_cli_accepts_repeated_lane_rois(
             "5,0,70,120",
             "--lane-roi",
             "120,0,70,120",
+            "--polarity",
+            BRIGHT_ON_DARK,
         ]
     )
 
@@ -691,6 +694,8 @@ def test_the_cli_says_detected_when_it_detected_the_lanes(
             str(CONFIG_DIR / "default.yaml"),
             "--out",
             str(tmp_path / "out"),
+            "--polarity",
+            BRIGHT_ON_DARK,
         ]
     )
 
@@ -714,6 +719,8 @@ def test_the_cli_reports_a_bad_lane_roi_without_writing_a_result(
             "5,0,70,120",
             "--lane-roi",
             "170,0,70,120",
+            "--polarity",
+            BRIGHT_ON_DARK,
         ]
     )
 

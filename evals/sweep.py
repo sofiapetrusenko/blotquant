@@ -57,6 +57,7 @@ from evals.metrics import (
 )
 from evals.run import (
     EVALUATED_SPLIT,
+    GOLD_SET_POLARITY,
     SATURATED_FLAG,
     QcEvaluation,
     band_flag_scores,
@@ -167,7 +168,8 @@ def _corrected_images(
 
 def _correct(truth: dict[str, Any], config: PipelineConfig) -> tuple[np.ndarray, np.ndarray]:
     """Load one gold-set image and return its background surface and corrected pixels."""
-    loaded = load_image(DATA_DIR / truth["image_path"])
+    # One declaration for the gold set, in evals/run.py, per the amendment's §(b).
+    loaded = load_image(DATA_DIR / truth["image_path"], GOLD_SET_POLARITY)
     correction = correct_background(loaded.pixels, config.background)
     return correction.background, correction.corrected
 
