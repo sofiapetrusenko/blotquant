@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from tools.check_claims import COUNT_ALLOW_MARKER, check_prose_counts
+from tools.check_claims import COUNT_ALLOW_MARKER, COUNT_BLOCKING, check_prose_counts
 
 
 def _hits(text: str) -> list[str]:
@@ -88,3 +88,29 @@ def test_the_message_names_the_freeze_and_the_way_out() -> None:
     assert "authorship freeze" in message
     assert "table whose rows are the things counted" in message
     assert COUNT_ALLOW_MARKER in message
+
+
+# --- the 2026-08-25 blocking/advisory split ---------------------------------------------------
+
+
+def _checks(rel: str, text: str) -> list[str]:
+    """Return the check name of each hit for one synthetic document at ``rel``."""
+    return [hit.check for hit in check_prose_counts([(rel, text.split("\n"), False)])]
+
+
+def test_a_count_in_a_blocking_file_is_marked_blocking() -> None:
+    """Ruling 2: a document created after it, facing an external reader, fails rather than warns."""
+    (blocking,) = sorted(COUNT_BLOCKING)[:1]
+
+    assert _checks(blocking, "There are 7 crops in the set.") == ["prose-count-blocking"]
+
+
+def test_a_count_in_any_other_file_stays_advisory() -> None:
+    """Ruling 2: the existing record is not cleaned in v1.0, so it cannot fail the build."""
+    assert _checks("NOTES.md", "There are 7 crops in the set.") == ["prose-count"]
+
+
+def test_the_blocking_set_is_exact_paths_not_a_glob() -> None:
+    """A glob would sweep in pre-ruling documents the first time one was renamed."""
+    for path in COUNT_BLOCKING:
+        assert "*" not in path and "?" not in path

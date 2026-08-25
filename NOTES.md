@@ -3932,6 +3932,70 @@ over-detection was not, and correcting the first left the second where it was �
 **R5 is vindicated by the same numbers.** The band set changed, ids included, so any mapping
 ruled at the 3b-1 band-mapping gate would have had to be made again.
 
+### Rulings of 2026-08-25 — recorded verbatim, as received
+
+Four rulings, quoted as the human wrote them. What was done in consequence follows each, and
+where a ruling required a judgement it does not itself make, that judgement is labelled.
+
+**Ruling 1 — amendment freeze.**
+
+> "An amendment's bytes freeze when its digest is first pinned, committed or
+> not. After that, corrections go to NOTES — except an internal
+> contradiction, which is fixed at source. Re-pin 2 of the polarity
+> amendment stands as bytes; it is recorded here as the instance this rule
+> exists to prevent. Ruled by Sofia, 2026-08-25."
+
+This adopts the implementer's own recommendation and adds the part the recommendation left out:
+the offending edit is not reverted, it is **kept and labelled**. Re-pin 2 was a clarity
+improvement to a correction note in a document that was already in force and already pinned — no
+ruling changed, nothing was contradictory, and it should have gone in this file instead. It
+stands in the amendment's bytes, and this paragraph is what it is for. Re-pin 1, which corrected
+sentences that contradicted the file's own status line, is the exception the rule names.
+
+**Ruling 2 — prose-count check scope.**
+
+> "check_prose_counts stays report-only for every document that exists
+> today; the 199 advisories are not cleaned in v1.0. For documents created
+> from now on that face an external reader — README v1, the validation
+> page, PR bodies — the check is blocking from the file's creation. Cleanup
+> of the existing record is v1.1, recorded in DEBT. Ruled by Sofia,
+> 2026-08-25."
+
+Implemented as a split target list in `tools/check_claims.py`: `COUNT_BLOCKING` names files where
+a prose count fails the build, and everything else scanned is advisory. **The first member is
+`docs/pr/phase-3b2.md`**, created after this ruling and facing an external reader, which makes
+the ruling test itself — that PR body was written under the constraint and the blocking check
+passes on it.
+
+**Ruling 3 — detection status in v1.0.**
+
+> "Detection ships as beta. The v1.0 wording is: QC vocabulary validated
+> against polarity on 12 real crops; detection counts are not validated —
+> the over-detection is real, unexplained by polarity, and pre-registered
+> for separate investigation. 'Not a polarity artefact' must never be
+> presented as 'correct'. Ruled by Sofia, 2026-08-25."
+
+The last sentence is the one that binds prose, and it binds this project's most available
+shortcut. W11 established that the over-detection survives the polarity fix; the tempting
+sentence — "detection was not the problem" — inverts that. What was established is that one
+explanation was eliminated, and eliminating an explanation leaves the thing unexplained rather
+than acquitted. The wording is carried into DEBT S22 and is the wording any v1.0 surface uses.
+
+**Ruling 4 — promotion of the W11 drafts.**
+
+> "Copy the three drafts from runs/3b2/DEBT_DRAFTS.md into DEBT.md as new
+> entries in their groups, byte-identical in their claims — you may adjust
+> only heading format and cross-references to match the register's
+> conventions. Mark each: 'Promoted from runs/3b2 drafts by human ruling,
+> 2026-08-25.'"
+
+Done, with the latitude used only where the ruling grants it. The claims are unaltered; what
+changed is the heading form, the `**Status.**` line the register requires and the entries did not
+carry, and cross-references now that the drafts have register numbers. `runs/` is gitignored, so
+the drafts themselves do not reach a reader — the diff between draft and register is the thing to
+read before committing, and it is reviewable from this branch's working tree.
+
+
 ## Open items
 
 Unresolved questions carried out of a phase. Not decisions — each one names the phase

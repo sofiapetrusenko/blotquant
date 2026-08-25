@@ -126,23 +126,43 @@ Three entries carry most of the consequence:
   the first real N are blocked on the human confirming the reference designations and the blot
   identities, which is DEBT D4 and D5, not this entry.
 
-The rest divides three ways. **Seventeen of the 36 entries are `Accepted` or `Permanent`; 19 are
-`Open`.** (29 through Phase 3; Phase 4a added S18 and E10 and Phase 3b-0 added S19, all `Open` when
-added. Phase 3b-1 closed S19 and added S20, promoted from a Phase 3b-0 draft by human ruling once
-the collapse made it observable — so the **settled** count moved 16 → 17 as S19 became Accepted,
-and the open count stayed at 16, S19 leaving it as S20 joined it. Phase 3b-2 added **S21**, the
-container-width limit the polarity inversion inherits, `Open` with no evidence and a mechanism
-only — which is what takes the open count to 17 and the total to 34. Phase 3b-2 then added **E11**,
-the prose-count check's coverage boundary, `Open` and accepted as a boundary rather than a gap,
-and **P4**, the review loop closing at the cap without zero, `Open` until a third phase tests its
-replacement criterion — open 19, total 36.) Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
+The rest divides three ways. **Seventeen of the 40 entries are `Accepted` or `Permanent`; 23 are
+`Open`.**
+
+**Snapshot, branch `phase-3b2-polarity`, 2026-08-25.** Re-checked at the gate rather than carried
+forward: the composition sentence above is recomputed from the entry headings and `Status` lines
+by `tools/check_claims.py::_check_register_composition`, and the phase deltas below are one row
+per entry rather than a sentence, under the 2026-08-25 authorship freeze.
+
+| entry | what Phase 3b-2 did to it |
+|---|---|
+| **S21** | added — QC measures clipping and dynamic range against the container's full scale, not the data's |
+| **S22** | added — over-detection is not a polarity artefact; the §(e) falsifier fired |
+| **S23** | added — correcting polarity moved lane detection toward *more* lanes, unpredicted |
+| **S24** | added — `low_dynamic_range` now fires on nothing |
+| **E11** | added — the prose-count check's coverage boundary, accepted as a boundary |
+| **P4** | added — the review loop closed at PLAN.md's cap without reaching zero |
+| **P5** | added — the existing record's prose counts are deferred to v1.1 by ruling |
+| **S14** | re-evidenced and half-ruled — polarity examined against real data, ruled a declared input, implemented; tilt untouched and still unruled |
+| **E3** | re-evidenced — the sweep is scoped and the push/pull_request duplication is closed; the saving is predicted, not yet measured |
+| **E8** | re-evidenced — the near miss recorded; `evals/history.md` still does not exist |
+
+**Closed by this phase: none.** S14's polarity half is implemented but the entry stays `Open`
+until the real crops are re-run through a corpus that needs it; E3 and E8 both keep an unmet
+condition. A phase that adds entries and closes none is the expected shape here — the work went
+into a ruled input and a falsified prediction, and both of those produce debt rather than retire
+it.
+
+The earlier phases' movements, for continuity: 29 entries through Phase 3; Phase 4a added S18 and
+E10 and Phase 3b-0 added S19, all `Open` when added; Phase 3b-1 closed S19, added S20, and moved
+the settled count as S19 became Accepted while S20 joined the open set.
+
+Nine entries carry a Gate 1 ruling: of those, **six moved to Accepted at the gate**
 (S2, S5, S7, S8, S10, S12), **two were already Accepted before it** (S4, S16), and **one stays
 Open** (S3). Seven more Accepted-or-Permanent entries (S9, S11, S13, E5, E9, P1, P2) were settled
 before Gate 1, and **two were closed later** — E1 in Phase 3b-0, by running the
 documented install path on a clean container, and S19 in Phase 3b-1, by implementing the ruled
-collapse. Six plus two plus seven plus two is the seventeen. (The phases matter to the sentence
-nine lines above, whose arithmetic — settled 16 → 17, open steady at 16 — only closes because E1
-was already settled entering Phase 3b-1.) Accepted does not mean fixed: S5's QC flag
+collapse. Six plus two plus seven plus two is the seventeen. Accepted does not mean fixed: S5's QC flag
 still scores F1 0.000 and S10's still under-warns on a third of the low-dynamic-range images; the
 gate decided to keep and disclose them rather than change them, and both keep their measurements.
 **Two are one-line fixes** (E4's empty GitHub metadata, P3's branch naming). **The remaining `Open`
@@ -870,6 +890,97 @@ shape is a second declared input — the data's own full scale — on the same t
 
 **Status.** Open, no clipped narrow-container file in hand; the mechanism is measured.
 
+### S22 — Over-detection is not a polarity artefact: the §(e) falsifier fired
+
+**Promoted from runs/3b2 drafts by human ruling, 2026-08-25.** The claims below are the draft's, unaltered; the heading form, this line, the cross-references and the `Status` line are the register's conventions applied on promotion.
+
+**Evidenced on real data, Gate 1 ruling 3: recorded, not fixed.**
+
+The ratified amendment's §(e) addition predicted, before the run, that correcting polarity would
+take the four `PMC13135410` panels from 13 lanes to 12 and cut bands per lane substantially. It
+named the falsifier in the same paragraph: counts unchanged or rising.
+
+**The falsifier fired on the LANE condition.** §(e) states it in disjunction — a count
+"unchanged, or that rise" — and lane counts rose, overall and on nine of the twelve crops; on the
+four panels they went to 15, 15, 13 and 14 against a prediction of 12.
+
+**The band counts are not a second met condition.** They fell by 2.3%, which is neither branch of
+the pre-registered wording. Reading that as "essentially unchanged" would be applying a tolerance
+§(e) never fixed, and this entry does not: the falsifier is satisfied by the lanes alone. The
+bands separately failed D10's prediction of a substantial fall, which is a different finding and
+is D15's second paragraph below, not a second falsification.
+
+**What this closes and what it opens.** It closes the question drafts D8 and D10 left open, which
+the QC diagnostic's §5 said could not be answered from the 3b-1 evidence: the over-detection is
+*not* explained by polarity, and under §(e)'s own terms the whole of it belongs to the deferred
+detection pre-registration. It opens nothing about parameters, because establishing that took no
+parameter change — the measurement is the before/after comparison.
+
+**Supersedes the reading, not the counts, of D8 and D10.** Their 3b-1 figures stand as measured;
+the polarity explanation attached to them does not.
+
+**The wording this entry licenses, fixed by ruling 3 of 2026-08-25 and not paraphrasable.**
+*"Detection ships as beta. The v1.0 wording is: QC vocabulary validated against polarity on 12
+real crops; detection counts are not validated — the over-detection is real, unexplained by
+polarity, and pre-registered for separate investigation. 'Not a polarity artefact' must never be
+presented as 'correct'."* The last sentence is the binding one. Eliminating an explanation leaves
+the thing unexplained, not acquitted, and the available shortcut from this entry — "detection was
+not the problem" — inverts what was measured.
+
+**Closes.** When a detection pre-registration is written and ruled — its own document, dated, with
+its predictions fixed before any parameter is varied, on the pattern the polarity amendment set.
+
+**Status.** Open. What the entry settles is settled; what it hands on — a detection pre-registration — does not exist.
+
+### S23 — Correcting polarity moved lane detection in the direction of more lanes, and nobody predicted that
+
+**Promoted from runs/3b2 drafts by human ruling, 2026-08-25.** The claims below are the draft's, unaltered; the heading form, this line, the cross-references and the `Status` line are the register's conventions applied on promotion.
+
+**Evidenced on real data, Gate 1 ruling 3: recorded, not fixed.**
+
+The lane count did not merely fail to fall — it **rose on 9 of 12 crops**. §(e) considered three
+outcomes for D8 (falls to 12; stays at 13, meaning a spurious lane; moves to a third number,
+meaning the mechanism is not understood) and this is the third: 15, 15, 13 and 14 on panels the
+human counted 12 lanes on.
+
+So the gap-arithmetic hypothesis — that a maxima detector on a light-ground panel finds the 11
+interior gaps plus 2 margins — is wrong, or at least incomplete. What replaces it is not known,
+and guessing here would be the inference this project refuses. The honest statement is that lane
+detection's behaviour on published-figure crops is **not understood in either polarity**, and the
+correct declaration made it further from the human's count rather than nearer.
+
+**Why it is not fixed here.** Every next step — varying `lane.min_prominence_fraction`,
+`lane.robust_range_percentile`, the smoothing window — is a parameter moved because a real crop
+looked wrong.
+
+**Closes.** When the detection pre-registration S22 calls for exists and this is one of the things
+it predicts before measuring.
+
+**Status.** Open, mechanism not understood.
+
+### S24 — `low_dynamic_range` now fires on nothing, which is a second structurally unreachable flag
+
+**Promoted from runs/3b2 drafts by human ruling, 2026-08-25.** The claims below are the draft's, unaltered; the heading form, this line, the cross-references and the `Status` line are the register's conventions applied on promotion.
+
+**Evidenced on real data, Gate 1 ruling 3: recorded, not fixed.**
+
+Under the wrong declaration `low_dynamic_range` fired on 7 of 12 crops; under the ruled one it
+fires on **0 of 12**. That is the correct outcome — the flag had been reading background-corrected
+excursions above white paper as a compressed range — but it leaves the real corpus with a QC flag
+that fires on nothing at all, which is the shape DEBT **S20** already records for `lossy_format`.
+
+Two flags now report nothing on the one corpus the project has, for two unrelated reasons, and a
+reader of a future report sees zero and cannot tell "checked and clean" from "cannot fire here".
+
+**Why it is not fixed.** Lowering the threshold to make it fire would be a threshold chosen
+against real data. S20's own resolution was disclosure, not a code change, and the same applies.
+
+**Closes.** When the real-set report states, per flag, whether a zero count means clean or means
+unreachable — a reporting change, and a small one, but it belongs to whichever phase writes that
+report.
+
+**Status.** Open, disclosure pending.
+
 ## Engineering
 
 ### E1 — ~~The documented install-and-run path has never been followed on another machine~~ — CLOSED, verified on a clean container
@@ -1472,6 +1583,36 @@ here.
 **Closes.** Not applicable — each is settled. Phase 5's README supersedes the interim one.
 
 **Status.** Accepted.
+
+### P5 — The existing record's prose counts are not cleaned in v1.0
+
+**What.** `tools/check_claims.py::check_prose_counts` reports every count of things asserted in
+prose rather than given as a table row. On the record as it stands it reports a large number of
+them, across NOTES.md, DEBT.md, README.md, the PR bodies and the amendments. **None is cleaned in
+v1.0**, by human ruling of 2026-08-25.
+
+**Why it matters.** Each advisory is a place where a number and its evidence sit apart, which is
+the gap every instance of Phase 3b-2's five-instance class widened. Most are almost certainly
+correct today. "Almost certainly correct today" is exactly what the class looks like before it
+fires.
+
+**Why not cleaned now, which is the ruling and not a deferral by default.** Rewriting that much
+prose is the activity that produced the defects in the first place — Phase 3b-1 measured claim
+fixes generating claim defects at roughly one per fix, and Phase 3b-2 reproduced it, twice inside
+fixes for the same entry. A bulk rewrite of the whole record under a deadline is that failure mode
+at scale. The ruling instead freezes authorship going forward and lets the existing record age
+out: documents created after 2026-08-25 that face an external reader are blocking from creation
+(`COUNT_BLOCKING`), and the rest are advisory.
+
+**Evidence.** The full advisory listing is the output of `python tools/check_claims.py` on any
+tree; it is not committed, because a committed copy would itself be a count in prose that goes
+stale. The per-file breakdown for this branch was produced and reviewed at the ruling.
+
+**Closes.** v1.1. The order that costs least is the one the freeze already implies: as a document
+is edited for another reason, its counts move into tables, and it joins `COUNT_BLOCKING` when it
+is clean. A file-by-file sweep with no other purpose is the shape to avoid.
+
+**Status.** Open, deferred to v1.1 by ruling.
 
 ### P4 — The Phase 3b-2 review loop closed at PLAN.md's cap without reaching zero REQUIRED
 

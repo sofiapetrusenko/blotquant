@@ -1281,6 +1281,21 @@ COUNT_CLAIM = re.compile(
 TABLE_ROW = re.compile(r"^\s*\|")
 """A Markdown table row. A count inside one is a row, not prose, so the freeze does not reach it."""
 
+COUNT_BLOCKING: frozenset[str] = frozenset({
+    "docs/pr/phase-3b2.md",
+})
+"""Files where a prose count **fails the build** rather than being reported.
+
+The 2026-08-25 ruling splits this check in two. Every document that existed at the ruling stays
+advisory -- cleaning the existing record is v1.1 work, recorded as DEBT P5 -- and every document
+created after it that faces an external reader is blocking from the moment the file exists. A
+new file starts clean, so there is no migration cost and no reason to grandfather it.
+
+Membership is by exact path and is added deliberately, one file at a time. A glob would sweep in
+documents written before the ruling the first time somebody renamed one, which is the migration
+this split exists to avoid. The first member is this phase's PR body, written under the rule.
+"""
+
 COUNT_ALLOW_MARKER = "claims-check: counted"
 """Marker declaring a prose count deliberate and pinned elsewhere.
 
@@ -1350,7 +1365,8 @@ def check_prose_counts(targets: list[tuple[str, list[str], bool]]) -> list[Hit]:
                 if _table_below(lines, number, value):
                     continue
                 hits.append(
-                    Hit(rel, number, "prose-count",
+                    Hit(rel, number,
+                        "prose-count-blocking" if rel in COUNT_BLOCKING else "prose-count",
                         f"{match.group(0)!r} is a count of things asserted in prose. Under the "
                         f"2026-08-25 authorship freeze a count belongs in a table whose rows are "
                         f"the things counted, or in human-authored narrative, or pinned in "
@@ -1393,7 +1409,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    hits = (
+    hits: list[Hit] = (
         check_retracted(targets)
         + check_numeric(targets)
         + check_arithmetic(targets)
@@ -1404,7 +1420,11 @@ def main() -> int:
     # Report-only, and separate from `hits` so that it cannot change the exit code. The
     # authorship freeze's primary half is an authorship rule; this half exists to show a human
     # where prose counts are, and the scope decision on what to do about them is the human's.
-    advisories = check_prose_counts(targets)
+    counted = check_prose_counts(targets)
+    # The 2026-08-25 split: a prose count in a COUNT_BLOCKING file joins `hits` and fails the
+    # build; everywhere else it is advisory and cannot change the exit code.
+    hits += [hit for hit in counted if hit.check == "prose-count-blocking"]
+    advisories = [hit for hit in counted if hit.check == "prose-count"]
     if advisories:
         print(f"\nprose-count (REPORT ONLY, does not fail the build) -- "
               f"{len(advisories)} advisory(ies):", file=sys.stderr)
