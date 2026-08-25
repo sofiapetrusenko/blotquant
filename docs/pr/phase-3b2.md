@@ -1,6 +1,14 @@
 ## What was built
 
-*[Sofia to write]*
+Polarity is now a declared caller input: an image arrives as bright_on_dark or
+dark_on_bright, and an image whose polarity is not declared is refused at load,
+in the same class as an unreadable file. Under the ruled declaration the W11
+re-run separated what the 3b-1 evidence could not: the saturation and
+dynamic-range flags were measuring polarity, and the over-detection was not.
+The §(e) falsifier, written before the run, fired — the tables below carry the
+numbers. The review loop closed at its cap on a stated criterion rather than a
+sixth cycle, and the phase leaves behind an authorship freeze and a mechanical
+prose-count check, report-only for the existing record.
 
 ## Scope and what governed it
 
@@ -20,7 +28,10 @@ or a code path.
 
 ## W8 — CI scoping (DEBT E3)
 
-*[Sofia to write]*
+CI was scoped so that the expensive sweep step runs only where its evidence is
+used, per DEBT E3. The trigger matrix below is the whole of the decision; the
+trade-offs it accepts are recorded next to it and in E3 rather than implied.
+E3 stays open — the scoping narrows its cost, it does not close the condition.
 
 ### Trigger matrix
 
@@ -61,7 +72,13 @@ Each job carries `if: github.event_name != 'pull_request' || github.event.pull_r
 | (d) | pre-registered prediction that no recorded dev-split figure can move |
 | (e) | the re-record rule, plus a dated prediction of what the real-crop over-detection would do |
 
-*[Sofia to write]*
+The amendment makes polarity a declaration, never an inference: a two-word
+vocabulary, refusal in load_image, and no auto-detection — inferring polarity
+from pixels would be a decision made by the thing being measured. It was
+drafted, ratified and digest-pinned before W10 touched the loader, and its
+§(e) fixed the W11 predictions and their falsifier before any measurement ran.
+The editing history of this document produced a ruled freeze rule, recorded
+under Deviations below.
 
 ## W10 — the implementation
 
@@ -82,7 +99,11 @@ Each job carries `if: github.event_name != 'pull_request' || github.event.pull_r
 | `source.polarity` | required, `enum` of the amendment's two values |
 | `result_id` hashed inputs | five → six |
 
-*[Sofia to write]*
+Option A, pre-registered: inversion happens once, at load, and everything
+downstream sees one orientation. QC functions keep their contract — they
+return reports, never images — so the declaration changes which pixels are
+measured without giving any QC step a way to mutate signal. The load.py
+surface is covered by the parametrised polarity tests listed in the diff.
 
 ## The §(e) report — no recorded dev-split figure moved
 
@@ -175,11 +196,27 @@ comparison with every bare string statement stripped:
 | `pipeline/load.py` | `invert_pixels` docstring | identical |
 | `evals/run.py` | `GOLD_SET_POLARITY` docstring | identical |
 
-*[Sofia to write]*
+The loop ran to PLAN.md's cap without reaching zero REQUIRED. Behavioural
+findings converged under mutation testing early; prose record edits did not,
+and this is the second consecutive phase with that shape. The cap was
+therefore closed by ruling rather than extended: the sixth cycle was replaced
+with an authorship freeze, a report-only mechanical check on prose counts,
+and direct human review of the final cycle's diffs. The replacement stopping
+criterion for future loops is recorded in DEBT P4.
 
 ## Deviations and disclosures
 
-*[Sofia to write]*
+Three are worth a reviewer's attention. First, the item-1 gate before W11 was
+not met by path — pipeline/load.py was touched — and was ruled satisfied on
+evidence instead: an AST comparison showing the change docstring-only,
+reproduced in the open at ruling time, not accepted from the implementer's
+report. Second, the polarity amendment was edited and re-pinned twice in the
+working tree before commit; the second re-pin is recorded as the mistake the
+new freeze rule exists to prevent — an amendment's bytes freeze when its
+digest is first pinned, committed or not. Third, the implementer's first AST
+comparison for the evals/run.py hunk came back non-zero because its stripper
+missed attribute docstrings; the corrected comparison is shown alongside the
+failed one, and both are in the record.
 
 | deviation | recorded in |
 |---|---|
@@ -209,7 +246,14 @@ comparison with every bare string statement stripped:
 
 ## Open questions for the human
 
-*[Sofia to write]*
+- The detection pre-registration that S22 and S23 name as their closing
+  condition does not exist yet; writing it is a decision about scope, not a
+  task inside v1.0.
+- The band-id set changed under the ruled polarity, so the mapping gate
+  deferred at the 3b-1 gate has to be made afresh whenever it is taken up.
+- Whether the Fiji comparison on caller-supplied ROI starts immediately after
+  merge, per the v1.0 plan's track B, with its five-day timebox and
+  pre-registration written before data is seen.
 
 ## Verification
 
