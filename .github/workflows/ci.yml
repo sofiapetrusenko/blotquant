@@ -1,11 +1,34 @@
 name: CI
 
+# Triggers, and why this shape. `push:` with no branch filter keeps every branch covered from
+# its first push, which is how DEBT E1 was closed and how this project actually works: a phase
+# branch is pushed and looked at before a PR exists. `pull_request:` is kept ONLY for forks --
+# a fork's push events do not reach this repository, so without it a fork PR would run nothing.
+#
+# The `if:` on each job is what removes the duplication (DEBT E3). Without it, a same-repository
+# PR runs the whole workflow twice for one commit: once for the push to the branch, once for the
+# pull_request event. The condition runs a job on any push, and on a pull_request only when the
+# head repository is a different one -- so same-repo work is covered exactly once, by its push,
+# and fork PRs are covered exactly once, by the pull_request event.
+#
+# WHAT THIS COSTS, stated rather than discovered later. A `pull_request` build checks out the
+# merge commit (`refs/pull/N/merge`); a `push` build checks out the branch head. Skipping
+# `pull_request` for same-repository PRs therefore means a PR is only ever tested at its branch
+# head, so a branch that is green against the `main` it was cut from and broken against the
+# `main` it will land on goes untested until the merge. That is the price of not running every
+# job twice, it is accepted deliberately, and the cheap partial mitigation is to rebase before
+# merging. Reinstating `pull_request` for same-repo PRs restores merge-commit testing and the
+# duplication together -- they are the same switch.
 on:
   push:
   pull_request:
 
 jobs:
   checks:
+    # See the trigger comment above: push always, pull_request only from a fork.
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -115,19 +138,12 @@ jobs:
       - name: Dev-split eval
         run: python -m evals.run --config configs/default.yaml
 
-      # Every dev-split figure quoted in NOTES.md and configs/*.yaml is transcribed from
-      # evals/dev_sweeps.json, and tests/test_recorded_figures.py checks the
-      # transcription on every pytest run. This step checks the other half: that the
-      # record itself still reproduces from the committed gold set. It re-runs every recorded
-      # sweep: about nine and a quarter minutes of CPU on an arm64 developer machine (two
-      # measurements, 9m09s and 9m19s of CPU time; this is compute, not I/O). Background
-      # estimation dominates it -- about 1.4 s per image, once per distinct background parameter
-      # set swept -- and the QC/normalization records add one further pipeline pass, about 43 s
-      # of that total. That is why this is a CI step and not
-      # part of pytest. Three review cycles were lost to figures that had silently stopped
-      # reproducing.
-      - name: Recorded dev-split figures still reproduce
-        run: python -m evals.sweep --check
+      # `Recorded dev-split figures still reproduce` (python -m evals.sweep --check) used to
+      # run here, unconditionally, and was by a wide margin the slowest thing in CI. It moved
+      # to .github/workflows/figures.yml in Phase 3b-2 so that it runs only when a path that
+      # can change a figure changes. It was NOT weakened and it was not made optional: the same
+      # command runs, on the same trigger shape, gated on paths rather than on nothing. DEBT E3
+      # carries the reasoning and what remains open.
 
   # DEBT E1: "nobody has ever followed the documented install-and-run path on another
   # machine". This job is that path, on a runner that has never seen this repository.
@@ -146,6 +162,10 @@ jobs:
   # path exists, it is not run here: substituting one would test the better path and leave the
   # documented one unverified, which is the whole of E1.
   install-path:
+    # Same trigger discipline as `checks`; see the comment on the `on:` block.
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       # A fresh clone into an empty workspace: no cached venv, no prior artifacts.
@@ -242,7 +262,8 @@ jobs:
         run: |
           python -m venv .venv && . .venv/bin/activate
           pip install -r requirements.txt
-          python -m pipeline run data/images/dev_02.png --config configs/default.yaml --out results/
+          python -m pipeline run data/images/dev_02.png --config configs/default.yaml --out results/ \
+              --polarity bright_on_dark
 
       # The result document is the deliverable of that path, so the path is not verified until
       # the document is. Validated against the committed schema with the jsonschema that

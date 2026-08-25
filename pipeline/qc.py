@@ -215,10 +215,20 @@ def assess(
 ) -> QcReport:
     """Return the QC report for one image.
 
-    ``pixels`` are the values as loaded, because clipping is a property of the delivered
-    file; ``corrected`` is the background-corrected image, because a band's peak *above
-    background* is what dynamic range is about. Both must have the same shape, and every
-    ROI must lie inside them.
+    ``pixels`` are the values **as loaded**, because clipping is a property of the file rather
+    than of the background model; ``corrected`` is the background-corrected image, because a
+    band's peak *above background* is what dynamic range is about. Both must have the same
+    shape, and every ROI must lie inside them.
+
+    **"As loaded" stopped meaning "as delivered" on 2026-08-24**, and the distinction is worth
+    stating here because this is where a reader decides whether QC is looking at the right
+    array. Under the ratified polarity amendment a ``dark_on_bright`` file is inverted by
+    :func:`pipeline.load.load_image`, so ``pixels`` is ``max_value - delivered``. That is what
+    makes the clipping test correct rather than merely unchanged: a dark band clipped to 0 in
+    the delivered file lands exactly on ``max_value`` after an exact integer inversion, and
+    :func:`_clipped_pixel_count`'s ``>= max_value`` fires on the band instead of on the paper.
+    Before the amendment it fired on the paper, which is the Phase 3b-1 finding the amendment
+    exists to answer. Nothing in this module needed changing for that; only this sentence did.
 
     Guarantees: one :class:`BandQc` per input band, in the same order and with the same
     ids; every flag drawn from :data:`BAND_QC_FLAGS` / :data:`IMAGE_QC_FLAGS`; no band is

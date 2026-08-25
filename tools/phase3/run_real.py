@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from pipeline.load import POLARITIES
 from tools.phase3.band_mapping import (
     BandMapping,
     mappings_for_document,
@@ -52,6 +53,7 @@ from tools.phase3.blot_identity import (
     confirmed_blot_id,
     read_blot_identities,
 )
+from tools.phase3.crop_names import REAL_CROP_POLARITY
 from tools.phase3.designations import (
     DESIGNATIONS_PATH,
     confirmed_reference_label,
@@ -125,6 +127,15 @@ class RunConfig:
     designations_path: Path = DESIGNATIONS_PATH
     blot_identity_path: Path = BLOT_IDENTITY_PATH
     detection_only: bool = False
+    polarity: str = REAL_CROP_POLARITY
+    """The polarity declared for the crops this run measures.
+
+    Defaults to the real corpus's declaration because that is the corpus this tool exists for --
+    a caller declaring, which is what the 2026-08-24 amendment requires, not the pipeline
+    defaulting, which it forbids. It is a field rather than a literal at the subprocess call so
+    that a test over synthetic fixtures declares theirs instead of inheriting a claim about
+    published figures.
+    """
 
 
 @dataclass
@@ -333,6 +344,8 @@ def run_one(row: dict[str, str], config: RunConfig) -> CropResult:
         str(config.pipeline_config),
         "--out",
         str(crop_out),
+        "--polarity",
+        config.polarity,
     ]
     started = time.perf_counter()
     completed = subprocess.run(command, capture_output=True, text=True, check=False)
@@ -1078,6 +1091,19 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         help="the pre-registered band-height minimum (DECISION_unit_of_analysis.md §8(c))",
     )
     parser.add_argument("--expected-crops", type=int, default=19)
+    parser.add_argument(
+        "--polarity",
+        required=True,
+        choices=list(POLARITIES),
+        help=(
+            "REQUIRED, and required for the same reason the pipeline's own flag is. The "
+            "corpus this tool measures is itself a flag (--crops-dir, --crop-log), so a "
+            "default here would let it be pointed at another directory while silently "
+            "asserting that those images are white-ground published figures. "
+            f"The approved crop set is {REAL_CROP_POLARITY!r}; see "
+            "tools.phase3.crop_names.REAL_CROP_POLARITY for the evidence"
+        ),
+    )
     parser.add_argument("--designations", type=Path, default=DESIGNATIONS_PATH)
     parser.add_argument("--blot-identity", type=Path, default=BLOT_IDENTITY_PATH)
     parser.add_argument(
@@ -1097,6 +1123,7 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         out_dir=args.out,
         min_band_height_px=args.min_band_height_px,
         expected_crop_count=args.expected_crops,
+        polarity=args.polarity,
         designations_path=args.designations,
         blot_identity_path=args.blot_identity,
         detection_only=args.detection_only,

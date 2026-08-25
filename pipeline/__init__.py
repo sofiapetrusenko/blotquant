@@ -11,7 +11,7 @@ from __future__ import annotations
 PIPELINE_VERSION = "0.1.0"
 """Version recorded as ``provenance.software_version`` in every result."""
 
-RESULT_SCHEMA_VERSION = "1.3.0"
+RESULT_SCHEMA_VERSION = "1.4.0"
 """Version of ``schema/result.schema.json`` this pipeline targets, and validates against.
 
 1.0.0 was the version Phase 1 *declared* while knowingly failing five of its required
@@ -48,6 +48,16 @@ bumped rather than the fields slipped in silently because ``source`` and ``norma
 both ``additionalProperties: false``: a 1.2.0 validator rejects a 1.3.0 document outright, which
 is the honest outcome and not one to hide behind an unchanged version number. NOTES.md's Phase
 3b-1 section records the bump with this reasoning.
+
+1.4.0 adds one field, and it is *required*: ``source.polarity``, the signal polarity the caller
+declared for the file. Required rather than optional, unlike 1.3.0's two, and the difference is
+the whole point: an absent ``channel_collapse`` means the file was single-channel, which is
+information, whereas an absent polarity would mean nobody said -- and a document measured without
+a declared polarity is precisely what the 2026-08-24 amendment refuses to produce. There is no
+document it can be absent from, because the loader will not return one. It is an ``enum`` of the
+amendment's two values, so a third convention fails validation rather than being read as a
+variant. Every 1.3.0 document lacks the field and does not validate here, which is the honest
+outcome: those documents were measured under an assumption that is now a declaration.
 
 The schema pins this value as a ``const``, mirroring the ground-truth schema, so the two
 cannot drift apart unnoticed.

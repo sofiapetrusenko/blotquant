@@ -20,6 +20,7 @@ from pipeline.analyze import (
     write_result,
 )
 from pipeline.config import load_config
+from pipeline.load import BRIGHT_ON_DARK
 from tests.conftest import Blot
 from tests.test_pipeline_config import CONFIG_DIR
 
@@ -39,7 +40,9 @@ def blot_png(tmp_path: Path, three_lane_blot: Blot) -> Path:
 @pytest.fixture
 def result(blot_png: Path) -> dict[str, Any]:
     """Return the result of analysing the fixture with the shipped default config."""
-    return analyze_image(blot_png, load_config(CONFIG_DIR / "default.yaml"))
+    return analyze_image(
+        blot_png, load_config(CONFIG_DIR / "default.yaml"), polarity=BRIGHT_ON_DARK
+    )
 
 
 def _schema() -> dict[str, Any]:
@@ -111,7 +114,8 @@ def test_ground_truth_id_is_recorded_only_when_the_caller_supplies_it(
 ) -> None:
     """The join key comes from the caller; nothing infers it from the file name."""
     result = analyze_image(
-        blot_png, load_config(CONFIG_DIR / "default.yaml"), ground_truth_image_id="dev_99"
+        blot_png, load_config(CONFIG_DIR / "default.yaml"), ground_truth_image_id="dev_99",
+        polarity=BRIGHT_ON_DARK,
     )
 
     assert result["source"]["ground_truth_image_id"] == "dev_99"
@@ -134,8 +138,8 @@ def test_the_same_image_and_config_produce_identical_results(
     """Determinism: two runs differ only in the timestamp, for either background method."""
     config = load_config(CONFIG_DIR / config_name)
 
-    first = analyze_image(blot_png, config)
-    second = analyze_image(blot_png, config)
+    first = analyze_image(blot_png, config, polarity=BRIGHT_ON_DARK)
+    second = analyze_image(blot_png, config, polarity=BRIGHT_ON_DARK)
 
     del first["provenance"]["created_at"]
     del second["provenance"]["created_at"]
@@ -147,7 +151,7 @@ def test_both_shipped_configs_produce_a_valid_result(
     blot_png: Path, config_name: str
 ) -> None:
     """Neither background method can emit a document the schema rejects."""
-    result = analyze_image(blot_png, load_config(CONFIG_DIR / config_name))
+    result = analyze_image(blot_png, load_config(CONFIG_DIR / config_name), polarity=BRIGHT_ON_DARK)
 
     errors = list(Draft202012Validator(_schema()).iter_errors(result))
     assert errors == [], [f"{list(error.path)}: {error.message}" for error in errors]
@@ -182,7 +186,11 @@ def test_a_collapsed_document_validates_against_the_full_schema(
     fails the whole document. Asserting the loader records the block is not the same as
     asserting a *result* carrying it satisfies the contract it declares.
     """
-    result = analyze_image(collapsible_png, load_config(CONFIG_DIR / "default.yaml"))
+    result = analyze_image(
+        collapsible_png,
+        load_config(CONFIG_DIR / "default.yaml"),
+        polarity=BRIGHT_ON_DARK,
+    )
 
     errors = list(Draft202012Validator(_schema()).iter_errors(result))
 
@@ -204,10 +212,11 @@ def test_the_cli_reports_the_collapse_it_performed(
     close to the bound that image sat, and the CLI is where most readers will see it first.
     """
     code = main(
-        [
-            "run", str(collapsible_png),
+        ["run", str(collapsible_png),
             "--config", str(CONFIG_DIR / "default.yaml"),
             "--out", str(tmp_path / "out"),
+            "--polarity",
+            BRIGHT_ON_DARK,
         ]
     )
 
@@ -224,11 +233,19 @@ def test_the_result_id_is_content_addressed(blot_png: Path, tmp_path: Path) -> N
     copied = tmp_path / "renamed.png"
     copied.write_bytes(blot_png.read_bytes())
 
-    assert analyze_image(blot_png, config)["result_id"] == analyze_image(copied, config)[
+    assert analyze_image(blot_png, config, polarity=BRIGHT_ON_DARK)["result_id"] == analyze_image(
+        copied,
+        config,
+        polarity=BRIGHT_ON_DARK,
+    )[
         "result_id"
     ]
     other = load_config(CONFIG_DIR / "rolling_ball.yaml")
-    assert analyze_image(blot_png, other)["result_id"] != analyze_image(blot_png, config)[
+    assert analyze_image(blot_png, other, polarity=BRIGHT_ON_DARK)["result_id"] != analyze_image(
+        blot_png,
+        config,
+        polarity=BRIGHT_ON_DARK,
+    )[
         "result_id"
     ]
 
@@ -242,9 +259,24 @@ def test_the_result_id_covers_the_reference_band_ids(blot_png: Path, tmp_path: P
     """
     config = load_config(_config_with_mode(tmp_path, "housekeeping_single"))
 
-    first = analyze_image(blot_png, config, reference_band_ids=["L0_B1", "L1_B1", "L2_B1"])
-    second = analyze_image(blot_png, config, reference_band_ids=["L0_B0", "L1_B0", "L2_B0"])
-    repeated = analyze_image(blot_png, config, reference_band_ids=["L0_B1", "L1_B1", "L2_B1"])
+    first = analyze_image(
+        blot_png,
+        config,
+        reference_band_ids=["L0_B1", "L1_B1", "L2_B1"],
+        polarity=BRIGHT_ON_DARK,
+    )
+    second = analyze_image(
+        blot_png,
+        config,
+        reference_band_ids=["L0_B0", "L1_B0", "L2_B0"],
+        polarity=BRIGHT_ON_DARK,
+    )
+    repeated = analyze_image(
+        blot_png,
+        config,
+        reference_band_ids=["L0_B1", "L1_B1", "L2_B1"],
+        polarity=BRIGHT_ON_DARK,
+    )
 
     assert first["normalization"]["ratios"] != second["normalization"]["ratios"], (
         "the two reference sets must really produce different documents"
@@ -257,8 +289,18 @@ def test_the_result_id_covers_the_reference_order(blot_png: Path, tmp_path: Path
     """Order is recorded on the result, so two orders are two documents."""
     config = load_config(_config_with_mode(tmp_path, "housekeeping_multi"))
 
-    forward = analyze_image(blot_png, config, reference_band_ids=["L0_B0", "L0_B1"])
-    reversed_order = analyze_image(blot_png, config, reference_band_ids=["L0_B1", "L0_B0"])
+    forward = analyze_image(
+        blot_png,
+        config,
+        reference_band_ids=["L0_B0", "L0_B1"],
+        polarity=BRIGHT_ON_DARK,
+    )
+    reversed_order = analyze_image(
+        blot_png,
+        config,
+        reference_band_ids=["L0_B1", "L0_B0"],
+        polarity=BRIGHT_ON_DARK,
+    )
 
     assert forward["normalization"]["reference_band_ids"] != reversed_order["normalization"][
         "reference_band_ids"
@@ -294,7 +336,9 @@ def test_cli_writes_a_result_and_reports_success(
     out = tmp_path / "results"
 
     code = main(
-        ["run", str(blot_png), "--config", str(CONFIG_DIR / "default.yaml"), "--out", str(out)]
+        ["run", str(blot_png), "--config", str(CONFIG_DIR / "default.yaml"), "--out", str(out),
+            "--polarity", BRIGHT_ON_DARK,
+        ]
     )
 
     assert code == 0
@@ -323,7 +367,9 @@ def test_a_housekeeping_mode_without_a_reference_band_fails_loudly(
     config = _config_with_mode(tmp_path, "housekeeping_single")
 
     code = main(
-        ["run", str(blot_png), "--config", str(config), "--out", str(tmp_path / "out")]
+        ["run", str(blot_png), "--config", str(config), "--out", str(tmp_path / "out"),
+            "--polarity", BRIGHT_ON_DARK,
+        ]
     )
 
     assert code == 1
@@ -347,6 +393,8 @@ def test_the_cli_normalizes_against_the_reference_bands_it_is_given(
             "--out",
             str(tmp_path / "out"),
             *[argument for reference in references for argument in ("--reference-band", reference)],
+            "--polarity",
+            BRIGHT_ON_DARK,
         ]
     )
 
@@ -366,8 +414,8 @@ def test_a_housekeeping_result_stays_deterministic(blot_png: Path, tmp_path: Pat
     config = load_config(_config_with_mode(tmp_path, "housekeeping_multi"))
     references = ["L0_B0", "L0_B1"]
 
-    first = analyze_image(blot_png, config, reference_band_ids=references)
-    second = analyze_image(blot_png, config, reference_band_ids=references)
+    first = analyze_image(blot_png, config, reference_band_ids=references, polarity=BRIGHT_ON_DARK)
+    second = analyze_image(blot_png, config, reference_band_ids=references, polarity=BRIGHT_ON_DARK)
 
     del first["provenance"]["created_at"]
     del second["provenance"]["created_at"]
@@ -381,7 +429,7 @@ def test_a_jpeg_input_is_flagged_lossy_end_to_end(
     path = tmp_path / "fixture_blot.jpg"
     assert cv2.imwrite(str(path), (three_lane_blot.pixels // 257).astype(np.uint8))
 
-    result = analyze_image(path, load_config(CONFIG_DIR / "default.yaml"))
+    result = analyze_image(path, load_config(CONFIG_DIR / "default.yaml"), polarity=BRIGHT_ON_DARK)
 
     assert result["source"]["image_format"] == "jpeg"
     assert result["source"]["lossy_format"] is True
@@ -401,6 +449,8 @@ def test_cli_reports_a_missing_image(tmp_path: Path, capsys: pytest.CaptureFixtu
             str(CONFIG_DIR / "default.yaml"),
             "--out",
             str(tmp_path / "out"),
+            "--polarity",
+            BRIGHT_ON_DARK,
         ]
     )
 
@@ -419,7 +469,9 @@ def test_cli_reports_a_bad_config(
     config = tmp_path / "no_method.yaml"
     config.write_text(yaml.safe_dump(mapping), encoding="utf-8")
 
-    code = main(["run", str(blot_png), "--config", str(config), "--out", str(tmp_path / "out")])
+    code = main(["run", str(blot_png), "--config", str(config), "--out", str(tmp_path / "out"),
+        "--polarity", BRIGHT_ON_DARK,
+    ])
 
     assert code == 1
     assert "background.method is required" in capsys.readouterr().err
@@ -435,7 +487,9 @@ def test_cli_reports_an_unsupported_image(
     tifffile.imwrite(str(path), np.zeros((60, 60), dtype=np.float32))
 
     code = main(
-        ["run", str(path), "--config", str(CONFIG_DIR / "default.yaml"), "--out", str(tmp_path)]
+        ["run", str(path), "--config", str(CONFIG_DIR / "default.yaml"), "--out", str(tmp_path),
+            "--polarity", BRIGHT_ON_DARK,
+        ]
     )
 
     assert code == 1
@@ -522,6 +576,8 @@ def test_pipeline_runs_on_a_committed_gold_set_image(
             str(CONFIG_DIR / "default.yaml"),
             "--out",
             str(tmp_path / "results"),
+            "--polarity",
+            BRIGHT_ON_DARK,
         ]
     )
 
@@ -620,6 +676,8 @@ def test_the_cli_refuses_the_gold_set(
             str(CONFIG_DIR / "default.yaml"),
             "--out",
             str(tmp_path / "ground_truth"),
+            "--polarity",
+            BRIGHT_ON_DARK,
         ]
     )
 

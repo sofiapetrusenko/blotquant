@@ -196,10 +196,15 @@ def _require_labelled_display(block: Mapping[str, Any], result_id: str) -> None:
     **Presence only, and the limit is worth stating rather than implying.** This does not check
     the values, so a record damaged into ``{"is_derivative": false, "note": "", "mapping": {}}``
     passes -- and that record has lost ``mapping.source_dn_per_output_level``, which is the
-    field a consumer needs in order not to read a 255 in the PNG as saturation. It catches a
-    record that has lost its shape, not one that has kept its shape and lost its meaning.
-    Checking the values against :meth:`~api.display.DisplayDerivative.as_block`'s invariants is
-    the stronger form and is not implemented here.
+    field a consumer needs in order not to read a 255 in the PNG as saturation. **Since the
+    2026-08-24 polarity amendment there are two more of the same kind**, and they are more
+    load-bearing than that one: ``mapping.source_polarity`` and ``mapping.source_inverted`` are
+    what tell a viewer that the picture is ``max_value - px`` rather than the uploaded array, so
+    a ``mapping`` damaged into ``{}`` turns an inverted rendering into an apparently canonical
+    one. It catches a record that has lost its shape, not one that has kept its shape and lost
+    its meaning. Checking the values against
+    :meth:`~api.display.DisplayDerivative.as_block`'s invariants is the stronger form and is
+    still not implemented here.
     """
     missing = [key for key in DISPLAY_BLOCK_KEYS if key not in block]
     if missing:
@@ -236,6 +241,7 @@ def _analyse_upload(
     payload: bytes,
     filename: str | None,
     config_name: str,
+    polarity: str,
     lane_roi_specs: Sequence[str] | None,
     reference_band_ids: Sequence[str],
     catalog: ConfigCatalog,
@@ -258,12 +264,13 @@ def _analyse_upload(
     with tempfile.TemporaryDirectory(prefix="blotquant-upload-") as directory:
         image_path = Path(directory) / _upload_filename(filename)
         image_path.write_bytes(payload)
-        loaded = load_image(image_path)
-        display = render_display(loaded.pixels, loaded.max_value)
+        loaded = load_image(image_path, polarity)
+        display = render_display(loaded.pixels, loaded.max_value, loaded.polarity)
         result = analyze_image(
             image_path,
             config,
             reference_band_ids=list(reference_band_ids),
+            polarity=polarity,
             lane_rois=lane_rois,
         )
     return result, display
@@ -330,6 +337,23 @@ def create_app(*, storage_root: Path, config_dir: Path) -> FastAPI:
         config: Annotated[
             str, Form(description="name of a parameter set in configs/, e.g. 'default'")
         ],
+        polarity: Annotated[
+            str,
+            Form(
+                description=(
+                    "REQUIRED. 'bright_on_dark' when bands are brighter than their background "
+                    "(chemiluminescence, gel-doc), 'dark_on_bright' when they are darker "
+                    "(transmissive film, a published figure on white paper). There is no "
+                    "default: the service refuses an image whose polarity is not declared "
+                    "rather than deciding it from the pixels, which would be a threshold "
+                    "chosen against the data (2026-08-24 polarity amendment). A "
+                    "'dark_on_bright' upload is inverted on the way in and the declaration is "
+                    "returned in the result's source block as source.polarity. An unrecognised "
+                    "value is refused with 415, the same status as any other input this "
+                    "service cannot quantify"
+                )
+            ),
+        ],
         lane_roi: Annotated[
             list[str] | None,
             Form(description="lane rectangle 'x,y,width,height' in px; repeat, in lane order"),
@@ -344,6 +368,7 @@ def create_app(*, storage_root: Path, config_dir: Path) -> FastAPI:
             payload=image.file.read(),
             filename=image.filename,
             config_name=config,
+            polarity=polarity,
             lane_roi_specs=lane_roi,
             reference_band_ids=reference_band_id or (),
             catalog=catalog,

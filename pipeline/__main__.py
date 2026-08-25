@@ -15,6 +15,7 @@ from pipeline.analyze import analyze_image, write_result
 from pipeline.config import load_config
 from pipeline.detect import parse_lane_rois
 from pipeline.errors import PipelineError
+from pipeline.load import POLARITIES
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -84,6 +85,21 @@ def build_parser() -> argparse.ArgumentParser:
             "a provenance record about nothing"
         ),
     )
+    run.add_argument(
+        "--polarity",
+        required=True,
+        choices=list(POLARITIES),
+        help=(
+            "REQUIRED. Which way this image's signal runs: 'bright_on_dark' when bands are "
+            "brighter than their background (chemiluminescence, gel-doc), 'dark_on_bright' "
+            "when they are darker (transmissive film, a published figure printed on white). "
+            "There is no default and the pipeline will not guess: deciding it from the pixels "
+            "would be a threshold chosen against the data (2026-08-24 polarity amendment). A "
+            "'dark_on_bright' image is inverted on the way in, so everything measured and "
+            "reported is in the one convention, and the declaration is recorded in provenance "
+            "as source.polarity"
+        ),
+    )
     return parser
 
 
@@ -97,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
             args.image,
             config,
             reference_band_ids=args.reference_band_ids,
+            polarity=args.polarity,
             lane_rois=lane_rois,
             reference_designation_source=args.reference_designation_source,
         )

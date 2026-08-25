@@ -379,8 +379,9 @@ exactly as strong as they are — no stronger.
   step rather than part of `pytest` because it is slow: **about nine and a quarter minutes of
   CPU** on an arm64 machine (measured twice, 9m09s and 9m19s of CPU time). That figure is Phase
   2's, and Phase 2 is what made it slow — it was about two minutes when this entry was written,
-  before the QC and normalization records added a pipeline pass. `.github/workflows/ci.yml`
-  carries the same measurement and what dominates it.
+  before the QC and normalization records added a pipeline pass. The same measurement and what
+  dominates it are carried beside the step itself, which moved from `.github/workflows/ci.yml` to
+  `.github/workflows/figures.yml` in Phase 3b-2 (DEBT E3).
 - **`tests/test_recorded_figures.py`** checks the transcription, which is the half a
   re-measuring tool cannot: every figure quoted in this section or in a config comment
   sits inside a block marked with the sweep it came from, and the test fails if a number
@@ -1987,8 +1988,9 @@ while `synth/` is frozen.
   already holds — 1.4 s per image, 43 s of a `--check` that costs about 9m15s of CPU. The alternative is to
   assemble a result document inside `evals/sweep.py` from the cached surfaces, which duplicates
   `pipeline.analyze.analyze_image`; the QC row is worth more measured through the same path the
-  runner and the CLI use than 8% of a CI step is worth saving. `.github/workflows/ci.yml` states
-  the measured runtime rather than an estimate.
+  runner and the CLI use than 8% of a CI step is worth saving. The workflow states the measured
+  runtime rather than an estimate -- in `.github/workflows/figures.yml` since Phase 3b-2, in
+  `.github/workflows/ci.yml` before it (DEBT E3).
 - **`result_id` hashes three inputs, not two.** Phase 1 content-addressed a result by
   `sha256(source digest | config digest)`. Ruling 2 introduced a third input that changes the
   document and that no parameter set can carry: the caller's reference band ids. Two runs of the
@@ -2130,8 +2132,8 @@ version numbers, and every number that remains is one of the six.
    parameter counts (7 of 15, now 12 of 20 — counts of config keys, checkable by reading the two
    config files), schema and version numbers, the numbering of the schema-edit list, the tolerance
    constants in `evals/sweep.py`, and the measured runtimes (1.4 s per background estimate, 43 s
-   for the QC pass, about 9m15s of CPU for `--check`), which `.github/workflows/ci.yml` carries
-   as well.
+   for the QC pass, about 9m15s of CPU for `--check`), which the workflow carrying the step
+   carries as well -- `.github/workflows/figures.yml` since Phase 3b-2, `ci.yml` before it.
 
 The new record fields are compared within four tolerance classes, each derived in
 `evals/sweep.py`: `QC_FLAG_COUNT` (+/-4 counts, inherited from the matched band set's own
@@ -3590,6 +3592,408 @@ halves go in the PR body. The finding arrived from a **read-only diagnostic** ru
 claim entered the record, which is the process point worth keeping: the corpus reading was
 available, plausible, and would have been written down as established had nobody looked at the
 pixels first.
+
+
+
+## Phase 3b-2 — polarity becomes a declared input, and CI stops paying for it
+
+### W8 — the sweep is scoped, and the duplication it did not know about is closed
+
+DEBT E3 recorded that `evals.sweep --check` ran on every push. It also ran **twice per commit on
+any same-repository PR**, which the entry did not record: `on: push` and `on: pull_request` both
+fired, doubling every job rather than only the slow one. Each job now carries
+`if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name !=
+github.repository` — push covers same-repository work once, `pull_request` is kept for forks
+whose pushes never reach this repository, and dropping it outright would have left a fork PR
+running nothing.
+
+The sweep itself moved to `.github/workflows/figures.yml` under a `paths:` filter over `evals/`,
+`configs/`, `pipeline/`, `synth/`, **`data/`** and `requirements.txt`, plus the workflow file
+itself. `data/` is the one that matters: `evals/sweep.py`'s `DATA_DIR` is `Path("data")`, so the
+gold set the sweep reads lives there and not in `synth/`, and a first draft of the filter that
+listed only the four "code" directories would have let a regenerated gold set, or a single edited
+truth record, skip the check that exists to catch exactly that. **Its
+own workflow file rather than an `if:` on the step**, because `paths:` is a native trigger filter
+while an `if:` would need the changed-file list computed by a shell diff that is wrong on a
+branch's first push and on force-pushes, and the third-party action that does it properly would
+be a new dependency.
+
+**Two trade-offs, recorded because they are the kind that are discovered painfully.** First:
+a same-repository PR is now tested only at its **branch head**, never at the merge commit, since
+that is the checkout `pull_request` provides and `push` does not. A branch green against the
+`main` it was cut from and broken against the `main` it lands on goes untested until merge; the
+mitigation is to rebase first, and reinstating `pull_request` would restore merge-commit testing
+and the duplication together, because they are one switch. Second: a workflow
+skipped by `paths:` reports *no* status, not a passing one. If `recorded-figures` is ever made a
+required check, a documentation-only PR waits for a check that will never run. E3 stays `Open`
+for a second reason as well: **the saving is predicted, not measured** — no CI run has happened
+under the new triggers, so the ~9m figures in the entry are still the pre-change ones.
+
+### The result schema goes to 1.4.0, for one *required* field
+
+`source.polarity`, and the difference from 1.3.0's two optional fields is the whole reason it is
+required. An absent `channel_collapse` means the file was single-channel, which is information;
+an absent polarity would mean nobody said, and a document measured without a declared polarity is
+exactly what the ratified amendment refuses to produce. **There is no document it can be absent
+from, because the loader will not return one.** It is an `enum` of the amendment's two values, so
+a third convention fails validation rather than being read as a variant.
+
+Every 1.3.0 document fails validation against 1.4.0. That is the honest outcome and is recorded
+rather than softened: those documents were measured under an assumption that has become a
+declaration, and the twelve real-crop results from Phase 3b-1 are among them.
+
+### Where the declaration lives, and the pattern it completes
+
+Three places, each a caller rather than the pipeline:
+
+- **`evals.run.GOLD_SET_POLARITY`** for the gold set, read by `evals/sweep.py` rather than
+  restated there. The *value* comes out of the generator — `render.py`'s docstring, `MODELS.md`,
+  and the composition `signal = background + sum(band_layers)`, which a test re-checks — but the
+  constant lives in the harness, because the ratified amendment's §(b) forecloses putting it in
+  the frozen package. See "`synth/` was edited, and then it was not" below.
+- **`tools.phase3.crop_names.REAL_CROP_POLARITY`** for the 19 approved crops, written once with
+  its evidence (the Phase 3b-1 QC diagnostic's medians) rather than repeated per call site, where
+  two values could drift.
+- **`--polarity` / the API form field** for everyone else, both required, no default.
+
+That completes a pattern worth naming, because it is now three deep: the reference designation
+(DEBT S6), blot identity (ruling G2), and polarity. **Where the pipeline cannot know something
+about the sample, it refuses and says so, rather than inferring it from the data it is about to
+measure.** Each was reached separately and by a different route; the third one is where it stops
+being a series of decisions and starts being the project's method.
+
+### `synth/` was edited, and then it was not — the ratified text won
+
+Worth recording as a process event rather than only as a code state, because the first attempt
+was wrong in a way that reads as reasonable.
+
+The task text says the generator should declare `bright_on_dark` "explicitly rather than relying
+on a default", so the implementation put `SYNTH_POLARITY` in `synth/__init__.py`. That is an
+authorised edit to the frozen package, which CLAUDE.md pairs with a `SYNTH_VERSION` bump and a
+break marker — and the bump would have forced a `--force` regeneration of the whole gold set to
+record a change that moved no byte. A long argument was written for declining the bump, and a new
+`evals/history.md` was created to hold it.
+
+**The review found that none of that argument was needed, because the ratified amendment had
+already foreclosed the placement.** §(b)'s closing two sentences, quoted whole because a shorter
+quotation reverses their sense: *"`synth/` is frozen; declaring the value it already implements requires no change to it,
+**and none is proposed here.** Where the declaration is written down for the gold set — a
+per-image field in the ground-truth record, or a constant the eval harness passes — is an
+implementation question **for (c), not a further ruling**."* Two homes are named and `synth/` is
+neither, so the frozen package is out; **the choice between the two that remain is explicitly
+left open**, and making it is the implementer's job. The amendment is digest-pinned; an
+implementation is free to choose between its options and not to add a third.
+
+So the `synth/` edit was reverted, `evals/history.md` was deleted (DEBT E8 stays open, with the
+near miss recorded in it), and the declaration went to `evals.run.GOLD_SET_POLARITY` — the
+amendment's own second option. **The task text and the ratified amendment disagree here**, and
+under the standing rule the amendment wins and the disagreement is reported rather than resolved
+silently. If the human wants the constant inside the generator, that is an amendment to the
+amendment, not an implementer's call.
+
+**What the wrong version cost, since it is the lesson.** Not the code — one constant moved. The
+cost was that a hard project boundary was talked around at length and persuasively, in a file
+created for the purpose, when the document that governed the question had already answered it and
+was sitting in the same diff. Reading the ratified text before arguing from first principles
+would have skipped all of it. `tests/test_polarity.py` now pins the placement, so the same
+reasoning cannot be re-derived a phase later.
+
+### One deliberate asymmetry: `evals/run.py --data` keeps its default, `run_real --polarity` does not
+
+`python -m tools.phase3.run_real` had a default polarity and review required it be made
+`required=True`, on the argument that the corpus it measures is itself a flag (`--crops-dir`,
+`--crop-log`), so a default polarity lets the tool be pointed at another directory while silently
+asserting that those images are white-ground published figures.
+
+**`evals/run.py --data` is the same shape and keeps its default**, so the reason is recorded here
+rather than left as an inconsistency for a later reader to find. It is the same defect in kind and
+weaker in degree in the one way that matters: `evals/run.py` prints a table and **commits
+nothing**, and every document it analyses carries its own `source.polarity`, so no false artefact
+can survive the process. `run_real` writes the result documents that become a phase's record.
+`evals/sweep.py` is not exposed at all — its `DATA_DIR` is a module constant with no flag, which
+is the right shape for a tool whose output is the committed figure record.
+
+The flag's help text carries the same note, and states the trigger: **it becomes a defect the
+moment `--data` feeds a committed artefact.**
+
+### Why `source.polarity` alone satisfies §(c), and no `source.inverted` was added
+
+§(c)'s "Against" for Option A, ratified with it, says the array measured is no longer the array
+the file holds and *"That has to be visible in provenance rather than implied."* The result
+document carries the **declaration** and not a separate applied-inversion flag, which is a
+judgement about what "visible" means, so it is recorded rather than left as an omission.
+
+The inversion is a pure function of two things: the declared polarity, which is in the document,
+and `CANONICAL_POLARITY`, which is a module constant. A second field would be derived from the
+first, and two fields that must agree are two fields that can disagree — a stored document whose
+`polarity` and `inverted` contradict each other would be unresolvable, because nothing records
+which was written first. One declaration cannot contradict itself.
+
+**The residual risk, since it is not zero.** A reader of a stored document needs
+`CANONICAL_POLARITY` to know whether a `dark_on_bright` document was inverted, and that constant
+lives in code rather than in the document. If it ever changes, old documents become ambiguous.
+The display block does carry an explicit `source_inverted`, and the asymmetry is deliberate: that
+block describes a *rendering*, whose formula genuinely differs between the two cases and is
+reported alongside it, whereas the result document describes an *input*.
+
+### One figure in the ratified amendment is narrower than its label, and stays
+
+§(b) corroborates the gold set's declaration with "16 images; the median pixel value is 8.1%-14.1%
+of full scale … 0.1142% of all pixels sit at full scale and 0.0000% sit at zero". Those figures
+are the **16 PNG images**, not the gold set, which is 40 files — 16 PNG, 16 TIFF, 8 JPEG.
+Re-measured over all 40 in this session: median **7.84%-14.14%**, **0.1074%** at full scale,
+**0.0002%** at zero.
+
+**The conclusion is untouched** — every scope puts the ground at the dark end, which is the only
+thing §(b) uses the figures for. But `0.0000%` is the one that goes qualitatively wrong when the
+other 24 files are counted, and "no counter-examples" is the direction in which a scope error
+matters most.
+
+**The amendment is not edited.** It is ratified, in force, and digest-pinned; changing it would be
+a further amendment with its own date and digest, not a correction. So the discrepancy is recorded
+here, `evals.run.GOLD_SET_POLARITY` carries the 40-file figures with its scope stated exactly, and
+`tests/test_polarity.py` re-measures all 40 on every run so neither set of numbers can go stale
+unnoticed again.
+
+### The `qc_diagnostic` tool now declares the truth and then un-inverts
+
+`tools/phase3/qc_diagnostic.py` is a statement about the **delivered file** — where the extreme
+pixels sit in the bytes as published — so the loader's inversion would have turned its numbers
+upside down. It now declares `REAL_CROP_POLARITY`, which is true, and applies `invert_pixels` to
+recover the delivered array, which is exact on `uint8`/`uint16`. Recorded because the alternative
+was tempting and wrong: declaring `bright_on_dark` to get a pass-through would have been a false
+declaration written to obtain a convenient array, in the one tool whose subject is polarity.
+
+### The §(e) report: nothing moved, and that is a report rather than a silence
+
+The ratified amendment's §(e) requires the movement to be reported against §(d) before any figure
+is re-recorded, and closes: *"If (d) is right and nothing moves, steps 2 and 3 are satisfied by
+recording that nothing moved, with the `--check` run as the evidence. **That is still a report,
+not a silence.**"* This section is that report.
+
+**`python -m evals.sweep --check` passes: no recorded dev-split figure moved.** Structure, header
+and config digests exact, every figure inside its tolerance class. It was run after W10 first landed, and again after each review cycle's fixes — every
+run green. The reviewer also re-ran it independently more than once; those runs are reported in
+the review record rather than committed, since this phase has no `docs/review/phase-3b2/` (the
+Phase 3b-1 decision to commit cycle verdicts has not been extended, and extending it is not this
+phase's to do). §(d)'s prediction holds, and it has held across three rounds of change to the code under
+it.
+
+**It holds for the reason §(d) gave, which was checked rather than assumed.** §(d) names the way
+its own prediction could come true wrongly: an inversion applied and then undone is bit-exact on
+`uint8`/`uint16` and therefore silent. The reviewer monkeypatched `invert_pixels` with a counting
+spy and loaded gold-set images through the loader: **zero invocations**, and the returned array is
+`array_equal` to a raw decode of the same bytes. The gold set declares the canonical convention,
+so the branch is never taken. It is a pass-through, not a round trip.
+
+**§(d)'s three named non-figure consequences, each discharged.** The schema version went to 1.4.0
+and `source.polarity` is required, as (d) said it would. `result_id` changed for every document,
+and it changed **twice** — once because a new provenance input was added to the hash, and once
+because the first implementation forgot to add it (see below). And (d)'s instruction that
+"nothing in the tree pins a literal `result_id` … must be **re-established rather than assumed**"
+was carried out with a repository-wide scan for 16-hex-digit literals, not by inspection, and
+the enumeration is given in full — twice now, because a first version said "the only ones" and
+named three of five files, and a second said six files and listed five.
+
+**28 sixteen-hex-digit literals in 6 tracked files**, counted over `git ls-files`:
+
+| file | literals | of which the `0123456789abcdef` placeholder |
+|---|---|---|
+| `data/real/provenance.md` | 21 | 0 — sha256 prefixes of source figures |
+| `README.md` | 2 | 0 — tails of floats in the example document |
+| `tests/test_api.py` | 2 | 2 |
+| `tests/test_api_display.py` | 1 | 1 |
+| `docs/review/phase-3b1/cycle-2.md` | 1 | 1 — a verbatim review extract quoting one of the above |
+| `NOTES.md` | 1 | 1 — **this paragraph**, quoting the placeholder to name it |
+
+**No committed artefact pins a real `result_id`**, which is the claim §(d) required be
+re-established, and the twelve Phase 3b-1 result documents are not committed at all — `runs/` is
+gitignored. The two counts that kept going wrong are files versus occurrences, and the file this
+sentence lives in; the table gives both and includes itself.
+
+### `result_id` hashes six inputs, not five — and the sixth was nearly missed
+
+The pattern this file has recorded three times before (three not two; four not three; five not
+four) has a fourth entry, and this one is different in that **the omission shipped and was caught
+by a test rather than by reasoning.**
+
+`source.sha256` identifies the *delivered* bytes. So one uploaded file declared `bright_on_dark`
+and `dark_on_bright` hashed identically on all five previous inputs while producing two documents
+that share no measured number — one measures the bands, the other the gaps between them. Because
+`api.storage.ResultStore.save` keys on `result_id`, the second measurement silently overwrote the
+first: the DEBT E10 item 3 hazard, live, on a path the amendment had just created.
+
+It surfaced only because a review finding ("the API refusal is tested nowhere") led to writing an
+API test that posted the same bytes under both declarations. **The equivalent test in
+`tests/test_polarity.py` had been written against two different *files*, so their ids differed
+through `source_sha256` whether or not polarity was hashed at all** — it passed under the mutation
+that removed the fix, and was catching nothing. Both are now one-file tests. The lesson is narrow
+and worth keeping: a test for "input X changes the id" must hold every other input fixed, and the
+cheapest way to get that wrong is to vary the file.
+
+### Authorship freeze — agent-authored prose may not assert a count
+
+**The rule, ruled 2026-08-25 and in force from now on.** A count of things may appear in
+agent-authored text in exactly two places: as a **row in a table whose rows are the things
+counted**, or inside **human-authored narrative**. An agent restating a count in prose is the
+defect **regardless of whether the count is correct**. A correct count restated in prose is a
+defect that has not fired yet.
+
+**Why an authorship rule rather than only a checker.** The class was named after five instances in
+one phase, every one of them a count asserted in prose, every one agent-authored, and — the part
+that decides the remedy — several of them *introduced by the fix for a previous one*. A checker
+catches an instance. It does not stop the next one being written, and the evidence of this phase
+is that writing one is the reflex. Removing the reflex removes the class. The mechanical check
+recorded below is secondary and exists to catch what the freeze misses, not to replace it.
+
+**What a table buys that prose does not.** A table's rows *are* the things it counts, so the count
+and its evidence cannot drift apart — a row added or removed changes both at once. Prose holds the
+number and the evidence in different places, and every instance of this phase's class was that gap
+widening: "16 images" beside a set of 40, "all sixteen records" beside 40, "six files" beside a
+list of five, "the only literal" beside four, a range of two runs beside a survey of 33.
+
+**What the freeze does not cover, stated so it is not read as more than it is.** It binds prose an
+agent writes. It does not bind a human's narrative, does not bind quotations of a human's ruling,
+and does not bind a count that is a table row. It says nothing about whether any particular count
+is right — that is what the mechanical check and the human's reading are for.
+
+### Ratified deviation — the item-1 gate, ruled satisfied on evidence rather than by path
+
+The Phase 3b-2 task text gated W11 on a path test: W11 was to run only if none of the cycle-5
+change sets touched image loading, band/lane detection or `configs/`. One did, by path —
+`pipeline/load.py`, the loading module — so the gate was reported unmet and W11 was not run on
+the implementer's own reading of it.
+
+The human ruled otherwise, quoted verbatim:
+
+> The item-1 gate is not met by path (pipeline/load.py touched); it is ruled satisfied on
+> evidence that the change is docstring-only, verified by AST comparison reproduced at ruling
+> time. Ruled by Sofia, 2026-08-25.
+
+**"Reproduced at ruling time" is the load-bearing part, and it is why this is a deviation worth
+recording rather than a formality.** The evidence had already been produced once and reported;
+the ruling required it be produced again, in the open, with the commands and their output shown
+rather than summarised. Both revisions of `pipeline/load.py` were parsed, every docstring
+stripped, both re-emitted through `ast.unparse`, and the two results diffed: identical, same
+length, same sha256, `diff` exiting 0 — while `git diff` on the file itself is non-empty, so the
+comparison is not vacuous. The changed hunk lies entirely inside `invert_pixels`'s docstring.
+
+**The reasoning, recorded because it generalises past this gate.** A gate written by path is
+cheap to check and errs toward refusing; a gate written by effect is what the path was standing
+in for. Where the effect is *as cheap to check as the path*, the path test has no remaining
+advantage, and refusing on it is caution performed rather than exercised. What the ruling does
+not license is an implementer deciding that for itself: the gate was written by the human, the
+substitution of one test for the other was made by the human, and the evidence was re-run in
+front of the human. The implementer's part was to report the gate unmet and stop, which is what
+it did.
+
+### W11 ran on 2026-08-25, and the §(e) falsifier fired on the lane condition
+
+W10 stopped before the re-measurement, deliberately: the amendment's §(e) addition predicted what
+D8 and D10 should do, and that prediction is dated ahead of the run by the ratification
+changeset. Running W11 in the same session that wrote the prediction would have made the two
+indistinguishable to a later reader.
+
+W11 then ran under the human's gate ruling of 2026-08-25 (recorded above), on the staged tree
+`14ae5d9e40b014335a97e8a69bece2bc7d67bd88`, with `--polarity dark_on_bright`. The full comparison
+is `runs/3b2/W11_COMPARISON.md`; `runs/` is gitignored, so the figures are reproducible from the
+committed tooling rather than stored. Measured against the Phase 3b-1 run:
+
+| | 3b-1 (wrong declaration) | 3b-2 (ruled) |
+|---|---|---|
+| lanes | 106 | 116 |
+| bands | 430 | 420 |
+| bands carrying any QC flag | 404 | 238 |
+| `saturated` bands | 286 | 68 |
+| image `low_dynamic_range` | 7 of 12 crops | 0 of 12 crops |
+
+**The falsifier fired on the LANE condition, which is the branch §(e) states in disjunction.**
+§(e): *"band and lane counts that are unchanged, or that rise. Either would say the
+over-detection was never about polarity."* Lane counts **rose** — the unambiguous branch — and the
+four `PMC13135410` panels went to 15, 15, 13 and 14 against a prediction of 12.
+
+**The band counts are not a second met condition, and the record does not treat them as one.**
+They fell by a small amount, which is neither branch of the pre-registered wording; §(e) fixed
+"unchanged" and "rise" in advance and fixed no tolerance around either, so reading a small fall as
+"essentially unchanged" would be applying a criterion that was never pre-registered. What the
+bands do show is that D10's prediction of a substantial fall failed — a separate finding, and a
+prediction failing is not a falsifier firing.
+
+**So the over-detection is not a polarity artefact**, and under §(e)'s own terms the whole of it
+belongs to the deferred detection pre-registration. Establishing that took no parameter change:
+the measurement is the before-and-after. Drafts D15, D16 and D17 in `runs/3b2/DEBT_DRAFTS.md`.
+
+**What the fix did do is the other half, and it is the half the QC diagnostic predicted.** The
+flags moved as `runs/3b1/QC_DIAGNOSTIC.md` said they would, because they had been reading white
+paper as clipped signal. Two independent results: the flags were measuring polarity, the
+over-detection was not, and correcting the first left the second where it was — which is what
+§5 of that diagnostic said could not be separated without this run.
+
+**R5 is vindicated by the same numbers.** The band set changed, ids included, so any mapping
+ruled at the 3b-1 band-mapping gate would have had to be made again.
+
+### Rulings of 2026-08-25 — recorded verbatim, as received
+
+Four rulings, quoted as the human wrote them. What was done in consequence follows each, and
+where a ruling required a judgement it does not itself make, that judgement is labelled.
+
+**Ruling 1 — amendment freeze.**
+
+> "An amendment's bytes freeze when its digest is first pinned, committed or
+> not. After that, corrections go to NOTES — except an internal
+> contradiction, which is fixed at source. Re-pin 2 of the polarity
+> amendment stands as bytes; it is recorded here as the instance this rule
+> exists to prevent. Ruled by Sofia, 2026-08-25."
+
+This adopts the implementer's own recommendation and adds the part the recommendation left out:
+the offending edit is not reverted, it is **kept and labelled**. Re-pin 2 was a clarity
+improvement to a correction note in a document that was already in force and already pinned — no
+ruling changed, nothing was contradictory, and it should have gone in this file instead. It
+stands in the amendment's bytes, and this paragraph is what it is for. Re-pin 1, which corrected
+sentences that contradicted the file's own status line, is the exception the rule names.
+
+**Ruling 2 — prose-count check scope.**
+
+> "check_prose_counts stays report-only for every document that exists
+> today; the 199 advisories are not cleaned in v1.0. For documents created
+> from now on that face an external reader — README v1, the validation
+> page, PR bodies — the check is blocking from the file's creation. Cleanup
+> of the existing record is v1.1, recorded in DEBT. Ruled by Sofia,
+> 2026-08-25."
+
+Implemented as a split target list in `tools/check_claims.py`: `COUNT_BLOCKING` names files where
+a prose count fails the build, and everything else scanned is advisory. **The first member is
+`docs/pr/phase-3b2.md`**, created after this ruling and facing an external reader, which makes
+the ruling test itself — that PR body was written under the constraint and the blocking check
+passes on it.
+
+**Ruling 3 — detection status in v1.0.**
+
+> "Detection ships as beta. The v1.0 wording is: QC vocabulary validated
+> against polarity on 12 real crops; detection counts are not validated —
+> the over-detection is real, unexplained by polarity, and pre-registered
+> for separate investigation. 'Not a polarity artefact' must never be
+> presented as 'correct'. Ruled by Sofia, 2026-08-25."
+
+The last sentence is the one that binds prose, and it binds this project's most available
+shortcut. W11 established that the over-detection survives the polarity fix; the tempting
+sentence — "detection was not the problem" — inverts that. What was established is that one
+explanation was eliminated, and eliminating an explanation leaves the thing unexplained rather
+than acquitted. The wording is carried into DEBT S22 and is the wording any v1.0 surface uses.
+
+**Ruling 4 — promotion of the W11 drafts.**
+
+> "Copy the three drafts from runs/3b2/DEBT_DRAFTS.md into DEBT.md as new
+> entries in their groups, byte-identical in their claims — you may adjust
+> only heading format and cross-references to match the register's
+> conventions. Mark each: 'Promoted from runs/3b2 drafts by human ruling,
+> 2026-08-25.'"
+
+Done, with the latitude used only where the ruling grants it. The claims are unaltered; what
+changed is the heading form, the `**Status.**` line the register requires and the entries did not
+carry, and cross-references now that the drafts have register numbers. `runs/` is gitignored, so
+the drafts themselves do not reach a reader — the diff between draft and register is the thing to
+read before committing, and it is reviewable from this branch's working tree.
 
 
 ## Open items

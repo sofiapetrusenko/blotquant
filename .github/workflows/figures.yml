@@ -1,0 +1,99 @@
+name: Recorded figures
+
+# DEBT E3. `python -m evals.sweep --check` re-measures every recorded dev-split figure from the
+# committed gold set. It is load-bearing -- it is what catches a figure that has silently stopped
+# reproducing, and three review cycles were lost to exactly that -- and it is also the slowest
+# thing in CI by a wide margin: about nine and a quarter minutes of CPU on an arm64 developer
+# machine (two measurements, 9m09s and 9m19s of CPU time; this is compute, not I/O). Wall-clock
+# on the runner, over all 33 non-zero runs of this step in the repository's Actions history,
+# read 2026-08-24: 4m54s to 7m42s, median 6m59s. An earlier note gave 6m23s-7m41s "as read from
+# step timings", which was one pair of runs written as though it were the survey. Background estimation dominates it, about
+# 1.4 s per image once per distinct background parameter set swept, and the QC/normalization
+# records add one further pipeline pass, about 43 s of that total.
+#
+# So it is scoped rather than removed. A recorded figure is a function of six things: the gold set
+# the sweep actually reads (data/ -- evals/sweep.py's DATA_DIR is Path("data"), so the images and
+# truth records live there, NOT in synth/), the generator that writes it (synth/), the parameters
+# swept (configs/), the measurement code (pipeline/), the sweep and its record (evals/), and the
+# dependency versions everything above runs on (requirements.txt). A commit that touches none of
+# those six cannot move a figure, and running the sweep against it is the waste E3 describes.
+#
+# The count has been wrong twice, so it is worth saying how to check rather than trusting it:
+# the list below is the authority, and this sentence is a description of it. If they disagree,
+# the list is right.
+#
+# data/ is in the list because leaving it out was a live hole rather than a tidiness point: a
+# commit that regenerates the gold set, or edits one image or one truth record, touches no other
+# pattern, so the check would not run and a recorded figure could silently stop reproducing --
+# the exact failure this step exists to catch, reachable through the change that scoped it.
+# requirements.txt is the sixth for a reason one step removed from the other five: a numpy or
+# OpenCV version can move a figure without a line of this repository's own code changing.
+#
+# This lives in its own workflow file rather than as an `if:` on a step, because `paths:` is a
+# native trigger filter and an `if:` would need the changed-file list computed by hand -- a shell
+# diff against a base ref that is wrong on a branch's first push and on a force-push. The native
+# filter has no such edge, and no third-party action is introduced to get it.
+#
+# THE TRADE-OFF, stated rather than discovered later: a workflow skipped by `paths:` reports no
+# status at all, not a passing one. If this job is ever made a required status check on `main`,
+# a documentation-only PR will wait forever for a check that will never run. It is not required
+# today. Making it required means replacing the `paths:` filter with an always-running job that
+# decides internally whether to do the work -- which is the shell-diff design this file avoids,
+# and it should be taken deliberately, not as a side effect of turning on branch protection.
+#
+# `.gitignore`, docs, and every workflow file EXCEPT this one are deliberately not in the list:
+# none of them can change a measurement. This file is in the list, because a change to the filter
+# itself must run the job it just re-scoped -- otherwise a filter edited to exclude something
+# would take effect without the sweep ever running under the new rule.
+on:
+  push:
+    paths:
+      - "evals/**"
+      - "configs/**"
+      - "pipeline/**"
+      - "synth/**"
+      - "data/**"
+      - "requirements.txt"
+      - ".github/workflows/figures.yml"
+  pull_request:
+    paths:
+      - "evals/**"
+      - "configs/**"
+      - "pipeline/**"
+      - "synth/**"
+      - "data/**"
+      - "requirements.txt"
+      - ".github/workflows/figures.yml"
+
+jobs:
+  recorded-figures:
+    # The same de-duplication as ci.yml, and for the same reason: without it a same-repository
+    # PR runs this nine-minute job twice for one commit. Push covers same-repo work;
+    # pull_request covers forks, whose pushes never reach this repository.
+    # The same merge-commit trade-off ci.yml records applies here; see the note there.
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # No `if [ -f requirements.txt ]` guard and no pytest: this job runs one command, that
+      # command needs the runtime dependencies and nothing else, and a missing requirements.txt
+      # must fail here rather than be skipped into a run against whatever the image ships.
+      # ci.yml's install carries the guard for historical reasons; this file is new and does not.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Every dev-split figure quoted in NOTES.md and configs/*.yaml is transcribed from
+      # evals/dev_sweeps.json, and tests/test_recorded_figures.py checks the transcription on
+      # every pytest run -- which still happens on every push, in ci.yml. This step checks the
+      # other half: that the record itself still reproduces from the committed gold set.
+      - name: Recorded dev-split figures still reproduce
+        run: python -m evals.sweep --check

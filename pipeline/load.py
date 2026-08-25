@@ -6,6 +6,13 @@ never converted, never squashed to 8-bit; the container format was determined fr
 file's own signature bytes rather than its extension; and the recorded ``bit_depth``,
 ``max_value`` and ``lossy_format`` describe that file. Anything else raises.
 
+**Two ruled exceptions to "the file's own values", both below, and both are rulings rather
+than conveniences.** A channel collapse changes which plane is returned; a polarity inversion
+changes every value in it. Neither rescales, converts or squashes -- both are exact operations
+on the declared integer type -- but a reader who stops at the paragraph above would have a
+false model of what this module hands back, so they are named here and not only where they are
+implemented.
+
 **Channel collapse.** One narrow exception to "2D or raise", and it is a ruling rather
 than a convenience: ``data/real/AMENDMENT_2026-08-19_channel_collapse.md`` (ratified
 2026-08-20, digest-pinned in ``tools/check_claims.py``) permits a 3-channel input to be
@@ -17,6 +24,17 @@ and are deliberately not in ``PipelineConfig``: the amendment fixes both, and DE
 says so in terms ("Not a config change: the bound and the method are fixed by the
 amendment, not selected"). They are module constants so that a reader of a refusal can
 find the ruling that produced it.
+
+**Polarity.** The larger of the two, and the one that changes numbers rather than which plane
+they come from: ``data/real/AMENDMENT_2026-08-24_polarity.md`` (ratified 2026-08-24,
+digest-pinned) makes polarity a **declared caller input**. :func:`load_image` refuses an image
+whose polarity is not declared, because deciding light-ground from dark-ground by looking at the
+pixels would be a threshold chosen against the data. A ``dark_on_bright`` image is inverted to
+:data:`CANONICAL_POLARITY` on the way in, so every module below this one sees one convention;
+a ``bright_on_dark`` image is returned untouched, not inverted twice. The declaration is carried
+on the result as ``source.polarity`` and recorded **as declared, not as applied** -- the
+declaration describes the file, the inversion describes the run -- and ``sha256`` keeps
+identifying the delivered bytes either way.
 """
 
 from __future__ import annotations
@@ -105,6 +123,71 @@ by name, rather than collapsed under a bound that does not reach it.
 """
 
 
+BRIGHT_ON_DARK = "bright_on_dark"
+"""Signal is positive: bands are brighter than their background.
+
+Chemiluminescence, gel-doc, and the synthetic gold set. Each corpus declares its own: the gold
+set's is ``evals.run.GOLD_SET_POLARITY`` and the approved real crops' is
+``tools.phase3.crop_names.REAL_CROP_POLARITY``. Named as examples rather than as a lookup --
+nothing in ``pipeline/`` reads either, and importing one would be the circularity this package's
+boundary exists to prevent.
+"""
+
+DARK_ON_BRIGHT = "dark_on_bright"
+"""Signal is negative: bands are darker than their background.
+
+Transmissive film scans, and every published-figure crop in ``data/real/crops/``.
+"""
+
+POLARITIES: tuple[str, ...] = (BRIGHT_ON_DARK, DARK_ON_BRIGHT)
+"""The whole vocabulary, and there is deliberately no third value.
+
+The 2026-08-24 polarity amendment, ruling (a): there is no ``auto`` and no ``unknown``. ``auto``
+would be an auto-detection heuristic wearing a vocabulary word -- a threshold chosen against real
+data, which Gate 1 ruling 3 forbids -- and ``unknown`` would be a declaration that declares
+nothing, a case the refusal already covers.
+"""
+
+CANONICAL_POLARITY = BRIGHT_ON_DARK
+"""The convention every module below this one sees, whatever the file was.
+
+Chosen as ``bright_on_dark`` rather than as a new convention because that is what ``pipeline/``
+already assumes and what the gold set already is, which makes the ruled inversion a **literal
+no-op** on every image the project has measured to date -- see the amendment's (b) and (d). A
+``bright_on_dark`` image is passed through untouched, not inverted twice: (d) predicts that no
+recorded dev-split figure can move, and an inversion applied and undone would be bit-exact for
+uint8/uint16 and therefore a silent way for that prediction to be true for the wrong reason.
+"""
+
+
+def invert_pixels(pixels: np.ndarray, max_value: int) -> np.ndarray:
+    """Return ``max_value - pixels``, in the input's own dtype.
+
+    Exact integer arithmetic: no float round-trip and no rounding, so a dark band's clipped
+    pixels land exactly on full scale and the clipping test in :mod:`pipeline.qc` becomes
+    correct rather than approximately correct. Written as a named function rather than inline
+    so the one place the measured array stops being the delivered array is greppable.
+
+    **Known limit, and precisely what it is not.** ``max_value`` is the full scale of the
+    *declared bit depth*, so a 12-bit film scan carried in a ``uint16`` container inverts against
+    65535 rather than against 4095: paper at 4000 becomes 61535 and a band core clipped to 0
+    becomes exactly 65535. That is **correct** for the flag that matters -- the genuinely clipped
+    band fires and the background, sitting 4000 DN below the ceiling, does not -- and it is worth
+    saying so because an earlier version of this note claimed the opposite.
+
+    What the container width does break lives in :mod:`pipeline.qc`, not here, and it splits in
+    two. ``low_dynamic_range`` fires unconditionally on any narrow-data image, in **either**
+    polarity, because the peak is a small fraction of the container. ``saturated`` is
+    **polarity-dependent**: under ``bright_on_dark`` a band clipped at the scanner's white point
+    never reaches the container ceiling and the flag cannot fire, while under ``dark_on_bright``
+    the inversion maps the container floor onto the ceiling, so a band clipped at 0 does fire --
+    and one clipped at a black point above 0 does not. DEBT S21 carries the whole of it with the
+    measured cases; this docstring names the limit only so a reader does not have to re-derive
+    which half belongs where.
+    """
+    return (max_value - pixels.astype(np.int64)).astype(pixels.dtype)
+
+
 @dataclass(frozen=True)
 class ChannelCollapse:
     """The record of a ruled 3-channel -> 1-channel collapse, as it reaches provenance.
@@ -139,6 +222,15 @@ class LoadedImage:
     max_value: int
     lossy_format: bool
     sha256: str
+    polarity: str
+    """The polarity the caller declared for this file, verbatim.
+
+    Recorded as declared, not as applied: a ``dark_on_bright`` document says so even though
+    ``pixels`` has been inverted to the canonical convention, because the declaration is a fact
+    about the file and the inversion is a fact about this run. ``sha256`` keeps identifying the
+    delivered bytes for the same reason.
+    """
+
     channel_collapse: ChannelCollapse | None = None
 
     @property
@@ -171,6 +263,7 @@ class LoadedImage:
             "width_px": self.width_px,
             "height_px": self.height_px,
             "lossy_format": self.lossy_format,
+            "polarity": self.polarity,
         }
         if self.channel_collapse is not None:
             source["channel_collapse"] = self.channel_collapse.as_dict()
@@ -311,11 +404,26 @@ def _collapse_channels(array: np.ndarray, path: Path) -> tuple[np.ndarray, Chann
     )
 
 
-def load_image(path: Path) -> LoadedImage:
-    """Load a single-channel 8- or 16-bit image.
+def load_image(path: Path, polarity: str) -> LoadedImage:
+    """Load a single-channel 8- or 16-bit image with its polarity declared by the caller.
+
+    ``polarity`` has **no default and is not inferred**. The 2026-08-24 polarity amendment,
+    ruling (a): an image whose polarity is not declared is refused, because the alternative --
+    deciding light-ground from dark-ground by looking at the pixels -- is a threshold chosen
+    against real data, which Gate 1 ruling 3 forbids. It is a required positional parameter
+    rather than a keyword with a default so that every existing call site fails loudly at the
+    call rather than quietly acquiring an assumption.
+
+    A ``dark_on_bright`` image is inverted to :data:`CANONICAL_POLARITY` here, so every module
+    below this one sees one convention. A ``bright_on_dark`` image is returned untouched.
 
     Guarantees that ``pixels`` holds the file's own values in the file's own pixel
-    type. Raises :class:`FileNotFoundError` if the path is not a file,
+    type, **except for the two ruled transformations this module's docstring names**: a
+    permitted channel collapse returns one plane of a multi-channel file, and a
+    ``dark_on_bright`` declaration returns ``max_value - pixels``. Both are exact on the
+    declared integer type; neither rescales or converts.
+
+    Raises :class:`FileNotFoundError` if the path is not a file,
     :class:`UnsupportedFormatError` for a container outside
     :data:`SUPPORTED_FORMATS`, :class:`UnsupportedImageError` for a multi-channel
     image the ruled collapse does not admit, and :class:`UnsupportedBitDepthError` for any
@@ -330,6 +438,14 @@ def load_image(path: Path) -> LoadedImage:
     *as delivered* -- the collapse happens on the way into the pipeline and never rewrites
     an approved artefact, so the digest must keep identifying the bytes on disk.
     """
+    if polarity not in POLARITIES:
+        raise UnsupportedImageError(
+            f"polarity {polarity!r} is not declared: it must be one of {list(POLARITIES)}. "
+            f"The pipeline does not guess which way a blot's signal runs -- a light-ground "
+            f"figure and a dark-ground scan are measured in opposite directions, and choosing "
+            f"between them from the pixels would be a threshold selected against the data "
+            f"(2026-08-24 polarity amendment, ruling (a)). Declare it with --polarity."
+        )
     if not path.is_file():
         raise FileNotFoundError(f"image not found: {path}")
     data = path.read_bytes()
@@ -352,13 +468,17 @@ def load_image(path: Path) -> LoadedImage:
             f"every intensity it then reports"
         )
     bit_depth = _BIT_DEPTH_BY_DTYPE[dtype]
+    max_value = 2**bit_depth - 1
+    if polarity != CANONICAL_POLARITY:
+        array = invert_pixels(array, max_value)
     return LoadedImage(
         path=path,
         pixels=array,
         image_format=image_format,
         bit_depth=bit_depth,
-        max_value=2**bit_depth - 1,
+        max_value=max_value,
         lossy_format=image_format in LOSSY_FORMATS,
         sha256="sha256:" + hashlib.sha256(data).hexdigest(),
+        polarity=polarity,
         channel_collapse=collapse,
     )

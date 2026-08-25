@@ -51,6 +51,7 @@ from pipeline.config import (
 )
 from pipeline.detect import Roi
 from pipeline.errors import PipelineError
+from pipeline.load import BRIGHT_ON_DARK
 from pipeline.normalize import NormalizationBand, normalize
 from pipeline.qc import (
     BAND_QC_FLAGS,
@@ -60,6 +61,48 @@ from pipeline.qc import (
     max_same_lane_iou,
     roi_iou,
 )
+
+GOLD_SET_POLARITY = BRIGHT_ON_DARK
+"""The polarity declared for the synthetic gold set, and the evidence for it.
+
+The ratified 2026-08-24 polarity amendment makes polarity a declared caller input, so the gold
+set needs a declaration. **§(b) of that amendment rules out one home and declines to choose
+between the other two**. Its closing two sentences, quoted whole and unelided: "``synth/`` is
+frozen; declaring the value it already
+implements requires no change to it, and none is proposed here. Where the declaration is written
+down for the gold set -- a per-image field in the ground-truth record, or a constant the eval
+harness passes -- is an implementation question **for (c), not a further ruling**."
+
+So the frozen package is foreclosed and this is a choice between the amendment's two named
+homes, made here rather than ruled there: the ground-truth field would need a
+``GROUND_TRUTH_SCHEMA_VERSION`` bump and a regeneration of all **40** records -- 30 dev and 10
+test, one per image -- to carry a fact one constant carries once, and with one generator
+producing one polarity it would record the same fact 40 times.
+
+**The value is read out of the generator, not decided here.** Three statements in the committed
+source had to agree, and `tests/test_polarity.py` re-checks that they still do:
+``synth/render.py``'s module docstring ("signal-positive (bright bands on a dark background, i.e.
+chemiluminescence)"), ``synth/MODELS.md`` ("Signal is positive on a dark background"), and the
+composition in ``synth/generator.py`` -- ``signal = background + sum(band_layers)``, where
+``render_band`` returns a positive amplitude. A dark-band generator would subtract.
+
+Corroborated by measuring **the whole committed gold set -- 40 files: 16 PNG, 16 TIFF, 8 JPEG**:
+median pixel value 7.84%-14.14% of full scale, 0.1074% of all pixels at full scale, 0.0002% at
+zero. A dark ground with a small bright tail. ``tests/test_polarity.py`` re-measures the gold set on
+every run and asserts **bounds** around these figures rather than the figures themselves -- tight
+enough that a polarity flip or a narrowed scope fails, loose enough to survive a re-render. The
+exact percentages above are therefore prose, in DEBT E9's accepted class: ``check_claims.py``
+covers Markdown only, so a stale figure here would not fail the build.
+
+**Scope stated exactly, because an earlier version of this docstring did not.** It quoted
+8.1%-14.1%, 0.1142% and 0.0000% and called them "the committed gold set"; those are the
+**16 PNG images only**. The conclusion is unchanged -- every scope puts the ground at the dark
+end -- but the 0.0000% was the figure that goes qualitatively wrong once the other 24 files are
+counted, and a scope claim that is wrong in the direction of "no counter-examples" is the kind
+this project treats as a defect. The ratified amendment's (b) carries the 16-file figures under
+the same label; it is digest-pinned and in force, so it is **not** edited, and the discrepancy is
+recorded in NOTES.md instead.
+"""
 
 EVALUATED_SPLIT = "dev"
 """The only split this runner reads. Test is reported once per phase, elsewhere."""
@@ -196,7 +239,12 @@ def evaluate_image(
     analysing the image a second time.
     """
     result = analyze_image(
-        data_dir / truth["image_path"], config, ground_truth_image_id=truth["image_id"]
+        data_dir / truth["image_path"],
+        config,
+        ground_truth_image_id=truth["image_id"],
+        # The amendment's §(b) option: a constant the harness passes, read out of the
+        # generator's own three statements rather than decided here.
+        polarity=GOLD_SET_POLARITY,
     )
     evaluation = score_result(truth, result, iou_threshold)
     return evaluation, score_qc(truth, result, evaluation, config)
@@ -865,7 +913,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--data",
         type=Path,
         default=Path("data"),
-        help="gold-set root holding ground_truth/ and images/",
+        help=(
+            "gold-set root holding ground_truth/ and images/. NOTE: this flag redirects the "
+            "corpus while GOLD_SET_POLARITY stays fixed, so pointing it elsewhere measures "
+            "someone else's images while asserting bright_on_dark. That asymmetry with "
+            "'python -m tools.phase3.run_real --polarity', which is required for exactly this "
+            "reason, is deliberate and recorded in NOTES.md: this tool prints a table and "
+            "commits nothing, and every document it analyses records its own source.polarity. "
+            "It becomes a defect the moment --data feeds a committed artefact"
+        ),
     )
     return parser
 

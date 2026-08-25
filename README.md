@@ -182,8 +182,19 @@ pip install -r requirements.txt
 Analyse one image:
 
 ```bash
-python -m pipeline run path/to/blot.tif --config configs/default.yaml --out results/
+python -m pipeline run path/to/blot.tif --config configs/default.yaml --out results/ \
+    --polarity bright_on_dark
 ```
+
+`--polarity` is **required and has no default**. Use `bright_on_dark` when your bands are
+brighter than their background — chemiluminescence and gel-doc images — and `dark_on_bright`
+when they are darker, as in a transmissive film scan or a figure printed on white paper. The
+pipeline refuses an image whose polarity is not declared rather than deciding it from the
+pixels, for the same reason it will not guess a loading control: choosing the threshold that
+told the two apart would mean choosing it against the images being measured. A
+`dark_on_bright` image is inverted on the way in, so every number reported is in one
+convention, and the declaration is recorded in the result as `source.polarity`. The rule is
+`data/real/AMENDMENT_2026-08-24_polarity.md`.
 
 This writes `results/blot.json` — a result document carrying the bands, their ROIs, their QC flags, the normalization ratios, and the complete parameter set that produced them. `configs/default.yaml` ships `total_protein` normalization; `configs/rolling_ball.yaml` is the same parameter set with the rolling-ball background, kept because it is what ImageJ users compare against.
 
@@ -191,7 +202,7 @@ The housekeeping modes are implemented but **no housekeeping config ships** — 
 
 ```bash
 python -m pipeline run blot.tif --config my-housekeeping.yaml --out results/ \
-    --reference-band <band_id>
+    --polarity bright_on_dark --reference-band <band_id>
 ```
 
 The flag is repeatable, and `housekeeping_multi` requires at least two reference bands per lane — one raises. Band ids come from the `bands[]` of a previous run on the same image, so this is a two-pass flow: analyse once to see the bands, then re-run naming the reference. Omitting `--reference-band` under a housekeeping mode raises rather than falling back, and passing it under `total_protein` is refused.
