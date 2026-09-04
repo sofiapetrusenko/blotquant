@@ -53,7 +53,13 @@ class CorruptStoredResultError(PipelineError):
 
 
 class DisplayError(PipelineError):
-    """The display derivative could not be rendered from an image the pipeline just measured."""
+    """The display layer could not produce one of its two outputs from what the pipeline wrote.
+
+    Either the 8-bit derivative could not be rendered from an image the pipeline just measured,
+    or a lane verdict could not be derived from a stored result document because the document
+    is not the one this service wrote. Both are internal defects rather than a caller's fault:
+    the inputs are a measured array and a document this service produced.
+    """
 
 
 class ResultSchemaError(PipelineError):

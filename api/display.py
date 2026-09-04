@@ -1,4 +1,12 @@
-"""The 8-bit PNG derivative a browser can show, and the record of what it went through.
+"""The display layer: the 8-bit PNG a browser can show, and the verdict a card reads.
+
+Two outputs, one rule between them -- **presentation is derived, never measured**. Neither the
+derivative nor the verdict adds a field to a result document, and neither exists in
+``pipeline/``. See :func:`render_display` for the first and :func:`lane_verdicts` for the
+second; the verdict's mapping is ruled and pre-registered in
+``docs/PRE_REGISTRATION_2026-08-25_verdict_mapping.md`` and is summarised on the function.
+
+The rest of this docstring is about the derivative.
 
 **This code must not move into ``pipeline/``.** The pipeline measures pixels and refuses to
 rescale them: :func:`pipeline.load.load_image` raises
@@ -40,6 +48,7 @@ region against a QC flag needs to know what the picture went through to get ther
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -48,6 +57,7 @@ import numpy as np
 
 from api.errors import DisplayError
 from pipeline.load import CANONICAL_POLARITY
+from pipeline.qc import BAND_QC_FLAGS
 
 MAPPING_NAME = "linear_full_scale"
 """The only display mapping this service implements; recorded in every response."""
@@ -212,3 +222,212 @@ def render_display(
         source_max_value=int(max_value),
         source_polarity=source_polarity,
     )
+
+
+# --------------------------------------------------------------------------------------
+# The display-layer verdict, ruled by Sofia 2026-08-25 and pre-registered in
+# docs/PRE_REGISTRATION_2026-08-25_verdict_mapping.md.
+# --------------------------------------------------------------------------------------
+
+PASS = "pass"
+FLAGGED = "flagged"
+BLOCKED = "blocked"
+
+VERDICTS: tuple[str, ...] = (PASS, FLAGGED, BLOCKED)
+"""The closed verdict vocabulary. Three classes, because three were ruled.
+
+A fourth class for "the lane emitted no ratio at all" was considered and refused: the ruling
+names three, and the distinction is carried by :data:`BLOCKED_REASONS` instead, where it is
+visible in the data rather than only in the prose that explains it.
+"""
+
+ALL_RATIOS_EXCLUDED = "all_ratios_excluded"
+NO_RATIO_EMITTED = "no_ratio_emitted"
+
+BLOCKED_REASONS: tuple[str, ...] = (ALL_RATIOS_EXCLUDED, NO_RATIO_EMITTED)
+"""Why a blocked lane has no number. Only a blocked verdict carries one.
+
+``all_ratios_excluded`` is the ruled case -- the lane produced ratios and every one of them was
+excluded, so the input to each number was excluded. ``no_ratio_emitted`` is edge case E1 of the
+pre-registration: a lane with no bands, or one whose only bands are its designated references,
+produces no ratio at all. There is no number either way, which is why both are ``blocked``; the
+reason says which, because the ruled sentence's *"because the input to it was excluded"* is true
+of the first and not of the second.
+"""
+
+
+@dataclass(frozen=True)
+class LaneVerdict:
+    """One lane's display verdict, and every observation the verdict rests on.
+
+    The counts and flags travel beside the verdict for the reason
+    :class:`pipeline.qc.BandQc` carries its observations beside its flags: a reader can
+    re-apply any other rule to the numbers the decision was made on without re-deriving them,
+    and a UI can show *why* a card reads the way it does without a second pass over the
+    document.
+    """
+
+    lane_id: str
+    roi_source: str
+    verdict: str
+    blocked_reason: str | None
+    qc_flags: tuple[str, ...]
+    band_count: int
+    ratio_count: int
+    usable_ratio_count: int
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return this verdict as JSON-ready data.
+
+        ``blocked_reason`` is emitted only when there is one, on the opposite convention from
+        ``excluded_from_normalization`` in :mod:`pipeline.analyze`: there, an omitted false
+        would inherit a schema requirement written for excluded bands. Here nothing constrains
+        the key, and a ``blocked_reason: null`` on a passing lane would invite a reader to look
+        for a blocking cause that does not exist.
+        """
+        document: dict[str, Any] = {
+            "lane_id": self.lane_id,
+            "roi_source": self.roi_source,
+            "verdict": self.verdict,
+        }
+        if self.blocked_reason is not None:
+            document["blocked_reason"] = self.blocked_reason
+        document["qc_flags"] = list(self.qc_flags)
+        document["band_count"] = self.band_count
+        document["ratio_count"] = self.ratio_count
+        document["usable_ratio_count"] = self.usable_ratio_count
+        return document
+
+
+def _required(entry: Mapping[str, Any], key: str, what: str) -> Any:
+    """Return ``entry[key]``, or raise :class:`DisplayError` naming what is missing.
+
+    A stored result document is this derivation's only input, so a missing required key is a
+    damaged document rather than a value to substitute a default for. Loud failure over silent
+    fallback: a lane whose ``qc_flags`` had quietly defaulted to empty would read ``pass``.
+    """
+    if key not in entry:
+        raise DisplayError(
+            f"{what} has no {key!r}; the verdict is derived from a stored result document "
+            f"alone, and {key!r} is required of it by schema/result.schema.json. This "
+            f"document cannot be read back as the one this service wrote"
+        )
+    return entry[key]
+
+
+def _ordered_flags(flags: Sequence[str]) -> tuple[str, ...]:
+    """Return the distinct flags in :data:`pipeline.qc.BAND_QC_FLAGS` order, unknowns last.
+
+    The vocabulary order rather than alphabetical, so a verdict's flag list reads the same way
+    round as every other flag list in the project (``pipeline.normalize._ordered_flags`` makes
+    the same choice for the same reason). A flag outside the vocabulary is sorted after the
+    known ones rather than refused: this function reads *stored* documents, and a document
+    written by a later vocabulary must still be legible to it.
+    """
+    distinct = set(flags)
+    known = [flag for flag in BAND_QC_FLAGS if flag in distinct]
+    unknown = sorted(distinct.difference(BAND_QC_FLAGS))
+    return (*known, *unknown)
+
+
+def lane_verdicts(result: Mapping[str, Any]) -> tuple[LaneVerdict, ...]:
+    """Return one :class:`LaneVerdict` per lane of ``result``, in the document's lane order.
+
+    **A display-layer derivation over a stored result document, and nothing more.** It adds no
+    field to the measurement record, touches no code path in :mod:`pipeline`, reads no pixels,
+    no config object and no file, and is fully recoverable from the document alone (Ruling 1,
+    2026-08-25). ``python -m pipeline run`` produces documents this function reads; it does not
+    produce verdicts, and nothing here is written back into one.
+
+    The rule, evaluated in this order for a lane ``L``:
+
+    1. no ratio of ``L`` survives with ``excluded: false`` -- **blocked**;
+    2. otherwise no QC flag attaches to ``L`` -- **pass**;
+    3. otherwise -- **flagged**.
+
+    A flag "attaches to ``L``" if it appears on one of its bands, on one of its ratios, or on a
+    ratio's ``reference_qc_flags`` -- the last of these because a lane whose every number was
+    divided by a flagged denominator must not read ``pass`` on the strength of unflagged
+    numerators (edge case E4).
+
+    **``image_qc_flags`` is not read.** That is Ruling 3 of 2026-08-25 expressed as a data
+    dependency: image-level saturation does not become a blocking cause, so a clean lane inside
+    a saturated image is a ``pass`` lane. Building it the other way would have been choosing a
+    code path against a corpus already known to carry the flag on every image, which Gate 1
+    ruling 3 forbids.
+
+    Raises :class:`api.errors.DisplayError` for a document that cannot be read back as one this
+    service wrote: a missing required key, or a band or ratio naming a lane the document does
+    not list.
+    """
+    lanes = _required(result, "lanes", "the result document")
+    bands = _required(result, "bands", "the result document")
+    normalization = _required(result, "normalization", "the result document")
+    ratios = _required(normalization, "ratios", "the result document's normalization block")
+
+    lane_ids = [_required(lane, "lane_id", "a lane") for lane in lanes]
+    bands_by_lane: dict[str, list[Mapping[str, Any]]] = {lane_id: [] for lane_id in lane_ids}
+    ratios_by_lane: dict[str, list[Mapping[str, Any]]] = {lane_id: [] for lane_id in lane_ids}
+    for band in bands:
+        lane_id = _required(band, "lane_id", f"band {band.get('band_id', '<unidentified>')!r}")
+        if lane_id not in bands_by_lane:
+            raise DisplayError(
+                f"band {band.get('band_id', '<unidentified>')!r} names lane {lane_id!r}, "
+                f"which is not among the document's lanes {lane_ids}; a verdict cannot be "
+                f"derived for a lane the document does not describe"
+            )
+        bands_by_lane[lane_id].append(band)
+    for ratio in ratios:
+        lane_id = _required(ratio, "lane_id", "a ratio")
+        if lane_id not in ratios_by_lane:
+            raise DisplayError(
+                f"a ratio names lane {lane_id!r}, which is not among the document's lanes "
+                f"{lane_ids}; a verdict cannot be derived for a lane the document does not "
+                f"describe"
+            )
+        ratios_by_lane[lane_id].append(ratio)
+
+    verdicts: list[LaneVerdict] = []
+    for lane in lanes:
+        lane_id = _required(lane, "lane_id", "a lane")
+        lane_bands = bands_by_lane[lane_id]
+        lane_ratios = ratios_by_lane[lane_id]
+        usable = [
+            ratio
+            for ratio in lane_ratios
+            if not _required(ratio, "excluded", f"a ratio of lane {lane_id!r}")
+        ]
+        flags: list[str] = []
+        for band in lane_bands:
+            flags.extend(
+                _required(band, "qc_flags", f"band {band.get('band_id', '<unidentified>')!r}")
+            )
+        for ratio in lane_ratios:
+            # Optional on a ratio under schema/result.schema.json, unlike a band's, so an
+            # absent list is a legal document rather than a damaged one and reads as no flags.
+            # It can never hide a flag: normalize designates references from a lane's own
+            # bands, so every reference flag also appears on a band read above.
+            flags.extend(ratio.get("qc_flags", ()))
+            flags.extend(ratio.get("reference_qc_flags", ()))
+        ordered = _ordered_flags(flags)
+        if not usable:
+            verdict, reason = BLOCKED, (
+                ALL_RATIOS_EXCLUDED if lane_ratios else NO_RATIO_EMITTED
+            )
+        elif not ordered:
+            verdict, reason = PASS, None
+        else:
+            verdict, reason = FLAGGED, None
+        verdicts.append(
+            LaneVerdict(
+                lane_id=lane_id,
+                roi_source=_required(lane, "roi_source", f"lane {lane_id!r}"),
+                verdict=verdict,
+                blocked_reason=reason,
+                qc_flags=ordered,
+                band_count=len(lane_bands),
+                ratio_count=len(lane_ratios),
+                usable_ratio_count=len(usable),
+            )
+        )
+    return tuple(verdicts)

@@ -620,6 +620,8 @@ RATIFIED_AMENDMENTS = {
         "285a06e9f133bace1176a2eac467d09b8fe9997e47a72002fb57288f11b35a63",
     "data/real/AMENDMENT_2026-08-24_polarity.md":
         "578b2ba65e44e7d4a4d6fcb408d9e5175750d0503841a66f54b4d13b4500a156",
+    "docs/PRE_REGISTRATION_2026-08-25_verdict_mapping.md":
+        "4508aba786df365c1aa7386ca362d63bb7f12868a647c6738f1adafbceaae3f6",
 }
 """Ratified amendments to the pre-registration, and the digest cited for each.
 
@@ -641,6 +643,13 @@ an event no reader of `main` could see. Correcting them moved the bytes. That is
 licence to edit a ratified amendment:
 it was step one of the file's own procedure finished late, the file says so in its own text, and
 a change to any *ruling* remains a further amendment with its own date and digest.
+
+**Not every entry amends the Gate 2 pre-registration.** The 2026-08-25 verdict-mapping entry is a
+pre-registration in its own right -- it fixes a display-layer vocabulary and its predicted effect
+on the corpus before either was measured -- and it lives under ``docs/`` rather than beside the
+decision document because it amends nothing there. It is pinned here because this is the registry
+of documents that are in force and therefore frozen, which is the property the pin asserts, and
+because :func:`check_ratified_amendments` is written over paths rather than over a directory.
 """
 
 

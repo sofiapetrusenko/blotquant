@@ -126,7 +126,7 @@ Three entries carry most of the consequence:
   the first real N are blocked on the human confirming the reference designations and the blot
   identities, which is DEBT D4 and D5, not this entry.
 
-The rest divides three ways. **Seventeen of the 40 entries are `Accepted` or `Permanent`; 23 are
+The rest divides three ways. **Seventeen of the 41 entries are `Accepted` or `Permanent`; 24 are
 `Open`.**
 
 **Snapshot, branch `phase-3b2-polarity`, 2026-08-25.** Re-checked at the gate rather than carried
@@ -147,7 +147,19 @@ per entry rather than a sentence, under the 2026-08-25 authorship freeze.
 | **E3** | re-evidenced — the sweep is scoped and the push/pull_request duplication is closed; the saving is predicted, not yet measured |
 | **E8** | re-evidenced — the near miss recorded; `evals/history.md` still does not exist |
 
-**Closed by this phase: none.** S14's polarity half is implemented but the entry stays `Open`
+**Snapshot, branch `phase-4b0-verdict`, 2026-08-25.** One row per entry, on the same discipline
+as the block above. Phase 4b-0 is a probe plus a ruled display-layer vocabulary; it measures and
+records, and changes no pipeline behaviour.
+
+| entry | what Phase 4b-0 did to it |
+|---|---|
+| **S25** | added — `image_qc_flags` is scope-dependent: the name asserts a property of the image, the value reports a property of the run |
+| **S23** | re-evidenced — a third detection defect class: adjacent sample lanes merged into one ROI, found by looking at the gallery renderings |
+| **S22** | re-evidenced — over-detection reached the chosen demonstration crops: a printed MW column read as five bands, and a one-pixel caption fragment emitting a ratio |
+
+**Closed by Phase 4b-0: none.**
+
+**Closed by Phase 3b-2: none.** S14's polarity half is implemented but the entry stays `Open`
 until the real crops are re-run through a corpus that needs it; E3 and E8 both keep an unmet
 condition. A phase that adds entries and closes none is the expected shape here — the work went
 into a ruled input and a falsified prediction, and both of those produce debt rather than retire
@@ -927,8 +939,43 @@ presented as 'correct'."* The last sentence is the binding one. Eliminating an e
 the thing unexplained, not acquitted, and the available shortcut from this entry — "detection was
 not the problem" — inverts what was measured.
 
+**Re-evidenced in Phase 4b-0, 2026-08-25: over-detection reached the examples chosen to show the
+tool working.** Not a new count. Two instances, both found by looking at the gallery renderings
+under `runs/4b0/gallery/`, both on crops selected *because* they looked like good demonstrations:
+
+| instance | crop | ROI | what the detector called a band | bands the panel has | bands detected |
+|---|---|---|---|---:|---:|
+| printed MW column | `PMC12895598_Fig3__A-EMT-GAPDH` | `L5` | the five printed molecular-weight labels — `130KD`, `35KD`, `130KD`, `55KD`, `35KD` | 0 | 5 |
+| caption fragment | `PMC13135410_Figure4__C-PDGFRa-GAPDH` | `L8` | a slice of the printed `2 weeks denervated` caption | 2 | 3 |
+
+The caption fragment is `L8_B0`: a region **1 pixel wide** and 11 tall at `x=281`, `y=35..46`,
+integrated intensity 1166. It carries no QC flag, is not excluded, and emits a ratio of
+`0.011145` beside the lane's two real ones, `0.283942` and `0.303642`. The MW column's five
+detections likewise carry no flag; that ROI's verdict is `pass`, and its integrated intensities
+span a factor of 1.31 — the signature of type of similar ink area, where the real lane beside it
+spans 3.28.
+
+**What this adds to the entry.** The counts in the paragraphs above say detection finds *too many*
+regions. These two say something the counts do not: **nothing anywhere in the system asks whether
+a detected region is a band at all.** The QC vocabulary is validated — that is ruling 3's
+licensed wording and it stands — but every flag in it qualifies a *measurement*, and printed type
+measured cleanly is a clean measurement of printed type. A `pass` verdict on the MW column is
+correct under its own rule and is not evidence about a protein.
+
+**Why the demonstration matters as evidence.** Both instances survived selection by a human
+choosing exemplary crops, and neither is visible in any field of the result document: no flag, no
+exclusion, no warning. They were found by drawing the ROIs on the images. That is the argument for
+the beta label the ruled wording already requires, made on the gallery rather than on a count.
+
+**Ruled 2026-08-25, and recorded here because it constrains the fix that is not being made:**
+*"Show every ratio the tool produced... Nothing the tool computed is hidden from the card... No
+parameter moves to suppress it. The card names what the third ratio came from."* Suppressing
+either instance — a minimum band width, a margin exclusion — would be a parameter chosen against
+a real crop that looked wrong. Neither was added.
+
 **Closes.** When a detection pre-registration is written and ruled — its own document, dated, with
 its predictions fixed before any parameter is varied, on the pattern the polarity amendment set.
+Whether a detected region is a band at all is now one of the things it must address.
 
 **Status.** Open. What the entry settles is settled; what it hands on — a detection pre-registration — does not exist.
 
@@ -953,10 +1000,55 @@ correct declaration made it further from the human's count rather than nearer.
 `lane.robust_range_percentile`, the smoothing window — is a parameter moved because a real crop
 looked wrong.
 
-**Closes.** When the detection pre-registration S22 calls for exists and this is one of the things
-it predicts before measuring.
+**Re-evidenced in Phase 4b-0, 2026-08-25, with a third defect class: adjacent sample lanes merged
+into one ROI.** Distinct from the two this entry already carries — *more* lanes than the human
+counted, and lanes that are not lanes at all — because it runs the other way: the detector
+**under**-segments at the same time as it over-segments, on the same corpus and in the same run.
 
-**Status.** Open, mechanism not understood.
+The sample-lane count is read from each figure's own content, not from detection: on the pSMAD
+panel from the printed `siControl` `+`/`-` row, which prints one mark per sample lane; on the
+p16p21 panel from the ACTIN loading-control row, whose bands are one per sample lane. Both were
+counted by an intensity profile over that row alone, restricted to the blot's own span, and both
+agree with the renderings under `runs/4b0/gallery/`.
+
+| crop | sample lanes in the panel | ROIs detected | ROIs holding no sample lane | ROIs holding two or more |
+|---|---:|---:|---:|---:|
+| `PMC13025488_Figure5__C-pSMAD-GAPDH` | 12 | 10 | 3 | 3 |
+| `PMC12686555_FIGURE1__A-p16p21-ACTIN` | 6 | 5 | 1 | 2 |
+
+Per ROI, with each sample lane assigned to the ROI its centre falls in:
+
+| crop | ROI | x-range | sample lanes inside |
+|---|---|---|---:|
+| pSMAD | `L2` | 106..162 | 3 |
+| pSMAD | `L4` | 208..258 | 3 |
+| pSMAD | `L7` | 319..354 | 2 |
+| pSMAD | `L0`, `L8`, `L9` | margins | 0 |
+| p16p21 | `L1` | 78..121 | 2 |
+| p16p21 | `L2` | 121..156 | 2 |
+| p16p21 | `L0` | 29..78 | 0 |
+
+So on the pSMAD crop seven ROIs carry all twelve sample lanes while three carry none, and on the
+p16p21 crop four ROIs carry all six while one carries none. A lane ROI is the unit v1.0 measures
+and the unit a `total_protein` denominator integrates over, so a merged ROI does not merely
+mislabel: it sums two samples into one denominator and reports the result as one lane's
+measurement. That is a wrong number, not a wrong caption, and it is not visible in any field of
+the result document.
+
+**How this reached the register.** Both crops were rejected as gallery candidates at the
+2026-08-25 composition ruling *by looking at the renderings*, which is what surfaced the class.
+Neither the lane count nor any QC flag would have shown it: both crops' ROIs are well-formed,
+carry flags, and produce ratios.
+
+**Still not fixed, and for the same reason.** Correcting the segmentation means moving
+`lane.min_prominence_fraction` or the smoothing window against a real crop that looked wrong,
+which Gate 1 ruling 3 forbids. Nothing was changed here: no entry added, no parameter moved, no
+code touched.
+
+**Closes.** When the detection pre-registration S22 calls for exists and this is one of the things
+it predicts before measuring. The third class is now one of the things it must predict.
+
+**Status.** Open, mechanism not understood; three defect classes recorded.
 
 ### S24 — `low_dynamic_range` now fires on nothing, which is a second structurally unreachable flag
 
@@ -980,6 +1072,56 @@ unreachable — a reporting change, and a small one, but it belongs to whichever
 report.
 
 **Status.** Open, disclosure pending.
+
+### S25 — `image_qc_flags` is scope-dependent: the name asserts a property of the image, the value reports a property of the run
+
+**Recorded from Phase 4b-0, `runs/4b0/CALLER_ROI_MEASUREMENT.md` §4, 2026-08-25.**
+
+**Evidenced on real data, Gate 1 ruling 3: recorded, not fixed.**
+
+`pipeline/qc.py:277-278` sets the image flag `saturated` if **any band the run detected** is
+saturated. A run handed one lane rectangle detects only the bands inside it
+(`pipeline/detect.py:796`), so the field reports the flags of whatever the run was asked to
+measure. The same crop therefore answers the same question two ways depending on how much of it
+was submitted:
+
+| candidate ROI | `image_qc_flags`, whole crop | `image_qc_flags`, that ROI alone | saturated bands inside the ROI |
+|---|---|---|---:|
+| `PMC12895598_Fig3__A-EMT-GAPDH` `L5` | `["saturated"]` | `[]` | 0 |
+| `PMC12956003_Figure2__A-Htt-tub` `L2` | `["saturated"]` | `[]` | 0 |
+| `PMC13135410_Figure4__C-PDGFRa-GAPDH` `L3` | `["saturated"]` | `[]` | 0 |
+| `PMC12895598_Fig3__A-EMT-GAPDH` `L3` | `["saturated"]` | `["saturated"]` | 5 |
+| `PMC13025488_Figure5__C-pSMAD-GAPDH` `L7` | `["saturated"]` | `["saturated"]` | 1 |
+| `PMC12686555_FIGURE1__A-p16p21-ACTIN` `L3` | `["saturated"]` | `["saturated"]` | 1 |
+
+No ROI gained a flag its parent crop lacked; three lost one.
+
+**Why this is the project's own class of defect.** This is *a label wider than its measurement* —
+the shape S20 and S24 record for flags that fire on nothing, and the shape the polarity amendment
+records for a clipping test that fired on the paper. What is new is **where** it sits: those are
+prose or threshold problems, and this one is a **schema field**. `image_qc_flags` is a required
+top-level key of `schema/result.schema.json`. A consumer joining two documents of the same crop —
+one whole-image, one per-ROI — reads a contradiction with no field anywhere in either document
+that explains it, because nothing records the scope the flag was computed over.
+
+**What is not wrong.** No verdict is affected: the display-layer mapping ruled 2026-08-25 does not
+read `image_qc_flags` at all, and `tests/test_api_verdict.py::test_e8_no_image_flag_can_change_any_verdict`
+pins that. No measured intensity, flag or ratio differs between the two paths — Phase 4b-0's
+prediction P2 held on every candidate. The value is correct for the run that produced it; it is
+the *name* that claims more than the run measured.
+
+**Why it is not fixed.** A rename touches `schema/result.schema.json`, every stored document, and
+the recorded figures that quote the field. The closing move is a **naming or scoping decision**,
+not a code fix: either the field is renamed to say whose flags it carries, or it gains a recorded
+scope beside it, or the documented contract states that it is run-scoped and consumers must not
+join across runs of different extents. Which of those is right is a contract question for the
+human, and choosing one now — after seeing which crops it changes — would be selecting against
+the corpus.
+
+**Closes.** When that naming-or-scoping decision is ruled and the contract says which. Not before,
+and not by a code change made ahead of the ruling.
+
+**Status.** Open, ruling pending.
 
 ## Engineering
 
