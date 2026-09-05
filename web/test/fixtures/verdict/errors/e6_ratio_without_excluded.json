@@ -1,0 +1,43 @@
+{
+  "name": "e6_ratio_without_excluded",
+  "why": "E6: excluded is required of a ratio; it is the field rule 1 of the mapping is decided on, so a default would decide the verdict rather than read it",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": []
+      },
+      {
+        "band_id": "L0_B1",
+        "lane_id": "L0",
+        "qc_flags": []
+      }
+    ],
+    "normalization": {
+      "ratios": [
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B0",
+          "qc_flags": [],
+          "reference_qc_flags": []
+        },
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B1",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": []
+        }
+      ]
+    },
+    "image_qc_flags": []
+  },
+  "expected_error": true
+}

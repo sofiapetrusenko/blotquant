@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+/*
+ * The register: a serious research tool.
+ *
+ * One surface step and hairline borders, no blur and no shadow. A drop shadow says "this floats
+ * above the page", which is a claim about depth that nothing here has; a hairline says "this
+ * ends here", which is true. Depth is the cheapest way to make an interface look designed and
+ * the fastest way to make it look like a consumer app, and this one asks a scientist to trust a
+ * number.
+ *
+ * Motion only where it carries information -- a value changing, a region highlighting when its
+ * number is clicked. Never as decoration, and never on first paint.
+ *
+ * Verdict colour is Okabe--Ito and is defined here **and** in `lib/verdict-display.ts`, which is
+ * the module every screen reads the triple (colour, glyph, word) from. Colour alone never carries
+ * a verdict; see that file.
+ */
+@theme {
+  /* Ground and one step above it. That is the whole elevation scale. */
+  --color-surface: #fbfbfa;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #f2f2ef;
+
+  /* Ink. Not pure black: #16161a on off-white is the contrast a long table wants. */
+  --color-ink: #16161a;
+  --color-ink-muted: #5a5a63;
+  --color-ink-faint: #8a8a93;
+
+  /* Hairlines. One weight, one colour; a second would be a hierarchy nobody asked for. */
+  --color-hairline: #dcdcd6;
+  --color-hairline-strong: #b9b9b1;
+
+  /* Verdicts, Okabe--Ito. Never used without their glyph and word. */
+  --color-verdict-blocked: #d55e00;
+  --color-verdict-flagged: #e69f00;
+  --color-verdict-pass: #009e73;
+
+  /* The one accent, for links and focus. Okabe--Ito blue. */
+  --color-accent: #0072b2;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+   * Every measured number is monospace with tabular figures, so a column of intensities lines
+   * up on the decimal point and two ratios of the same magnitude are the same width. A
+   * proportional column of numbers invites the eye to compare lengths that mean nothing.
+   */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+/*
+ * Reduced motion removes the motion and never the content. A transition that carried information
+ * -- a highlight appearing on the ROI whose number was clicked -- becomes an instant change of
+ * the same state, not a state that never arrives.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

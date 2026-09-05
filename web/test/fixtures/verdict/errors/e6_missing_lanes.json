@@ -1,0 +1,38 @@
+{
+  "name": "e6_missing_lanes",
+  "why": "E6: 'lanes' is required of a result document, and a silent default would turn a damaged document into a confident verdict",
+  "document": {
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": []
+      },
+      {
+        "band_id": "L0_B1",
+        "lane_id": "L0",
+        "qc_flags": []
+      }
+    ],
+    "normalization": {
+      "ratios": [
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B0",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": []
+        },
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B1",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": []
+        }
+      ]
+    },
+    "image_qc_flags": []
+  },
+  "expected_error": true
+}

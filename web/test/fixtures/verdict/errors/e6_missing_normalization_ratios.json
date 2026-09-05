@@ -1,0 +1,27 @@
+{
+  "name": "e6_missing_normalization_ratios",
+  "why": "E6: the ratios list is required of the normalization block; reading it as empty would report every lane blocked with no_ratio_emitted",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": []
+      },
+      {
+        "band_id": "L0_B1",
+        "lane_id": "L0",
+        "qc_flags": []
+      }
+    ],
+    "normalization": {},
+    "image_qc_flags": []
+  },
+  "expected_error": true
+}

@@ -1,0 +1,248 @@
+{
+  "name": "gallery__pmc12895598-fig3a-l2",
+  "why": "the stored gallery card 'pmc12895598-fig3a-l2', exactly as the service served it: the mirror is pinned on a real measurement and not only on hand-built document fragments",
+  "document": {
+    "schema_version": "1.4.0",
+    "result_id": "7569a15a0478c757",
+    "source": {
+      "path": "/var/folders/mw/47r46fnd1l5gwltvp7s3b23m0000gn/T/blotquant-upload-nf_h1spn/PMC12895598_Fig3__A-EMT-GAPDH.png",
+      "sha256": "sha256:376eb87ea8cb1c2805bfa016828c909ce547f3dde89424052d76d8554898bd50",
+      "image_format": "png",
+      "bit_depth": 8,
+      "max_value": 255,
+      "width_px": 218,
+      "height_px": 201,
+      "lossy_format": false,
+      "polarity": "dark_on_bright",
+      "channel_collapse": {
+        "method": "green",
+        "max_divergence_dn": 2
+      }
+    },
+    "provenance": {
+      "software_version": "0.1.0",
+      "config_id": "default",
+      "config_digest": "sha256:f9db0bd62d0ace61c24136a8aae819ac400723aeb2b5ea44d6b9bfe192bd187d",
+      "created_at": "2026-09-04T14:26:57Z",
+      "parameters": {
+        "background": {
+          "method": "local_median",
+          "window_px": 51
+        },
+        "detection": {
+          "method": "profile_projection",
+          "profile_smoothing_px": 5,
+          "lane": {
+            "min_separation_px": 12,
+            "min_prominence_fraction": 0.4,
+            "robust_range_percentile": 10.0,
+            "extent_relative_height": 0.06,
+            "extent_min_sigma": 2.0
+          },
+          "band": {
+            "min_separation_px": 1,
+            "min_prominence_fraction": 0.3,
+            "min_prominence_sigma": 5.0,
+            "baseline_percentile": 10.0,
+            "extent_relative_height": 0.06,
+            "extent_min_sigma": 2.0
+          }
+        },
+        "quantification": {
+          "method": "roi_sum",
+          "clamp_negative_pixels": false
+        },
+        "qc": {
+          "saturated_min_clipped_pixels": 1,
+          "overlap_iou_threshold": 0.05,
+          "shoulder_half_maximum_fraction": 0.5,
+          "shoulder_half_width_ratio": 1.5,
+          "dynamic_range_min_peak_fraction": 0.25
+        },
+        "normalization": {
+          "mode": "total_protein",
+          "exclude_qc_flagged": true
+        }
+      }
+    },
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "lane_index": 0,
+        "roi": {
+          "x": 93,
+          "y": 0,
+          "width": 29,
+          "height": 201
+        },
+        "roi_source": "caller",
+        "total_protein_signal": 91588.0
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "roi": {
+          "x": 96,
+          "y": 7,
+          "width": 25,
+          "height": 8
+        },
+        "integrated_intensity": 12026.0,
+        "background_estimate": 58.91,
+        "peak_value": 199.0,
+        "clipped_pixel_count": 18,
+        "row_half_width_ratio": 1.2786704677323772,
+        "qc_flags": [
+          "saturated"
+        ],
+        "excluded_from_normalization": true,
+        "exclusion_reason": "carries QC flags: saturated"
+      },
+      {
+        "band_id": "L0_B1",
+        "lane_id": "L0",
+        "roi": {
+          "x": 98,
+          "y": 21,
+          "width": 21,
+          "height": 30
+        },
+        "integrated_intensity": 17889.0,
+        "background_estimate": 50.38095238095238,
+        "peak_value": 207.0,
+        "clipped_pixel_count": 22,
+        "row_half_width_ratio": 1.0437378537288824,
+        "qc_flags": [
+          "saturated"
+        ],
+        "excluded_from_normalization": true,
+        "exclusion_reason": "carries QC flags: saturated"
+      },
+      {
+        "band_id": "L0_B2",
+        "lane_id": "L0",
+        "roi": {
+          "x": 98,
+          "y": 60,
+          "width": 19,
+          "height": 30
+        },
+        "integrated_intensity": 10691.0,
+        "background_estimate": 53.99649122807018,
+        "peak_value": 201.0,
+        "clipped_pixel_count": 1,
+        "row_half_width_ratio": 1.1148609359928114,
+        "qc_flags": [
+          "saturated"
+        ],
+        "excluded_from_normalization": true,
+        "exclusion_reason": "carries QC flags: saturated"
+      },
+      {
+        "band_id": "L0_B3",
+        "lane_id": "L0",
+        "roi": {
+          "x": 98,
+          "y": 106,
+          "width": 23,
+          "height": 21
+        },
+        "integrated_intensity": 22577.0,
+        "background_estimate": 29.530020703933747,
+        "peak_value": 225.0,
+        "clipped_pixel_count": 26,
+        "row_half_width_ratio": 1.2414896382430807,
+        "qc_flags": [
+          "saturated"
+        ],
+        "excluded_from_normalization": true,
+        "exclusion_reason": "carries QC flags: saturated"
+      }
+    ],
+    "normalization": {
+      "mode": "total_protein",
+      "exclude_qc_flagged": true,
+      "warnings": [
+        "reference_band_qc_flagged",
+        "reference_band_saturated"
+      ],
+      "ratios": [
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B0",
+          "ratio": 0.13130541118923877,
+          "excluded": true,
+          "exclusion_reason": "carries QC flags: saturated",
+          "qc_flags": [
+            "saturated"
+          ],
+          "reference_qc_flagged": true,
+          "reference_qc_flags": [
+            "saturated"
+          ]
+        },
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B1",
+          "ratio": 0.19532034764379613,
+          "excluded": true,
+          "exclusion_reason": "carries QC flags: saturated",
+          "qc_flags": [
+            "saturated"
+          ],
+          "reference_qc_flagged": true,
+          "reference_qc_flags": [
+            "saturated"
+          ]
+        },
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B2",
+          "ratio": 0.11672926584268681,
+          "excluded": true,
+          "exclusion_reason": "carries QC flags: saturated",
+          "qc_flags": [
+            "saturated"
+          ],
+          "reference_qc_flagged": true,
+          "reference_qc_flags": [
+            "saturated"
+          ]
+        },
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B3",
+          "ratio": 0.24650609250120104,
+          "excluded": true,
+          "exclusion_reason": "carries QC flags: saturated",
+          "qc_flags": [
+            "saturated"
+          ],
+          "reference_qc_flagged": true,
+          "reference_qc_flags": [
+            "saturated"
+          ]
+        }
+      ]
+    },
+    "image_qc_flags": [
+      "saturated"
+    ]
+  },
+  "expected": [
+    {
+      "lane_id": "L0",
+      "roi_source": "caller",
+      "verdict": "blocked",
+      "blocked_reason": "all_ratios_excluded",
+      "qc_flags": [
+        "saturated"
+      ],
+      "band_count": 4,
+      "ratio_count": 4,
+      "usable_ratio_count": 0
+    }
+  ]
+}

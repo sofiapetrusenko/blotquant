@@ -1,0 +1,18 @@
+{
+  "is_derivative": true,
+  "note": "8-bit rendering for display only. It is a derivative of the measured image, not the measured data: every reported intensity in `result` is in the source's own DN at its own bit depth, and was computed from the unrescaled pixels. One output level spans `mapping.source_dn_per_output_level` source DN, so a pixel reading 255 here is not evidence of saturation: saturation is a QC judgement made on the measured pixels and reported in `result`.",
+  "media_type": "image/png",
+  "width_px": 422,
+  "height_px": 139,
+  "mapping": {
+    "name": "linear_full_scale",
+    "formula": "out = round((max_value - px) * 255 / max_value)",
+    "source_max_value": 255,
+    "source_polarity": "dark_on_bright",
+    "source_inverted": true,
+    "output_max_value": 255,
+    "scales": true,
+    "clips": false,
+    "source_dn_per_output_level": 1.0
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "e1_a_lane_with_no_bands",
+  "why": "E1: a lane with no detected bands emits no ratio; blocked with no_ratio_emitted, and the band and ratio counts say why",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [],
+    "normalization": {
+      "ratios": []
+    },
+    "image_qc_flags": []
+  },
+  "expected": [
+    {
+      "lane_id": "L0",
+      "roi_source": "caller",
+      "verdict": "blocked",
+      "blocked_reason": "no_ratio_emitted",
+      "qc_flags": [],
+      "band_count": 0,
+      "ratio_count": 0,
+      "usable_ratio_count": 0
+    }
+  ]
+}

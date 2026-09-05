@@ -1,0 +1,40 @@
+{
+  "name": "optional_ratio_flag_keys_are_absent",
+  "why": "qc_flags and reference_qc_flags are optional on a ratio under schema/result.schema.json, unlike a band's, so an absent list is a legal document that reads as no flags. The mirror must read them the same way -- and must not extend that leniency to a band",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": []
+      }
+    ],
+    "normalization": {
+      "ratios": [
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B0",
+          "excluded": false
+        }
+      ]
+    },
+    "image_qc_flags": []
+  },
+  "expected": [
+    {
+      "lane_id": "L0",
+      "roi_source": "caller",
+      "verdict": "pass",
+      "qc_flags": [],
+      "band_count": 1,
+      "ratio_count": 1,
+      "usable_ratio_count": 1
+    }
+  ]
+}

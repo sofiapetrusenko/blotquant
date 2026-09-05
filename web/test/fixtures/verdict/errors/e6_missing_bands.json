@@ -1,0 +1,32 @@
+{
+  "name": "e6_missing_bands",
+  "why": "E6: 'bands' is required of a result document, and a silent default would turn a damaged document into a confident verdict",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "normalization": {
+      "ratios": [
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B0",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": []
+        },
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B1",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": []
+        }
+      ]
+    },
+    "image_qc_flags": []
+  },
+  "expected_error": true
+}

@@ -1,0 +1,9 @@
+{
+  "name": "vocabulary",
+  "why": "The band QC vocabulary in the order api/display.py reports flags in, taken from pipeline.qc. web/lib/verdict.ts retypes this tuple instead of importing it, so without this fixture a flag added to the pipeline would take a vocabulary position in the Python and sort as an unknown in the TypeScript, with no test in the project able to see the difference",
+  "band_qc_flags": [
+    "saturated",
+    "overlapping",
+    "unresolved_shoulder"
+  ]
+}

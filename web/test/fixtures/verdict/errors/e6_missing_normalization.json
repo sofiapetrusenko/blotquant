@@ -1,0 +1,26 @@
+{
+  "name": "e6_missing_normalization",
+  "why": "E6: 'normalization' is required of a result document, and a silent default would turn a damaged document into a confident verdict",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": []
+      },
+      {
+        "band_id": "L0_B1",
+        "lane_id": "L0",
+        "qc_flags": []
+      }
+    ],
+    "image_qc_flags": []
+  },
+  "expected_error": true
+}

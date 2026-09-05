@@ -3995,6 +3995,562 @@ carry, and cross-references now that the drafts have register numbers. `runs/` i
 the drafts themselves do not reach a reader — the diff between draft and register is the thing to
 read before committing, and it is reviewable from this branch's working tree.
 
+## Phase 4b-web — the client-side verdict mirror
+
+The verdict is computed a second time, in TypeScript, in `web/lib/verdict.ts`. This is a
+**deviation from Ruling 1 of 2026-08-25**, which places the derivation in `api/display.py`. It is
+adopted because the API does not serve the verdict — §5 of the pre-registration leaves that to a
+later ruling — and the live `/analyze` path must show a verdict for a result that was never
+stored. Two implementations of one ruled mapping can diverge silently, so they are pinned to each
+other: `tools/gallery/verdict_fixtures.py` calls the **Python** function over every stored gallery
+document and over synthetic documents covering all three classes, both blocked reasons and edge
+cases E1–E8, and `web/test/verdict.test.ts` asserts the TypeScript reproduces every fixture
+exactly. `tests/test_gallery_verdict_fixtures.py` fails if the fixtures drift from
+`api/display.py`. **The mirror is debt, not a design**, and it closes when the human rules on
+serving the verdict from the API.
+
+What the pinning does and does not reach, stated rather than left to the word "exactly". It
+reaches every document in the fixture set: the three ruled classes, both `blocked_reason` values,
+edge cases E1–E5, E7 and E8 as verdicts, E6 as refusals, the ruling's mutation walk, the two
+flag-ordering rules, and every card in the committed gallery. It does not reach a document shape
+no fixture contains — the two implementations could still disagree on an input neither has been
+shown — and that is the standing residual of duplicating a mapping rather than serving it. The
+generator refuses to write a refusal fixture for a document `api.display.lane_verdicts` does not
+actually refuse, so the `errors/` half cannot quietly become a set of claims about the Python
+rather than observations of it.
+
+**The divergence list is generated, not written down — because writing it down failed three
+times.** Successive reviews found this passage claiming two deliberate divergences when there
+were three, then four when there were more, and describing `api/display.py` as raising on inputs
+where it in fact returns a confident verdict. A prose list of what another implementation does is
+a claim about behaviour, and this project's own rule is that claims about behaviour are
+observations.
+
+So `tools/gallery/verdict_fixtures.py` now runs the **Python** over a set of schema-invalid
+documents, records what it actually did with each — returned these verdicts, or raised this
+exception class — into `web/test/fixtures/verdict/divergences.json`, and
+`web/test/verdict.test.ts` asserts the TypeScript refuses every one. **How many cases there are is
+deliberately not written here**: an earlier revision of this sentence said "25", which was
+`MINIMUM_DIVERGENCE_CASES` — a *floor* — transcribed as a census, and it stayed at 25 through
+three cases being added, so two files reported the wrong size at once. Read the table. The generated table immediately contradicted one of the prose
+claims it replaced: `lanes: {}` *refuses* when a band names the missing lane and *returns a
+lane-less result surface* when nothing does, which is a distinction prose was never going to keep
+straight.
+
+What can honestly be said in one sentence, because it is structural rather than enumerated:
+**`api/display.py` checks that a key is present and then iterates whatever it finds, while
+`web/lib/verdict.ts` checks the types `schema/result.schema.json` declares.** How many cases fall
+each way is deliberately **not** transcribed here — a hand-copied count is the same kind of claim
+that made this passage wrong three times, and a fourth review caught exactly that: a count written
+here as "refuses 3, returns 22" was wrong, and erased the genuinely interesting outcome: inputs on
+which the Python neither refuses nor answers but crashes. There are **two** of them, and a later
+revision of this sentence said there was one — `lanes: 3` raises a bare `TypeError`, and
+`bands: "saturated"` a bare `AttributeError`. Read
+`web/test/fixtures/verdict/divergences.json`; every case carries the Python's observed outcome and
+its exception class. The consequential groups, all observed rather than asserted:
+
+- **`excluded`**, the field rule 1 of the mapping turns on. `[]`, `{}`, `""`, `0` and `null` all
+  read as *not excluded* in Python by falsiness; `"false"` reads as *excluded* by truthiness. §2.1
+  of the pre-registration defines the survivor set by `excluded` **is `false`**, an identity, and
+  the mirror now enforces it.
+- **`bands` and `normalization.ratios` given as a mapping or an empty string.** These iterate as
+  empty in Python, so a lane reads `pass` with no bands, or `blocked` with no ratios — the same
+  two outcomes the generator's *missing-key* fixtures call "the single most dangerous silent
+  fallback here", reached by the wrong-type route instead. A *non-empty* string is different and
+  is now a case of its own, and the two do **not** behave alike: `ratios: "abc"` raises
+  `DisplayError`, which is a refusal, while `bands: "saturated"` raises `AttributeError`, which is
+  a bare crash and not a refusal — `refuses` in the table is `isinstance(error, DisplayError)`, and
+  it reads `false` for that case. A revision of this passage called both of them refusals, in a
+  section whose whole thesis is that a crash is not a refusal. An earlier revision
+  of this passage claimed the `pass`/`blocked` outcome for strings generally — it was reading the
+  fixture's empty-string case and generalising, which is the exact move this passage exists to
+  forbid.
+- **The flag lists**, on a band and on a ratio. `extend()` spreads a string into characters and a
+  mapping into keys, producing a confident `flagged` carrying a nonsense flag list.
+- **`lane_id` and `roi_source`.** Python groups by whatever type arrives and passes `roi_source`
+  through verbatim into the verdict record. The merge is a case of its own rather than an aside,
+  because a one-lane document does not exhibit it: given lanes `1` and `True`, Python hashes both
+  to one key, so a single band attributed to lane `1` is counted for **both** lanes — each
+  reports `band_count` 1 and carries its flags.
+
+### The vocabulary was copied, not pinned — a hole through the anti-divergence mechanism
+
+Found in review. `BAND_QC_FLAGS` is imported from `pipeline.qc` by `api/display.py` and was
+**retyped** in `web/lib/verdict.ts`, with nothing anywhere asserting the two agreed. The
+vocabulary is an *input* to the mapping rather than an output of it, so no document-plus-verdict
+fixture could ever have caught a difference: add a fourth flag to `pipeline/qc.py` and
+`_ordered_flags` gives it a vocabulary position while `orderedFlags` sorts it as unknown and last,
+no fixture contains it, and pytest, vitest and the drift check all stay green while the two
+implementations order flags differently in production. The mirror's own docstring claimed the
+opposite.
+
+`tools/gallery/verdict_fixtures.py` now emits `vocabulary.json` from the Python's own tuple and
+`verdict.test.ts` deep-equals the TypeScript constant against it, order included. It is written
+by observation like every other fixture: nothing in the generator restates the flag names.
+
+### CORS is a prerequisite of the deployment, and nothing here routes around it
+
+`api/app.py` installs **no** CORS middleware. A browser at `localhost:3000`, or at any deployed
+origin, calling the API on another origin is therefore blocked by the same-origin policy, and the
+live `/analyze` screen cannot work until that changes. The gallery is unaffected: its cards are
+static files built ahead of time and are never fetched from the API at view time.
+
+No dev proxy is committed in `web/` and no CORS middleware was added to `api/`. Enabling
+cross-origin access is a decision about who may call the deployed service — which origins, or
+whether the site should be served same-origin with the API and the question removed — and it
+belongs with the API deployment rather than with the front end that would benefit from it. It is
+recorded in `web/README.md`, it is a prerequisite of the human's separate deployment task, and it
+is an open question until that task settles it.
+
+### What the corpus cannot supply, whatever the selection
+
+One absence is a property of the corpus rather than of the manifest, so it survives every change
+to the selection and is repeated here. `no_ratio_emitted`, one of the two ruled `blocked_reason`
+values, is **not representable from this corpus**: the caller-ROI measurement records it occurring
+zero times across all 116 corpus lanes, every blocked lane carrying `all_ratios_excluded` instead.
+No ROI was invented to manufacture one — choosing a rectangle to force a verdict is exactly what
+the corpus is not for — so it is pinned only in the synthetic fixtures under
+`web/test/fixtures/verdict/`, because there is nothing real to pin it against.
+
+Every rectangle in the manifest is re-measured through a live `POST /analyze` on each build:
+`tools/gallery/build.py` refuses to run if the API is unreachable, and it never starts the server.
+
+### Phase 4b-web — the gallery is the ruled composition
+
+`docs/pr/phase-4b0.md` ("Gallery composition, ruled and confirmed by image", committed at
+`77e6597` on `phase-4b0` — a single-parent commit, not a merge, and not on `main`, which is still
+at `1d1f742`) records a four-group composition the human ruled after inspecting renderings, and a ruled order:
+blocked, then flagged, then detection beta, then pass. `web/gallery.manifest.yaml` diverged from
+it in four ways, three of them recorded nowhere. **All four are now resolved by implementing the
+ruling.** An earlier revision of the manifest annotated each departure in its header while
+shipping it, on the ground that the selection was the human's to make. That was the wrong
+conclusion from a correct premise: precisely because the file is not entitled to decide the
+composition, it has to implement the one already decided. Annotating a departure is not a
+substitute for not departing, and a header comment does not reach the person looking at the site.
+
+**A — two rejected ROIs were shipped as the flagged cards.** The ruling: *"Two flagged candidates
+were rejected because their ROIs each span two sample lanes … `PMC13025488_Figure5__C-pSMAD-GAPDH`
+`L7` and `PMC12686555_FIGURE1__A-p16p21-ACTIN` `L3`."* Both were in the gallery, so every visitor
+was shown, as examples of the tool working, two ROIs known to be measuring two sample lanes at
+once. Removed. Enforcement, not selection: the ruling names them and gives the reason, and nothing
+was chosen to replace them.
+
+**B and D — the ruled pass card and the ruled order.** `L8` of `PMC13135410_Figure4__C` was
+unshippable while no caller-ROI rectangle for it existed, and a substitute (`L3` of the same crop)
+was shipped in its place, which also left the ruled order with no detection-beta group to order.
+**The rectangle has since been measured** and `L8` is now the pass card, in the ruled position.
+
+**C — an addition the ruling never names.** `pmc12956003-fig2a-l2` was in the gallery and in no
+ruling. Removed.
+
+The gallery is six cards in the ruled order: three blocked, one flagged, one detection beta, one
+pass.
+
+#### Where the `L8` rectangle came from
+
+`runs/4b0/CALLER_ROI_MEASUREMENT.md` carries no `L8` **rectangle**, so it was measured on
+2026-09-04 at this tree by that file's own §1 method — re-run the detected path on the crop and
+read the lane's own rectangle. Stated precisely, because a looser version of this sentence was
+wrong: `L8` *does* appear in that document, in the §5 and §6 tables; what it is absent from is §1,
+the ROI table, which is the only place a caller rectangle is recorded and which covers nine other
+candidates. And the section numbers throughout this passage are that gitignored measurement
+artefact's. **The ruling — `docs/pr/phase-4b0.md` — has no numbered sections at all**; it is
+prose, and citing a measurement's §6 as "the ruling's §6" conflates the two kinds of document
+this project most needs kept apart.
+
+```
+python -m pipeline run data/real/crops/PMC13135410_Figure4__C-PDGFRa-GAPDH.png \
+    --config configs/default.yaml --polarity dark_on_bright --out <tmp>/
+```
+
+giving **`L8 = 272,0,36,122`**. The same run returned **`L3 = 123,0,33,122`**, reproducing the §1
+table exactly, and that control is the evidence that this method recovers the rectangles §1
+recorded rather than some other set. Re-submitted on the caller path, `272,0,36,122` returns
+`pass`, 3 bands, 3 ratios, 3 usable, no flags, no image flags, with `L0_B0` at x=281 y=35 w=1 h=11
+emitting `0.011145096539858537` beside `0.2839418849168419` and `0.3036417510992162`.
+
+That matches §6 where §6 says anything: its band and ratio counts, and its three ratios at the
+6 decimal places it quotes them to. It is **not** "digit for digit", which an earlier version of
+this sentence claimed. §6's four columns are *card*, *rows the panel has*, *bands detected in the
+ROI* and *ratios the card would show*, so of the six figures above exactly **two** — the band
+count and the ratio count — have anything in §6 to be checked against. The other **four** are this
+measurement's alone: the verdict, the usable-ratio count, `qc_flags` and `image_qc_flags`. (A
+revision of this sentence said three, having counted the *column categories* it named rather than
+the figures they cover — "no flag columns" is two of the six. In a passage whose whole job is to
+say exactly how much of this measurement is unchecked, that understated it by a quarter.)
+A measured rectangle, not an invented one.
+
+#### The detection-beta card says what it is, and its verdict is not softened
+
+`PMC12895598_Fig3__A` `L5` is the printed molecular-weight label column in the right-hand margin
+past the blot: its five "bands" sit at the five printed MW labels. Detection locates printed type
+and quantifies it, and QC has nothing to say about it — every flag in the vocabulary qualifies a
+*measurement*, and printed type measured cleanly is a clean measurement of printed type. So the
+derivation returns `pass`, correctly about the flags and silent about what was measured.
+
+An earlier revision of this file argued from that finding that the card should not ship. The
+finding is right and the conclusion was wrong: the ruling reaches the opposite one, which is to
+show the defect rather than hide it — *"the fourth is the detection defect the probe surfaced,
+shipped as itself rather than suppressed."* A gallery that quietly omitted its own known detection
+failure would be the tool's central claim applied to everything except itself.
+
+So the card ships, its `index.json` verdict is the derivation's own `pass` with no field added and
+no softening, and what the ROI covers is carried in the manifest `title` — which is the one place
+that reaches the card, `/result/[id]` and the index without changing the index's ruled shape.
+A reader sees the green `●` and, beside it, that the region is printed labels rather than a sample
+lane.
+
+#### The pass card names what its third ratio came from
+
+Ruled: *"Show every ratio the tool produced … Nothing the tool computed is hidden from the card."*
+All three of the pass card's ratios are displayed, the `0.011145` one included, and no parameter
+moved to suppress it — a minimum band width or a margin exclusion introduced here would be a
+parameter chosen against a real crop that looked wrong (Gate 1 ruling 3).
+
+The card also names it. `ResultView` derives the note from `bands[i].roi` in the document — any
+band one pixel across in either direction — and states the band id and its measured extent with
+their JSON paths, like every other number on the page. It does **not** say "caption band": that
+phrase is in the ruling's prose and not in the document, and the card only states what it can
+point at.
+
+#### Three blocked cards, three titles
+
+All three are lanes of one crop, so the figure alone did not distinguish them and the gallery
+showed three identical titles, identical badges and identical captions. Each title now names its
+lane.
+
+### The web suite runs in no CI job
+
+`.github/workflows/` contains no Node step: `vitest`, `eslint` and `tsc` never run in CI. The
+three-legged mechanism `web/README.md` describes — Python ↔ fixtures ↔ TypeScript — has its third
+leg enforced by nobody. `tests/test_gallery_verdict_fixtures.py` pins the fixtures to
+`api/display.py`; nothing automated pins `web/lib/verdict.ts` to the fixtures. A change to the
+mirror, or a regenerated fixture set the TypeScript was not updated for, leaves `pytest` green
+while the browser and the API disagree about a *verdict class*. The vocabulary equality, the
+divergence table and every fixture-count floor live on that unenforced leg, as do all the web
+tests, the traceability sweep and the `/analyze` flow test.
+
+It is not closed here because this wave is under an instruction that `git status` show only
+`NOTES.md` modified plus the new `tests/`, `tools/gallery/` and `web/` paths, and adding the job
+means editing a tracked workflow file. So it is raised rather than decided: **the web suite should
+get a CI job before this branch merges**, and until it does, any claim that "pytest, vitest and
+the drift check all stay green" is true only of a developer who runs all three by hand.
+
+### Two things the committed gallery records that cannot be fixed from here
+
+**Every card's `source.path` is a build-machine temporary path** — e.g.
+`/var/folders/…/T/blotquant-upload-…/PMC13135410_Figure4__C-PDGFRa-GAPDH.png` — because
+`api/app.py` writes the upload to a temp file and records the path it read. It ships a local
+directory identifier into a public static site, and as *provenance* it names something that no
+longer exists rather than `data/real/crops/…`, which is what the manifest names and what the card
+depicts.
+
+**It is deliberately not edited.** `tools/gallery/build.py` stores the served document unedited,
+and `tests/test_gallery_build.py` now asserts full equality between the stored document and the
+one the API returned — that invariant is what makes the numbers on the site the service's numbers,
+and rewriting one field would break it for the sake of tidiness. The fix belongs in `api/`: record
+the client filename, or record that the path is not resolvable. Carried as an open question.
+
+**`requirements.txt` labels `httpx` `# TEST-ONLY: the transport starlette's TestClient runs on`,
+and that is now false.** `tools/gallery/build.py` imports it at module scope, so httpx is a
+runtime dependency of a shipped tool. This wave is under an instruction not to edit
+`requirements.txt`, so it is recorded here rather than corrected silently or left unmentioned.
+
+### For the DEBT register, at the 4b gate
+
+`DEBT.md` is re-checked at each phase gate — "confirm the evidence still reproduces, close what
+the phase closed, and add what it introduced". This wave is not editing it, for the same
+git-status reason as above; what it would add or change is listed here so the human can
+transcribe it:
+
+- **New**: the TypeScript verdict mirror is a declared deviation from Ruling 1, and its only
+  safeguard is a test suite no CI job runs (above).
+- **New**: `/analyze` cannot be used from a deployed origin until the API installs CORS
+  middleware.
+- **New**: a JPEG whose EXIF orientation is a 180° rotation is measured in a different frame from
+  the one its lane rectangles were drawn in, undetectably — the dimensions match, so the frame
+  check cannot see it.
+- **New**: `requirements.txt` mislabels `httpx` as test-only.
+- **Closed**: the gallery implements the composition ruled on 2026-08-25 in full, including the
+  ruled order and the detection-beta card.
+- **Realised**: `E10(3)` — "`source.path` is per-request", *Closes: Phase 4b* — is now visible in
+  committed public artefacts (above).
+
+### QC annotation is not optional at the display layer either
+
+Two schema-required annotations were being dropped by the UI, both found in review, and both the
+same mistake in different places: the number survived the trip to the screen and the caveat
+attached to it did not.
+
+`normalization.warnings` was rendered nowhere at all — not in any table, not in the provenance
+panel, which prints `provenance.parameters` and not result fields. It is non-empty on four of the
+six committed cards, carrying `reference_band_qc_flagged`, `reference_band_saturated`,
+`reference_band_overlapping` and `reference_band_unresolved_shoulder` — statements about the
+**reference band**, the denominator the lane was divided by. They are *not* the reasons the
+individual ratios were excluded: that is `normalization.ratios[i].exclusion_reason`, a different
+field with a different cause, reading e.g. `carries QC flags: overlapping` on
+`pmc13135410-fig3b-l11`. Conflating the two — as an earlier revision of this note did — is
+precisely the failure this section is about: mis-stating what a QC annotation means is worse than
+omitting it, because it reads as information. Its vocabulary also includes `single_housekeeping_reference`, which is the
+journal-guideline warning this project's differentiator list names explicitly, and
+`qc_flagged_bands_included_by_override`, which records that the default exclusion was overridden.
+A display that hid these kept the numbers and discarded exactly what qualifies them. It now sits
+above the ratios table with the normalization mode and `exclude_qc_flagged` beside it.
+
+`bands[].excluded_from_normalization` is schema-required and true for most bands on a saturated
+card, and the Bands table showed those bands as ordinary numbers with no mark and no reason —
+while the Ratios table, two elements below, already got this exactly right for the ratios those
+same bands feed. It now has an "in normalization" column carrying the flag and, when excluded,
+the recorded `exclusion_reason`.
+
+### An excluded ratio shows its number
+
+Corrected in review. The ratio table originally replaced an excluded ratio's value with
+`excluded — <reason>`, which contradicts the display rule ruled on 2026-08-25:
+*"Show every ratio the tool produced … **Nothing the tool computed is hidden from the card**; that
+is the same rule that governs flagged bands in the record, applied to the display."* On the
+blocked card — the largest thing on the gallery page — all five computed ratios were off screen.
+
+The display now inherits the record's discipline exactly: the number is shown, struck through,
+with the recorded exclusion reason underneath. Strikethrough is a *mark*, so it survives
+greyscale and every colour deficiency; the word "excluded" and the reason carry the meaning.
+`web/test/result-view.test.tsx` asserts every ratio of a fully blocked lane is on screen, which
+is the inverse of the assertion the first version of that test made — a test can pin a defect as
+firmly as it pins a contract, and this one did.
+
+### The QC-flag column was the one column nothing asserted
+
+The traceability sweep checked, for a non-numeric cell, only the `title` attribute — which is
+built from the value handed to the component, not from what it displays. A reviewer demonstrated
+the consequence by mutation: replacing `flagText`'s body with `return 'none'`, so that every band
+and every ratio on the saturated card read "none", left all 103 tests passing. The QC-flag
+display is the headline claim of this entire tool, and it was the part with no assertion on it.
+
+The sweep now checks the rendered text of every traced cell against an expectation computed
+independently of the component. The mutant dies.
+
+### Detected lanes, and the correction loop
+
+Also corrected in review. The first version of `/analyze` could only ever post caller-supplied
+rectangles: `laneListIssues` refuses an empty list and `Analyse` is disabled while any issue
+stands, so the detected path `api/app.py` supports (no `lane_roi` field at all) was unreachable.
+That contradicts PLAN.md Phase 4 — "upload → **auto-detected lanes/bands overlaid on the image** →
+correction via … numeric nudge fields → recompute" — and its done-when, which asks a scientist to
+*correct* a lane boundary they must first be shown.
+
+`Detect lanes for me` on step 2 posts with no `lane_roi`, puts the returned lane rectangles into
+the same editable rows a typed lane lives in, and draws the returned band rectangles on the
+surface read-only. Bands are not editable because the caller path has no field for them, and an
+editable band would imply an input the API does not accept. A refusal from detection — including
+the 422 the pipeline is entitled to give when no lane clears the prominence threshold — renders
+in place on step 2 rather than advancing, because the answer belongs beside the rectangles being
+edited.
+
+Draggable ROI *edges* remain dropped, as declared for Phase 4b at the top of this file; the
+numeric fields are the correction mechanism, and they are now correcting something the pipeline
+proposed rather than only something the person typed.
+
+### The gallery build is no longer destructive when it fails
+
+Found in review, after an earlier fix in the same area made things worse. The build wrote each
+card in place and, to avoid leaving a stale index beside fresh cards, removed `index.json` first
+— *before the preflight*. So the single most likely failure of this tool, an API that is not
+running, deleted a committed file and rebuilt nothing: `pytest` and `next build` both failed
+until `git checkout` restored it. And a refusal part-way through still left the directory holding
+a mixture of two builds, which is equally commit-able.
+
+The build now assembles a complete gallery in a staging directory beside the real one and swaps
+it in only after the last card is written, moving the old tree aside first so there is no instant
+without a gallery. Nothing under `web/public/gallery/` is touched unless the build succeeds
+entirely. Two related orderings were wrong for the same reason and are fixed with it: a card was
+written to disk *before* `_card_verdict` enforced the one-lane rule, so a card the build was
+about to reject reached the disk first; and `base64.b64decode` ran with its default
+`validate=False`, which discards characters outside the alphabet rather than raising, so a
+garbled payload would have shipped as the card's picture with the build exiting 0. Decoding is
+strict now and the decoded bytes must begin with the PNG signature — refusing a missing *label*
+while accepting arbitrary bytes as the *image* was checking the caption and not the photograph.
+
+`build()` also takes an injectable `httpx.Client`. Nothing inside the entry loop had been
+reachable from a test, which is why every one of these paths shipped unexercised; there are now
+tests for each, all asserting that the committed gallery is byte-for-byte untouched afterwards.
+
+### The card's attribution and its measurements are now checked to be the same image
+
+`build.py` posts the image the manifest names and stores the document the API returns, and
+nothing verified those were the same file. The card's title, figure and licence come from the
+manifest; its numbers come from whatever was measured. A manifest edited to name a different
+crop, or a crop regenerated on disk, would produce a card attributing one figure and reporting
+measurements of another, with nothing failing. The served `source.sha256` is now compared against
+the digest of the bytes actually posted. (`source.sha256` is optional under the schema, so its
+absence is not a failure; a mismatch is.) This is the same drift guard
+`tests/test_gallery_verdict_fixtures.py` has for the fixtures, which the gallery had only for
+ids and order.
+
+### An unexpected failure is rendered, not thrown
+
+The submit handler used to rethrow anything that was neither an `ApiRefusal` nor an
+`ApiUnreachable`, while its `finally` had already advanced the screen to step 3 — so the throw
+became an unhandled rejection no error boundary catches, and the user was left on a blank result
+page. On a tool whose thesis is loud failure, a blank result page is the worst possible outcome:
+it is indistinguishable from a result with no findings. It is reachable without exotic
+conditions, since `lib/api.ts` parses any 2xx body as JSON and a gateway answering 200 with an
+HTML page lands there. There is now a fourth outcome card that shows the error's class and
+message and says plainly that it was not anticipated.
+
+A second route to the same blank page was found in the next review pass and closed with it:
+`analyze()` cast the response body to `Envelope` without looking at it, so a 200 carrying
+well-formed JSON that is *not* an envelope — version skew, a gateway's own JSON error body —
+threw during **render**, deep inside a component, where there is no error boundary. The client
+now checks the shape at the boundary and raises `ApiContractError`, which lands in the same card.
+The request also carries an `AbortController` timeout, because without one a server that accepts
+and never answers left the screen busy forever with Back disabled.
+
+### Three ways the analyse screen could measure the wrong thing
+
+All found in review, all silent, and all now closed or stated.
+
+**Lane rectangles survived a change of file.** Choose image A, place lanes, go Back, choose image
+B: the editor rendered B with A's rectangles and A's detected-band overlay. If B is larger every
+rectangle still fits, `laneListIssues` reports nothing and Analyse stays enabled — a measurement
+of a region nobody placed on that picture. The file effect now clears the lanes, the detected
+bands and any pending detection problem.
+
+**Detect and Analyse could overlap.** Each was guarded against itself and not against the other,
+so a detection resolving after Analyse was pressed overwrote the table with rectangles the
+submitted request never used, leaving the result screen describing one set of regions beside an
+editor showing another. Both guards now name both.
+
+**A JPEG carrying an EXIF orientation tag is decoded in two different frames.** Browsers apply
+the tag; `pipeline/load.py` uses `cv2.imdecode`, which does not. The lane rectangles are placed
+in the browser's frame and measured in the pipeline's. For a transposing orientation the two
+disagree in their dimensions, which is checkable, and the screen now says so in plain terms after
+the analysis returns. **A 180-degree rotation leaves the dimensions equal and is not caught** —
+the ROI lands on rotated pixels with nothing failing. That is a real limitation, stated here
+because it cannot be fixed from the front end: it needs the loader to read the EXIF tag, which is
+an `api/`/`pipeline/` change and an open question.
+
+### A message that was written and never shown
+
+`laneListIssues` authors an actionable line for the zero-lane case — "No lane has been added.
+Draw a rectangle on the image, or use 'Add lane' and type its coordinates." — and the screen
+consumed it only for its `.length`, while the editor rendered *per-lane* issues, of which an
+empty list has none. The net user-visible state at step 2 with no lanes was "1 problem to fix
+before this can be analysed" beside an empty list, with no way to learn what the problem was. Two
+implementations of one check, disagreeing precisely in the empty case, and the actionable half
+losing. The editor now renders the list the page computes.
+
+### The committed gallery gained `<id>/display.json`
+
+`tools/gallery/build.py` now writes a third file per card: the served `display` block with
+`png_base64` removed. The card page shows the picture beside a QC flag, and the block that says
+what the picture *is* — `is_derivative`, `note`, and above all `mapping`, which records how many
+source DN one output level spans — was previously discarded at build time. Without it the page
+would be inviting a reader to judge saturation off the brightest colour in a PNG, which is exactly
+what `api/display.py`'s own note exists to forbid, and there is no honest way to reconstruct the
+mapping in the front end: it is a fact about how the service rendered that image. The build refuses
+a block missing any of `api.display.DISPLAY_BLOCK_KEYS` rather than storing an unlabelled
+derivative. The encoded image is stripped because those bytes are already on disk as
+`display.png`; the same picture committed twice in two encodings is two things that can drift.
+`tests/test_gallery_build.py` asserts the labelling is complete, that `png_base64` is absent, and
+— separately — that the derivative's dimensions equal the source's, which is the assumption the
+ROI overlay rests on.
+
+### One result surface, rendered twice
+
+`web/components/ResultView.tsx` is rendered verbatim by `/result/[id]` and by `/analyze` step 3.
+Not a shared base with two subclasses and not a copy: the same component with the same props. A
+stored card and a fresh analysis that displayed a flagged ratio differently would be two products
+with one name, and the difference would be invisible to whoever built only one of them.
+
+### Traceability is an attribute, not a promise
+
+"Every number is traceable to its ROI and parameter set" (PLAN.md Phase 4) is implemented
+literally. Every measured value on screen goes through one component, which stamps
+`data-json-path` with the value's path in the result document and puts the path **and the
+unrounded value** in the element's `title`. The rendered text is six significant digits — a
+display choice, not a processing parameter, named as a constant and applied nowhere else — chosen
+over fixed decimals because one table holds an intensity of 31767 and a ratio of 0.011145 — both
+values read out of the committed cards — and any
+fixed number of decimal places renders one of them as noise and the other as zero. The tooltip
+carries what the rounding removed. A value that is exactly an integer is rendered as one: ROI
+coordinates, clipped-pixel counts and whole-numbered intensities are integers in the document, and
+`123.000` beside an ROI reads as sub-pixel precision that nothing claims. `web/test/result-view.test.tsx` resolves each advertised path
+against the document with its own path arithmetic and asserts the resolved value is the one
+rendered, so a component that stamped a plausible path onto a number it computed itself fails.
+
+### The ratio table's reference column reads the document, not the mode
+
+Under `total_protein` — which is every card in the committed gallery — `pipeline/normalize.py`
+emits neither `denominator_band_id` nor `denominator_band_ids`, because the denominator is not a
+band: it is the lane's own `total_protein_signal`. `web/lib/result-cells.ts` prefers whichever key
+is present and falls back to the lane total *by reading it*, with its own JSON path, rather than
+by branching on `normalization.mode`. If none of the three is present it raises: at that point the
+document does not record what the number was divided by, and a reference cell reading "—" would
+present an unrecorded divisor as an ordinary one.
+
+### Two things the analyse screen refuses to do
+
+**It will not proceed with an image the browser cannot display.** The pipeline reads TIFF and no
+browser decodes it. A lane editor that could not show the picture would be asking a person to
+place rectangles on a region they cannot see, so the screen says so before a file is chosen, says
+it again with the file's name if a chosen file will not decode, and names the CLI, which has the
+same reach as the API and no such limitation. Whether the screen should instead decode TIFF in the
+browser is an open question; it would mean a decoder dependency and a second renderer of measured
+pixels beside `api/display.py`, which is the part that argues against it.
+
+**It does not check that lane rectangles do not overlap.** `pipeline/detect.py` refuses
+overlapping caller ROIs and the API returns that refusal with the offending rectangle named. The
+form checks only what it can check without restating a pipeline rule — whole numbers, positive
+extent, inside the image — and lets the API be the authority on the rest, because a second
+implementation of the overlap rule in a form would be free to drift from the one that decides. A
+rectangle typed past an edge is never silently clamped: the typed value stands, on screen and in
+the submitted order, with a message naming the number and the edge, and `Analyse` stays disabled.
+A *drag* is clamped to the picture, which is a different thing — a pointer dragged past the edge
+never expressed a coordinate outside it.
+
+### The config select is hardcoded
+
+`default` and `rolling_ball`, the two files in `configs/`. The API exposes no endpoint listing
+parameter sets, so the alternatives were to hardcode the names or to probe by posting an image
+under each guess. A name that stops existing produces `UnknownConfigError`, a 400 whose message
+lists the names that do exist, and the refusal card shows it verbatim — so the failure mode is
+visible and actionable rather than a silent mismatch. Adding `GET /configs` is an API change and
+is carried as an open question.
+
+### The browser was never driven, and what stands in for it
+
+**No browser ran.** `/analyze` was to be exercised in a real Chrome against the live API; the
+extension was not connected on any attempt, in this session or on a later retry with the API,
+proxy and dev server all up, and `list_connected_browsers` returned `[]`. That is stated first
+because it is the part that did not happen, and because two things did happen that are easy to
+mistake for it.
+
+The **transport** was exercised by hand, against the live API at this tree, through a throwaway
+CORS proxy that exists only in a scratch directory and is never committed: a real cross-origin
+`POST /analyze` carrying the exact multipart fields the client builds, on
+`PMC13135410_Figure4__C-PDGFRa-GAPDH.png` at `272,0,36,122` — the shipped pass card's own
+rectangle — answering HTTP 200 and returning `pass`, 3 bands, 3 of 3 ratios usable, no QC flags,
+`L0_B0` at `{281,35,1,11}`, and ratios `0.011145096539858537`, `0.2839418849168419`,
+`0.3036417510992162`.
+
+**Whose `Access-Control-Allow-Origin` that was, since a careless reading of the paragraph above
+would credit it to the service.** It was the scratch proxy's. The service sends none: a
+`POST /analyze` carrying an `Origin` header, made directly against `127.0.0.1:8000`, answers 200
+with **no** `Access-Control-Allow-Origin` in the response — measured, not inferred. A command-line
+client does not enforce the same-origin policy and a browser does, so what these runs establish is
+that the *service* answers correctly, not that a browser can reach it. It cannot, and that is the
+whole of the CORS question below.
+
+The **flow** is `web/test/analyze-flow.test.tsx`, which drives the real page components through
+all three steps — placing the lane through the numeric inputs alone, so the keyboard route is what
+is under test — and asserts the request the client built and the verdict, sentence and ratio
+values it rendered. It replays `pmc13135410-fig4c-l8`, the committed card for that same image,
+polarity, config and rectangle, so what appears on screen is a measurement the service made rather
+than one written for the test.
+
+Neither is the browser. Layout, focus order and the pointer-drawing path have not been seen
+running, and nothing here should be read as saying otherwise.
+
 
 ## Open items
 

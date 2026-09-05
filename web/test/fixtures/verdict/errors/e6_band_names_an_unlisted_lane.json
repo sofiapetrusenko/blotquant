@@ -1,0 +1,24 @@
+{
+  "name": "e6_band_names_an_unlisted_lane",
+  "why": "E6: a band naming a lane the document does not list is a corrupt document, not a lane to invent. Ruled: raise",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L1_B0",
+        "lane_id": "L1",
+        "qc_flags": []
+      }
+    ],
+    "normalization": {
+      "ratios": []
+    },
+    "image_qc_flags": []
+  },
+  "expected_error": true
+}

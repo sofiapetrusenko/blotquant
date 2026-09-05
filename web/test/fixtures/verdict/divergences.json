@@ -1,0 +1,1151 @@
+{
+  "name": "divergences",
+  "why": "What api/display.py actually does with each schema-invalid document, observed by running it. web/lib/verdict.ts refuses all of them; this table is the record of what it is refusing that the Python does not, and it exists because a hand-written list of the same thing was wrong three times",
+  "cases": [
+    {
+      "name": "lanes_is_a_mapping",
+      "why": "an empty mapping iterates as empty",
+      "document": {
+        "lanes": {},
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "raises",
+        "error_type": "DisplayError",
+        "refuses": true
+      }
+    },
+    {
+      "name": "lanes_is_a_mapping_and_nothing_names_a_lane",
+      "why": "iterates as empty with no band or ratio to catch it, so a lane-less result surface is returned rather than refused",
+      "document": {
+        "lanes": {},
+        "bands": [],
+        "normalization": {
+          "ratios": []
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": []
+      }
+    },
+    {
+      "name": "lanes_is_a_number",
+      "why": "not iterable at all",
+      "document": {
+        "lanes": 3,
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "raises",
+        "error_type": "TypeError",
+        "refuses": false
+      }
+    },
+    {
+      "name": "lanes_is_a_string",
+      "why": "iterates as characters",
+      "document": {
+        "lanes": "L0",
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "raises",
+        "error_type": "DisplayError",
+        "refuses": true
+      }
+    },
+    {
+      "name": "lanes_holds_strings",
+      "why": "entries that are not mappings",
+      "document": {
+        "lanes": [
+          "L0"
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "raises",
+        "error_type": "DisplayError",
+        "refuses": true
+      }
+    },
+    {
+      "name": "bands_is_a_mapping",
+      "why": "iterates as empty, so the lane reads as having no bands",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": {},
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "pass",
+            "qc_flags": [],
+            "band_count": 0,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "bands_is_an_empty_string",
+      "why": "iterates as empty, so the lane reads as having no bands",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": "",
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "pass",
+            "qc_flags": [],
+            "band_count": 0,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "bands_is_a_nonempty_string",
+      "why": "iterates as characters, each of which is then indexed",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": "saturated",
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "raises",
+        "error_type": "AttributeError",
+        "refuses": false
+      }
+    },
+    {
+      "name": "ratios_is_a_mapping",
+      "why": "iterates as empty, so every lane looks like it emitted none",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": {}
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "blocked",
+            "blocked_reason": "no_ratio_emitted",
+            "qc_flags": [],
+            "band_count": 1,
+            "ratio_count": 0,
+            "usable_ratio_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "ratios_is_a_nonempty_string",
+      "why": "iterates as characters, each of which is then indexed",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": "abc"
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "raises",
+        "error_type": "DisplayError",
+        "refuses": true
+      }
+    },
+    {
+      "name": "excluded_is_an_empty_list",
+      "why": "falsy, so Python counts the ratio as a survivor",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": [],
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "pass",
+            "qc_flags": [],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "excluded_is_an_empty_mapping",
+      "why": "falsy, so Python counts it as a survivor",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": {},
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "pass",
+            "qc_flags": [],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "excluded_is_an_empty_string",
+      "why": "falsy, so Python counts it as a survivor",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": "",
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "pass",
+            "qc_flags": [],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "excluded_is_zero",
+      "why": "falsy, so Python reads a number as a boolean",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": 0,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "pass",
+            "qc_flags": [],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "excluded_is_null",
+      "why": "falsy, so Python reads an absent value as not-excluded",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": null,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "pass",
+            "qc_flags": [],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "excluded_is_the_string_false",
+      "why": "truthy, so Python excludes the ratio on the strength of a string that says otherwise",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": "false",
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "blocked",
+            "blocked_reason": "all_ratios_excluded",
+            "qc_flags": [],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "lane_id_is_a_number",
+      "why": "groups under a different key type",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": 1,
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "B",
+            "lane_id": 1,
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": []
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": 1,
+            "roi_source": "caller",
+            "verdict": "blocked",
+            "blocked_reason": "no_ratio_emitted",
+            "qc_flags": [],
+            "band_count": 1,
+            "ratio_count": 0,
+            "usable_ratio_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "lane_id_is_a_boolean",
+      "why": "groups under a key of a type the schema does not admit",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": true,
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "B",
+            "lane_id": true,
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": []
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": true,
+            "roi_source": "caller",
+            "verdict": "blocked",
+            "blocked_reason": "no_ratio_emitted",
+            "qc_flags": [],
+            "band_count": 1,
+            "ratio_count": 0,
+            "usable_ratio_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "lane_ids_one_and_true_merge",
+      "why": "Python hashes 1 and True to one key, so the single band attributed to lane 1 is counted for BOTH lanes -- each reports band_count 1 and carries its flags",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": 1,
+            "roi_source": "caller"
+          },
+          {
+            "lane_id": true,
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "B",
+            "lane_id": 1,
+            "qc_flags": [
+              "saturated"
+            ]
+          }
+        ],
+        "normalization": {
+          "ratios": []
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": 1,
+            "roi_source": "caller",
+            "verdict": "blocked",
+            "blocked_reason": "no_ratio_emitted",
+            "qc_flags": [
+              "saturated"
+            ],
+            "band_count": 1,
+            "ratio_count": 0,
+            "usable_ratio_count": 0
+          },
+          {
+            "lane_id": true,
+            "roi_source": "caller",
+            "verdict": "blocked",
+            "blocked_reason": "no_ratio_emitted",
+            "qc_flags": [
+              "saturated"
+            ],
+            "band_count": 1,
+            "ratio_count": 0,
+            "usable_ratio_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "roi_source_is_null",
+      "why": "passed through verbatim by the Python, into the verdict record",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": null
+          }
+        ],
+        "bands": [],
+        "normalization": {
+          "ratios": []
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": null,
+            "verdict": "blocked",
+            "blocked_reason": "no_ratio_emitted",
+            "qc_flags": [],
+            "band_count": 0,
+            "ratio_count": 0,
+            "usable_ratio_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "roi_source_is_a_number",
+      "why": "the same",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": 3
+          }
+        ],
+        "bands": [],
+        "normalization": {
+          "ratios": []
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": 3,
+            "verdict": "blocked",
+            "blocked_reason": "no_ratio_emitted",
+            "qc_flags": [],
+            "band_count": 0,
+            "ratio_count": 0,
+            "usable_ratio_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "band_flags_is_a_string",
+      "why": "extend() spreads it into characters",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": "saturated"
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "flagged",
+            "qc_flags": [
+              "a",
+              "d",
+              "e",
+              "r",
+              "s",
+              "t",
+              "u"
+            ],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "band_flags_is_a_mapping",
+      "why": "extend() spreads it into keys",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": {
+              "saturated": 1
+            }
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "flagged",
+            "qc_flags": [
+              "saturated"
+            ],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "band_flags_holds_numbers",
+      "why": "numbers enter the flag list",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": [
+              1,
+              2
+            ]
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "flagged",
+            "qc_flags": [
+              1,
+              2
+            ],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "band_flags_holds_null",
+      "why": "None enters the flag list",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": [
+              null
+            ]
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": []
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "flagged",
+            "qc_flags": [
+              null
+            ],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "ratio_flags_is_a_string",
+      "why": "the same, on the ratio's own list",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": "saturated"
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "flagged",
+            "qc_flags": [
+              "a",
+              "d",
+              "e",
+              "r",
+              "s",
+              "t",
+              "u"
+            ],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "ratio_reference_flags_is_a_string",
+      "why": "the same, on the reference list",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": [],
+              "reference_qc_flags": "saturated"
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "flagged",
+            "qc_flags": [
+              "a",
+              "d",
+              "e",
+              "r",
+              "s",
+              "t",
+              "u"
+            ],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "ratio_flags_is_a_mapping",
+      "why": "the same",
+      "document": {
+        "lanes": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller"
+          }
+        ],
+        "bands": [
+          {
+            "band_id": "L0_B0",
+            "lane_id": "L0",
+            "qc_flags": []
+          }
+        ],
+        "normalization": {
+          "ratios": [
+            {
+              "lane_id": "L0",
+              "numerator_band_id": "L0_B0",
+              "excluded": false,
+              "qc_flags": {
+                "saturated": 1
+              }
+            }
+          ]
+        },
+        "image_qc_flags": []
+      },
+      "python": {
+        "outcome": "returns",
+        "refuses": false,
+        "verdicts": [
+          {
+            "lane_id": "L0",
+            "roi_source": "caller",
+            "verdict": "flagged",
+            "qc_flags": [
+              "saturated"
+            ],
+            "band_count": 1,
+            "ratio_count": 1,
+            "usable_ratio_count": 1
+          }
+        ]
+      }
+    }
+  ]
+}

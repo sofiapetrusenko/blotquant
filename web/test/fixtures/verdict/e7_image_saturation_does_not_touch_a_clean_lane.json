@@ -1,0 +1,56 @@
+{
+  "name": "e7_image_saturation_does_not_touch_a_clean_lane",
+  "why": "E7 and Ruling 3: image_qc_flags is not an input. A clean lane inside a saturated image is a pass card, and a mirror that read the image block would produce a different verdict here",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": []
+      },
+      {
+        "band_id": "L0_B1",
+        "lane_id": "L0",
+        "qc_flags": []
+      }
+    ],
+    "normalization": {
+      "ratios": [
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B0",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": []
+        },
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B1",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": []
+        }
+      ]
+    },
+    "image_qc_flags": [
+      "saturated"
+    ]
+  },
+  "expected": [
+    {
+      "lane_id": "L0",
+      "roi_source": "caller",
+      "verdict": "pass",
+      "qc_flags": [],
+      "band_count": 2,
+      "ratio_count": 2,
+      "usable_ratio_count": 2
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "name": "e4_flagged_reference_denominator",
+  "why": "E4, the worst failure this mapping could have: every band is clean and the denominator is not. A mirror reading only bands[].qc_flags would call this pass while every number in it was divided by a flagged reference",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": []
+      }
+    ],
+    "normalization": {
+      "ratios": [
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B0",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": [
+            "saturated"
+          ]
+        }
+      ]
+    },
+    "image_qc_flags": []
+  },
+  "expected": [
+    {
+      "lane_id": "L0",
+      "roi_source": "caller",
+      "verdict": "flagged",
+      "qc_flags": [
+        "saturated"
+      ],
+      "band_count": 1,
+      "ratio_count": 1,
+      "usable_ratio_count": 1
+    }
+  ]
+}

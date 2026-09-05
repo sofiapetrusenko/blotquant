@@ -1,0 +1,26 @@
+{
+  "name": "e6_ratio_names_an_unlisted_lane",
+  "why": "E6, the other half: the same check on the ratios",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [],
+    "normalization": {
+      "ratios": [
+        {
+          "lane_id": "L9",
+          "numerator_band_id": "L9_B0",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": []
+        }
+      ]
+    },
+    "image_qc_flags": []
+  },
+  "expected_error": true
+}

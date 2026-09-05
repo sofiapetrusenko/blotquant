@@ -1,0 +1,4 @@
+{
+  "detail": "/var/folders/mw/47r46fnd1l5gwltvp7s3b23m0000gn/T/blotquant-upload-fpud6ntq/float32.tif has pixel type float32; supported types are uint8 and uint16. The pipeline will not rescale or squash it, because that would change every intensity it then reports",
+  "error": "UnsupportedBitDepthError"
+}

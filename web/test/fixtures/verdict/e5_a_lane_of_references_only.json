@@ -1,0 +1,35 @@
+{
+  "name": "e5_a_lane_of_references_only",
+  "why": "E5: references are skipped as numerators under a housekeeping mode, so a lane holding only references emits no ratio and falls to E1's reason",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": []
+      }
+    ],
+    "normalization": {
+      "ratios": []
+    },
+    "image_qc_flags": []
+  },
+  "expected": [
+    {
+      "lane_id": "L0",
+      "roi_source": "caller",
+      "verdict": "blocked",
+      "blocked_reason": "no_ratio_emitted",
+      "qc_flags": [],
+      "band_count": 1,
+      "ratio_count": 0,
+      "usable_ratio_count": 0
+    }
+  ]
+}

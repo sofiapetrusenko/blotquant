@@ -1,0 +1,35 @@
+{
+  "name": "class_blocked_no_ratio_emitted",
+  "why": "the other blocked reason: the lane emitted no ratio at all, so the ruled \"because the input was excluded\" clause does not hold and the reason says so",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": []
+      }
+    ],
+    "normalization": {
+      "ratios": []
+    },
+    "image_qc_flags": []
+  },
+  "expected": [
+    {
+      "lane_id": "L0",
+      "roi_source": "caller",
+      "verdict": "blocked",
+      "blocked_reason": "no_ratio_emitted",
+      "qc_flags": [],
+      "band_count": 1,
+      "ratio_count": 0,
+      "usable_ratio_count": 0
+    }
+  ]
+}

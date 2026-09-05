@@ -1,0 +1,41 @@
+[
+  {
+    "id": "pmc12895598-fig3a-l3",
+    "title": "PMC12895598 · Fig. 3A · lane L3 · EMT/GAPDH",
+    "verdict": "blocked",
+    "blocked_reason": "all_ratios_excluded",
+    "flag_count": 1
+  },
+  {
+    "id": "pmc12895598-fig3a-l2",
+    "title": "PMC12895598 · Fig. 3A · lane L2 · EMT/GAPDH",
+    "verdict": "blocked",
+    "blocked_reason": "all_ratios_excluded",
+    "flag_count": 1
+  },
+  {
+    "id": "pmc12895598-fig3a-l4",
+    "title": "PMC12895598 · Fig. 3A · lane L4 · EMT/GAPDH",
+    "verdict": "blocked",
+    "blocked_reason": "all_ratios_excluded",
+    "flag_count": 1
+  },
+  {
+    "id": "pmc13135410-fig3b-l11",
+    "title": "PMC13135410 · Figure 3B · lane L11 · Fibronectin-CCN2/GAPDH",
+    "verdict": "flagged",
+    "flag_count": 3
+  },
+  {
+    "id": "pmc12895598-fig3a-l5",
+    "title": "PMC12895598 · Fig. 3A · lane L5 · printed MW label column, not a sample lane",
+    "verdict": "pass",
+    "flag_count": 0
+  },
+  {
+    "id": "pmc13135410-fig4c-l8",
+    "title": "PMC13135410 · Figure 4C · lane L8 · PDGFRa/GAPDH",
+    "verdict": "pass",
+    "flag_count": 0
+  }
+]

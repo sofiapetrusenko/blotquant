@@ -1,0 +1,57 @@
+{
+  "name": "e8_low_dynamic_range_has_no_effect",
+  "why": "E8: the same for the other image flags. Identical to the pass fixture except for image_qc_flags, so the expected verdicts must be identical too",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": []
+      },
+      {
+        "band_id": "L0_B1",
+        "lane_id": "L0",
+        "qc_flags": []
+      }
+    ],
+    "normalization": {
+      "ratios": [
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B0",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": []
+        },
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B1",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": []
+        }
+      ]
+    },
+    "image_qc_flags": [
+      "low_dynamic_range",
+      "lossy_format"
+    ]
+  },
+  "expected": [
+    {
+      "lane_id": "L0",
+      "roi_source": "caller",
+      "verdict": "pass",
+      "qc_flags": [],
+      "band_count": 2,
+      "ratio_count": 2,
+      "usable_ratio_count": 2
+    }
+  ]
+}

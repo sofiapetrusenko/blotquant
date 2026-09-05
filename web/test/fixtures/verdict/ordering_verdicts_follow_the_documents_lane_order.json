@@ -1,0 +1,87 @@
+{
+  "name": "ordering_verdicts_follow_the_documents_lane_order",
+  "why": "one verdict per lane, in the document's lanes order and not sorted by id or grouped by verdict, so a card list can be built by zipping. All three classes appear, out of alphabetical order",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L2",
+        "roi_source": "caller"
+      },
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      },
+      {
+        "lane_id": "L1",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": []
+      },
+      {
+        "band_id": "L1_B0",
+        "lane_id": "L1",
+        "qc_flags": [
+          "saturated"
+        ]
+      }
+    ],
+    "normalization": {
+      "ratios": [
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B0",
+          "excluded": false,
+          "qc_flags": [],
+          "reference_qc_flags": []
+        },
+        {
+          "lane_id": "L1",
+          "numerator_band_id": "L1_B0",
+          "excluded": false,
+          "qc_flags": [
+            "saturated"
+          ],
+          "reference_qc_flags": []
+        }
+      ]
+    },
+    "image_qc_flags": []
+  },
+  "expected": [
+    {
+      "lane_id": "L2",
+      "roi_source": "caller",
+      "verdict": "blocked",
+      "blocked_reason": "no_ratio_emitted",
+      "qc_flags": [],
+      "band_count": 0,
+      "ratio_count": 0,
+      "usable_ratio_count": 0
+    },
+    {
+      "lane_id": "L0",
+      "roi_source": "caller",
+      "verdict": "pass",
+      "qc_flags": [],
+      "band_count": 1,
+      "ratio_count": 1,
+      "usable_ratio_count": 1
+    },
+    {
+      "lane_id": "L1",
+      "roi_source": "caller",
+      "verdict": "flagged",
+      "qc_flags": [
+        "saturated"
+      ],
+      "band_count": 1,
+      "ratio_count": 1,
+      "usable_ratio_count": 1
+    }
+  ]
+}

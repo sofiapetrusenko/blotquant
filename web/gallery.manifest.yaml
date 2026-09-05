@@ -1,0 +1,136 @@
+# The gallery composition ruled on 2026-08-25 and recorded in `docs/pr/phase-4b0.md`
+# ("Gallery composition, ruled and confirmed by image"), implemented.
+#
+# What this file is. One entry per gallery card. A card is one caller-supplied lane ROI with
+# its verdict, which is Ruling 2 of 2026-08-25's unit, so every entry supplies exactly one
+# `lane_roi` and `tools/gallery/build.py` refuses a document that comes back with any other
+# number of lanes.
+#
+# Order is ruled and is the order below: blocked, then flagged, then detection beta, then
+# pass. `web/app/page.tsx` renders the first blocked card larger. Pass sits after the
+# detection-beta card so that its third ratio reads as the disclosed limit it is rather than
+# as an unexplained number.
+#
+# Where the rectangles come from. Five are copied verbatim from the table in
+# `runs/4b0/CALLER_ROI_MEASUREMENT.md` §1, which measured each candidate on the caller path at
+# commit 1d1f742. Nothing here was invented or rounded, and `tools/gallery/build.py`
+# re-measures every one of them through the live API on each build.
+#
+# The sixth, `pmc13135410-fig4c-l8`, was measured on 2026-09-04 at this tree. The ruling
+# (`docs/pr/phase-4b0.md`) names `L8` as the pass card, and `runs/4b0/CALLER_ROI_MEASUREMENT.md`
+# has **no rectangle** for it: `L8` appears in that file's §5 and §6 tables, but §1 — the ROI
+# table, the only place a caller rectangle is recorded — covers nine other candidates and not
+# this one. So the rectangle had to be measured rather than copied. Method: §1's own method —
+# re-run the detected path on the crop and read the lane's own rectangle.
+#
+# (Section numbers in this comment are `runs/4b0/CALLER_ROI_MEASUREMENT.md`'s, a gitignored
+# measurement artefact. The *ruling* has no numbered sections; it is prose, and it is a
+# different kind of document. Conflating the two is the distinction this project is built on.)
+#
+#     python -m pipeline run data/real/crops/PMC13135410_Figure4__C-PDGFRa-GAPDH.png \
+#         --config configs/default.yaml --polarity dark_on_bright --out <tmp>/
+#
+# giving `L8 = 272,0,36,122`. **Control:** the same run returned `L3 = 123,0,33,122`, which
+# reproduces the §1 table exactly and is the evidence that this method recovers the rectangles
+# §1 recorded. Re-submitted on the caller path, `272,0,36,122` returns pass, 3 bands, 3 ratios,
+# 3 usable, no flags, with `L0_B0` at x=281 y=35 w=1 h=11 emitting 0.011145096539858537 beside
+# 0.2839418849168419 and 0.3036417510992162 — matching §6's band and ratio counts and, at the
+# 6-dp precision §6 quotes, its three ratios. (§6 is a four-column table of counts; it records
+# no verdict, no usable count and no flags, so those three are this measurement's, not its.)
+#
+# ---------------------------------------------------------------------------------------
+# Two things the human has to know, stated rather than smoothed over.
+#
+# 1. Two flagged candidates are NOT here, because the ruling rejected them by name: "Two
+#    flagged candidates were rejected because their ROIs each span two sample lanes ...
+#    PMC13025488_Figure5__C-pSMAD-GAPDH L7 and PMC12686555_FIGURE1__A-p16p21-ACTIN L3." They
+#    had been shipped as this gallery's flagged cards, which showed every visitor two ROIs
+#    known to be measuring two sample lanes at once as examples of the tool working. Removing
+#    them is applying the ruling; nothing was chosen to replace them, and the ruled flagged
+#    card (PMC13135410_Figure3__B L11) is below.
+#
+# 2. `no_ratio_emitted` is NOT representable from this corpus. It is one of the two ruled
+#    `blocked_reason` values (pre-registration §2.3, edge case E1), and
+#    `runs/4b0/CALLER_ROI_MEASUREMENT.md` §3 records that it occurs zero times across all 116
+#    corpus lanes: every blocked lane in the corpus carries `all_ratios_excluded`. No entry
+#    below produces it, and none was manufactured — inventing an ROI to force a lane to emit
+#    no ratio would be choosing a rectangle against a verdict, which is exactly what the
+#    corpus is not for. The gallery therefore shows one of the two blocked reasons, and the
+#    `web/test/fixtures/verdict/` synthetic fixtures are where `no_ratio_emitted` is pinned.
+# ---------------------------------------------------------------------------------------
+
+# Where build.py posts. The API is not started by build.py and never will be; if nothing is
+# listening here the build refuses to run and says how to start it.
+api_url: http://127.0.0.1:8000
+
+entries:
+  # -- blocked: every ratio in the lane excluded, because every band is saturated ----------
+  # Three lanes of one crop, so each title names its lane: the figure alone does not
+  # distinguish them, and the ruling requires each card to name what it is.
+  #
+  # `L3` is first, and that is a presentation ground rather than a measurement one, recorded
+  # here because `web/app/page.tsx` renders the first blocked card at double width — so this
+  # line picks the largest element on the site. The ruling groups the three as one blocked
+  # entry and does not order them within the group; the order below is the order the §1
+  # measurement table lists them in, and `L3` is the centre lane of the three, which is the
+  # one whose neighbours are both visible in the crop. Any of the three is equally blocked and
+  # equally correct; the ruling was careful to record the pass lane's presentation ground, and
+  # this is the same kind of choice.
+  - id: pmc12895598-fig3a-l3
+    image: data/real/crops/PMC12895598_Fig3__A-EMT-GAPDH.png
+    polarity: dark_on_bright
+    config: default
+    lane_roi: "122,0,28,201"
+    title: "PMC12895598 · Fig. 3A · lane L3 · EMT/GAPDH"
+
+  - id: pmc12895598-fig3a-l2
+    image: data/real/crops/PMC12895598_Fig3__A-EMT-GAPDH.png
+    polarity: dark_on_bright
+    config: default
+    lane_roi: "93,0,29,201"
+    title: "PMC12895598 · Fig. 3A · lane L2 · EMT/GAPDH"
+
+  - id: pmc12895598-fig3a-l4
+    image: data/real/crops/PMC12895598_Fig3__A-EMT-GAPDH.png
+    polarity: dark_on_bright
+    config: default
+    lane_roi: "150,0,30,201"
+    title: "PMC12895598 · Fig. 3A · lane L4 · EMT/GAPDH"
+
+  # -- flagged: a number survives, annotated with the flags it carries --------------------
+  - id: pmc13135410-fig3b-l11
+    image: data/real/crops/PMC13135410_Figure3__B-Fib-CCN2-GAPDH.png
+    polarity: dark_on_bright
+    config: default
+    lane_roi: "300,0,30,139"
+    title: "PMC13135410 · Figure 3B · lane L11 · Fibronectin-CCN2/GAPDH"
+
+  # -- detection beta: the defect the probe surfaced, shipped as itself -------------------
+  # This ROI is the printed molecular-weight label column in the right-hand margin past the
+  # blot, not a sample lane: its five "bands" sit at the five printed MW labels. Detection
+  # locates printed type and quantifies it, and QC has nothing to say about it, because every
+  # flag in the vocabulary qualifies a measurement and printed type measured cleanly is a
+  # clean measurement of printed type. The verdict is `pass` and it is correct about the
+  # flags and silent about what was measured.
+  #
+  # The ruling ships it for exactly that reason — "the fourth is the detection defect the
+  # probe surfaced, shipped as itself rather than suppressed" — and the card says so on its
+  # face. No parameter moves to suppress it: a minimum band width or a margin exclusion
+  # introduced here would be a parameter chosen against a real crop that looked wrong
+  # (Gate 1 ruling 3).
+  - id: pmc12895598-fig3a-l5
+    image: data/real/crops/PMC12895598_Fig3__A-EMT-GAPDH.png
+    polarity: dark_on_bright
+    config: default
+    lane_roi: "180,0,30,201"
+    title: "PMC12895598 · Fig. 3A · lane L5 · printed MW label column, not a sample lane"
+
+  # -- pass: a genuine sample lane, both bands plainly visible ----------------------------
+  # Its third ratio comes from a one-pixel-wide detection and is shown like the other two.
+  # The card names it, derived from bands[0].roi in the document rather than from this file.
+  - id: pmc13135410-fig4c-l8
+    image: data/real/crops/PMC13135410_Figure4__C-PDGFRa-GAPDH.png
+    polarity: dark_on_bright
+    config: default
+    lane_roi: "272,0,36,122"
+    title: "PMC13135410 · Figure 4C · lane L8 · PDGFRa/GAPDH"

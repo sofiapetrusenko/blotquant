@@ -1,0 +1,48 @@
+{
+  "name": "e3_exclude_qc_flagged_false_keeps_the_number",
+  "why": "E3: with exclude_qc_flagged off a flagged band keeps its number, so the lane has a flag and a usable ratio and reads flagged",
+  "document": {
+    "lanes": [
+      {
+        "lane_id": "L0",
+        "roi_source": "caller"
+      }
+    ],
+    "bands": [
+      {
+        "band_id": "L0_B0",
+        "lane_id": "L0",
+        "qc_flags": [
+          "saturated"
+        ]
+      }
+    ],
+    "normalization": {
+      "ratios": [
+        {
+          "lane_id": "L0",
+          "numerator_band_id": "L0_B0",
+          "excluded": false,
+          "qc_flags": [
+            "saturated"
+          ],
+          "reference_qc_flags": []
+        }
+      ]
+    },
+    "image_qc_flags": []
+  },
+  "expected": [
+    {
+      "lane_id": "L0",
+      "roi_source": "caller",
+      "verdict": "flagged",
+      "qc_flags": [
+        "saturated"
+      ],
+      "band_count": 1,
+      "ratio_count": 1,
+      "usable_ratio_count": 1
+    }
+  ]
+}
